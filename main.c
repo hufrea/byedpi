@@ -341,7 +341,7 @@ int main(int argc, char **argv)
             
         case 'w': //
             params.sfdelay = strtoul(optarg, &end, 0);
-            if (optarg == end || *end)
+            if (optarg == end || params.sfdelay > 1000000 || *end)
                 invalid = 1;
             break;
             

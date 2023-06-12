@@ -1,5 +1,8 @@
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
+#include <time.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -57,7 +60,10 @@ int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos)
             perror("sendfile");
             break;
         }
-        usleep(params.sfdelay);
+        struct timespec delay = { 
+            .tv_nsec = params.sfdelay * 1000
+        };
+        nanosleep(&delay, 0);
         memcpy(p, buffer, pos);
         
         if (setsockopt(sfd, IPPROTO_IP, IP_TTL,
