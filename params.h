@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 enum mode {
     MODE_PROXY_H,
     MODE_PROXY_S,
