@@ -2,6 +2,7 @@
 
 Сборка:
 $ git clone https://github.com/hufrea/byedpi.git
+$ cd byedpi
 $ make
 Использование:
 $ ./ciadpi --method disorder --split-pos 3 --port 1080
