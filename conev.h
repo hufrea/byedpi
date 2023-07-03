@@ -48,7 +48,9 @@ struct eval {
     int index;
     enum eid type;
     struct eval *pair;
-    size_t send_count;
+    char *tmpbuf;
+    ssize_t size;
+    int offset;
     int flag;
     #ifndef NOEPOLL
     uint32_t events;

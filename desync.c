@@ -10,9 +10,10 @@
 
 #ifdef __linux__
 #include <sys/sendfile.h>
+#define _sendfile(outfd, infd, start, len) sendfile(outfd, infd, start, len)
 #else
 #include <sys/uio.h>
-#define sendfile(outfd, infd, start, len) sendfile(infd, outfd, start, len, 0, 0)
+#define _sendfile(outfd, infd, start, len) sendfile(infd, outfd, start, len, 0, 0)
 #endif
 
 #ifdef MFD_CLOEXEC
@@ -26,7 +27,25 @@
 #include <packets.h>
 
 
-int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos)
+int setttl(int fd, int ttl, int family) {
+    int _ttl = ttl;
+    if (family == AF_INET) {
+        if (setsockopt(fd, IPPROTO_IP, IP_TTL,
+                 &_ttl, sizeof(_ttl)) < 0) {
+            perror("setsockopt IP_TTL");
+            return -1;
+        }
+    }
+    else if (setsockopt(fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS,
+             &_ttl, sizeof(_ttl)) < 0) {
+        perror("setsockopt IPV6_UNICAST_HOPS");
+        return -1;
+    }
+    return 0;
+}
+
+
+int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos, int fa)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -51,12 +70,10 @@ int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos)
         }
         memcpy(p, pkt.data, psz < pos ? psz : pos);
         
-        if (setsockopt(sfd, IPPROTO_IP, IP_TTL,
-                 &params.ttl, sizeof(params.ttl)) < 0) {
-            perror("setsockopt IP_TTL");
+        if (setttl(sfd, params.ttl, fa) < 0) {
             break;
         }
-        if (sendfile(sfd, ffd, 0, pos) < 0) {
+        if (_sendfile(sfd, ffd, 0, pos) < 0) {
             perror("sendfile");
             break;
         }
@@ -66,9 +83,7 @@ int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos)
         nanosleep(&delay, 0);
         memcpy(p, buffer, pos);
         
-        if (setsockopt(sfd, IPPROTO_IP, IP_TTL,
-                 &params.def_ttl, sizeof(int)) < 0) {
-            perror("setsockopt IP_TTL");
+        if (setttl(sfd, params.def_ttl, fa) < 0) {
             break;
         }
         if (send(sfd, buffer + pos, n - pos, 0) < 0) {
@@ -83,21 +98,17 @@ int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos)
 }
 
 
-int disorder_attack(int sfd, char *buffer, ssize_t n, int pos)
+int disorder_attack(int sfd, char *buffer, ssize_t n, int pos, int fa)
 {
     int bttl = 1;
-    if (setsockopt(sfd, IPPROTO_IP, IP_TTL,
-             (char *)&bttl, sizeof(bttl)) < 0) {
-        perror("setsockopt IP_TTL");
+    if (setttl(sfd, bttl, fa) < 0) {
         return -1;
     }
     if (send(sfd, buffer, pos, 0) < 0) {
         perror("send");
         return -1;
     }
-    if (setsockopt(sfd, IPPROTO_IP, IP_TTL,
-            (char *)&params.def_ttl, sizeof(int)) < 0) {
-        perror("setsockopt IP_TTL");
+    if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
     if (send(sfd, buffer + pos, n - pos, 0) < 0) {
@@ -113,6 +124,15 @@ int desync(int sfd, char *buffer, ssize_t n)
     int pos = params.split;
     char *host = 0;
     int len = 0, type = 0;
+    
+    struct sockaddr sa;
+    socklen_t alen = sizeof(sa);
+    
+    if (getsockname(sfd, &sa, &alen)) {
+        perror("getsockname");
+        return -1;
+    }
+    int fa = sa.sa_family;
     
     if ((len = parse_tls(buffer, n, &host))) {
         type = IS_HTTPS;
@@ -146,10 +166,11 @@ int desync(int sfd, char *buffer, ssize_t n)
     }
     else switch (params.attack) {
         case DESYNC_FAKE:
-            return fake_attack(sfd, buffer, n, type, pos);
+            return fake_attack(sfd, buffer, n, type, pos, fa);
             
         case DESYNC_DISORDER:
-            return disorder_attack(sfd, buffer, n, pos);
+            printf("disorder attack\n");
+            return disorder_attack(sfd, buffer, n, pos, fa);
         
         case DESYNC_SPLIT:
         default:

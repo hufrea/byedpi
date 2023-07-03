@@ -30,7 +30,6 @@ struct params {
     
     int debug;
     size_t bfsize;
-    size_t nack_max;
     int send_bfsz;
 };
 

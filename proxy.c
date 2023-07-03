@@ -283,24 +283,6 @@ int handle_http(int fd, char *buffer,
 }
 
 
-int nsendc(int fd, int *wn)
-{
-    #ifdef SO_NWRITE
-    socklen_t len = sizeof(*wn);
-    if (getsockopt(fd, SOL_SOCKET, SO_NWRITE, wn, &len) < 0) {
-        perror("getsockopt SO_NWRITE");
-        return -1;
-    }
-    #else
-    if (ioctl(fd, TIOCOUTQ, wn) < 0 ) {
-        perror("ioctl");
-        return -1;
-    }
-    #endif
-    return 0;
-}
-
-
 static inline int create_conn(struct poolhd *pool, struct eval *val,
         enum eid nxt, struct sockaddr_ina *dst)
 {
@@ -519,12 +501,10 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int out)
 {
     ssize_t n = 0;
-    int peek = 0;
+    char *rb = buffer;
     struct eval *pair = val->pair;
     
-    if (val->flag & FLAG_NOSEND && out) {
-        val->flag &= ~FLAG_NOSEND;
-        
+    if (pair->tmpbuf && out) {
         mod_etype(pool, val, POLLOUT, 0);
         mod_etype(pool, val->pair, POLLIN, 1);
         
@@ -532,48 +512,45 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         val = val->pair;
     }
     do {
-        if (pair->send_count >= params.nack_max) {
-            int wn = 0;
-            if (nsendc(pair->fd, &wn)) {
+        if (val->tmpbuf) {
+            n = val->size - val->offset;
+            rb = val->tmpbuf + val->offset;
+        } else {
+            n = recv(val->fd, buffer, bfsize, 0);
+            if (n < 0 && errno == EAGAIN)
+                break;
+            if (n < 1) {
+                if (n) perror("recv server");
                 return -1;
             }
-            pair->send_count = wn;
-            if (wn) {
-                LOG(LOG_S, "not ack: %d (fd: %d)\n", wn, pair->fd);
-            }
-            if (wn >= params.nack_max) {
-                peek = MSG_PEEK;
-            }
         }
-        n = recv(val->fd, buffer, bfsize, peek);
-        
-        if (n < 0 && errno == EAGAIN)
-            break;
-        if (n < 1) {
-            if (n) perror("recv server");
-            return -1;
-        }
-        if (send(pair->fd, buffer, n, 0) < 0) {
-            if (errno == EAGAIN && peek) {
-                LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
-                
-                mod_etype(pool, val, POLLIN, 0);
-                mod_etype(pool, pair, POLLOUT, 1);
-                
-                pair->flag |= FLAG_NOSEND;
+        ssize_t sn = send(pair->fd, rb, n, 0);
+        if (sn != n) {
+            if (sn < 0 && errno != EAGAIN) {
+                perror("send");
+                return -1;
+            }
+            LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
+            mod_etype(pool, val, POLLIN, 0);
+            mod_etype(pool, pair, POLLOUT, 1);
+            
+            if (val->tmpbuf) {
+                LOG(LOG_S, "EAGAIN, AGAIN ! (fd: %d)\n", pair->fd);
+                if (sn > 0)
+                    val->offset += sn;
                 break;
             }
-            perror("send");
-            return -1;
+            val->size = sn > 0 ? n - sn : n;
+            val->tmpbuf = malloc(val->size);
+            memcpy(val->tmpbuf, buffer + (sn > 0 ? sn : 0), val->size);
+            break;
         }
-        if (peek) {
-            if (recv(val->fd, buffer, n, 0) != n) {
-                perror("recv");
-                return -1;
-            }
+        else if (val->tmpbuf) {
+            free(val->tmpbuf);
+            val->tmpbuf = 0;
+            rb = buffer;
+            continue;
         }
-        pair->send_count += n;
-        
     } while (n == bfsize);
     return 0;
 }
@@ -624,8 +601,7 @@ int big_loop(int srvfd)
                 continue;
         
             case EV_TUNNEL:
-                if ((etype & POLLHUP) || 
-                        on_tunnel(pool, val, buffer, bfsize, etype & POLLOUT))
+                if (on_tunnel(pool, val, buffer, bfsize, etype & POLLOUT))
                     del_event(pool, val);
                 continue;
         

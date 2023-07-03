@@ -40,7 +40,6 @@ struct params params = {
     
     .bfsize = 16384,
     .send_bfsz = 65536,
-    .nack_max = 65536 * 2 - 16384,
     .debug = 0
 };
 
@@ -369,8 +368,6 @@ int main(int argc, char **argv)
     if (params.send_bfsz * 2 <= params.bfsize) {
         fprintf(stderr, "send buffer too small\n");
         return -1;
-    } else {
-        params.nack_max = val * 2 - params.bfsize;
     }
     FILE *file;
     if (pidfile) {
