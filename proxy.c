@@ -247,14 +247,14 @@ int handle_socks5(int fd, char *buffer,
 }
 
 
-int handle_http(int fd, char *buffer,
+int handle_http(struct eval *val, char *buffer,
         size_t bfsize, struct sockaddr_ina *dst) 
 {
     char *host = 0;
     uint16_t port = 443;
     int cnt = 0;
     
-    ssize_t n = recv(fd, buffer, bfsize, MSG_PEEK);
+    ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n <= 0) {
         perror("recv proxy");
         return -1;
@@ -264,22 +264,25 @@ int handle_http(int fd, char *buffer,
         fprintf(stderr, "parse error\n");
         return -1;
     }
-    if (!memcmp(buffer, "CONNECT", 7)) {
-        if (recv(fd, buffer, n, 0) != n) {
-            perror("recv");
-            return -1;
-        }
-        cnt = 1;
-    }
-    if (*host == '[' && host[len - 1] == ']') {
+    if (*host == '[') {
         host++; len -= 2;
     }
     if (resolve(host, len, dst)) {
         fprintf(stderr, "not resolved: %.*s\n", len, host);
         return -1;
     }
+    if (memcmp(buffer, "CONNECT", 7)) {
+        if (!(val->tmpbuf = malloc(n))) {
+            perror("malloc");
+            return -1;
+        }
+        val->size = n;
+        memcpy(val->tmpbuf, buffer, n);
+    } else {
+        val->flag |= FLAG_HTTP;
+    }
     dst->in.sin_port = htons(port);
-    return cnt;
+    return 0;
 }
 
 
@@ -357,13 +360,8 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
     } else
     #endif
     if (params.mode == MODE_PROXY_H) {
-        int cnt = handle_http(val->fd, buffer, bfsize, &dst);
-        if (cnt < 0)
+        if (handle_http(val, buffer, bfsize, &dst))
             return -1;
-        else if (cnt)
-            val->flag = FLAG_HTTP;
-        else
-            mod_etype(pool, val, POLLIN, 0);
     }
     else {
         ssize_t n = recv(val->fd, buffer, bfsize, 0);
@@ -447,13 +445,23 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
 
 static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
 {
-    ssize_t n = recv(val->fd, buffer, bfsize, 0);
-    if (n <= 0) {
-        if (n) perror("recv data");
-        return -1;
+    ssize_t n;
+    if (val->tmpbuf) {
+        buffer = val->tmpbuf;
+        n = val->size;
+    } else {
+        n = recv(val->fd, buffer, bfsize, 0);
+        if (n <= 0) {
+            if (n) perror("recv data");
+            return -1;
+        }
     }
     if (desync(val->pair->fd, buffer, n)) {
         return -1;
+    }
+    if (val->tmpbuf) {
+        free(val->tmpbuf);
+        val->tmpbuf = 0;
     }
     val->type = EV_TUNNEL;
     return 0;
@@ -541,7 +549,10 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
                 break;
             }
             val->size = sn > 0 ? n - sn : n;
-            val->tmpbuf = malloc(val->size);
+            if (!(val->tmpbuf = malloc(val->size))) {
+                perror("malloc");
+                return -1;
+            }
             memcpy(val->tmpbuf, buffer + (sn > 0 ? sn : 0), val->size);
             break;
         }
