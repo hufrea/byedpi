@@ -22,44 +22,19 @@
 #include <conev.h>
 #include <desync.h>
 
-#ifdef __linux__
-#include <linux/netfilter_ipv4.h>
-#endif
-
 int NOT_EXIT = 1;
 
 static void on_cancel(int sig) {
     NOT_EXIT = 0;
 }
 
-
-static inline int is_binded_addr(int fd, struct sockaddr_ina *dst)
-{
-    struct sockaddr_ina me;
-    socklen_t alen = sizeof(me);
-    
-    if (getsockname(fd, &me.sa, &alen)) {
-        perror("getsockname");
-        return -1;
-    }
-    if (dst->sa.sa_family != me.sa.sa_family ||
-            dst->in.sin_port != me.in.sin_port) {
-        return 0;
-    }
-    if (dst->sa.sa_family == AF_INET6 ? 
-            !memcmp(&dst->in6.sin6_addr, &me.in6.sin6_addr, 16) :
-            dst->in.sin_addr.s_addr == me.in.sin_addr.s_addr) {
-        return 1;
-    }
-    return 0;
-}
-
        
-int resolve(char *host, int len, struct sockaddr_ina *addr) 
+int resolve(char *host, int len, 
+        struct sockaddr_ina *addr, int type) 
 {
     struct addrinfo hints = {0}, *res = 0;
     
-    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_socktype = type;
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_ADDRCONFIG;
     
@@ -103,13 +78,7 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
 
 int resp_error(int fd, int e, int flag)
 {
-    if (flag & FLAG_HTTP) {
-        const char *r;
-        if (e) r = "HTTP/1.1 504\r\n\r\n";
-        else   r = "HTTP/1.1 200\r\n\r\n";
-        return send(fd, r, 16, 0);
-    }   
-    else if (flag & FLAG_S4) {
+    if (flag & FLAG_S4) {
         struct s4_req s4r = { 
             .cmd = e ? S4_ER : S4_OK
         };
@@ -163,7 +132,7 @@ int handle_socks4(int fd, char *bf,
             break;
         int len = (bf + n - ie) - 2;
         if (len > 2) {
-            if (resolve(ie + 1, len, dst)) {
+            if (resolve(ie + 1, len, dst, SOCK_STREAM)) {
                 fprintf(stderr, "not resolved: %.*s\n", len, ie + 1);
                 break;
             }
@@ -191,6 +160,7 @@ int handle_socks5(int fd, char *buffer,
         size_t n, struct sockaddr_ina *addr) 
 {
     if (n < sizeof(struct s5_rep)) {
+        fprintf(stderr, "ss: request to small\n");
         return -1;
     }
     struct s5_req *r = (struct s5_req *)buffer;
@@ -202,7 +172,7 @@ int handle_socks5(int fd, char *buffer,
         fprintf(stderr, "ss: bad request\n");
         return -1;
     }
-    else if (r->cmd != S_CMD_CONN) {
+    if (r->cmd != S_CMD_CONN) {
         fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
         er = S_ER_CMD;
     }
@@ -217,7 +187,7 @@ int handle_socks5(int fd, char *buffer,
                 er = S_ER_ATP;
                 break;
             }
-            if (resolve(r->id.domain, r->id.len, addr)) {
+            if (resolve(r->id.domain, r->id.len, addr, SOCK_STREAM)) {
                 fprintf(stderr, "not resolved: %.*s\n", r->id.len, r->id.domain);
                 er = S_ER_HOST;
             }
@@ -243,45 +213,6 @@ int handle_socks5(int fd, char *buffer,
         return -1;
     }
     addr->in.sin_port = *(uint16_t *)&buffer[n - 2];
-    return 0;
-}
-
-
-int handle_http(struct eval *val, char *buffer,
-        size_t bfsize, struct sockaddr_ina *dst) 
-{
-    char *host = 0;
-    uint16_t port = 443;
-    int cnt = 0;
-    
-    ssize_t n = recv(val->fd, buffer, bfsize, 0);
-    if (n <= 0) {
-        perror("recv proxy");
-        return -1;
-    }
-    int len = parse_http(buffer, n, &host, &port);
-    if (len <= 2) {
-        fprintf(stderr, "parse error\n");
-        return -1;
-    }
-    if (*host == '[') {
-        host++; len -= 2;
-    }
-    if (resolve(host, len, dst)) {
-        fprintf(stderr, "not resolved: %.*s\n", len, host);
-        return -1;
-    }
-    if (memcmp(buffer, "CONNECT", 7)) {
-        if (!(val->tmpbuf = malloc(n))) {
-            perror("malloc");
-            return -1;
-        }
-        val->size = n;
-        memcpy(val->tmpbuf, buffer, n);
-    } else {
-        val->flag |= FLAG_HTTP;
-    }
-    dst->in.sin_port = htons(port);
     return 0;
 }
 
@@ -322,7 +253,7 @@ static inline int create_conn(struct poolhd *pool, struct eval *val,
         return -1;
     }
     int status = connect(sfd, &dst->sa, sizeof(*dst));
-    if (!status || errno != EINPROGRESS) {
+    if (status < 0 && errno != EINPROGRESS) {
         perror("connect");
         close(sfd);
         return -1;
@@ -344,55 +275,35 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
 {
     struct sockaddr_ina dst = {0};
     
-    #ifdef __linux__
-    if (params.mode == MODE_TRANSPARENT) {
-        socklen_t alen = sizeof(dst);
-        
-        if (getsockopt(val->fd, SOL_IP, SO_ORIGINAL_DST, &dst, &alen)) {
-            perror("getsockopt SO_ORIGINAL_DST");
+    ssize_t n = recv(val->fd, buffer, bfsize, 0);
+    if (n < 1) {
+        if (n) perror("ss recv");
+        return -1;
+    }
+    if (*buffer == S_VER5) {
+        if (val->flag != FLAG_S5) {
+            if (auth_socks5(val->fd, buffer, n)) {
+                return -1;
+            }
+            val->flag = FLAG_S5;
+            return 0;
+        }
+        int st = handle_socks5(val->fd, buffer, n, &dst);
+        if (st < 0)
+            return -1;
+    }
+    else if (*buffer == S_VER4) {
+        if (handle_socks4(val->fd, buffer, n, &dst)) {
             return -1;
         }
-        if (is_binded_addr(val->fd, &dst)) {
-            fprintf(stderr, "drop connection to self\n");
-            return -1;
-        }
-        mod_etype(pool, val, POLLIN, 0);
-    } else
-    #endif
-    if (params.mode == MODE_PROXY_H) {
-        if (handle_http(val, buffer, bfsize, &dst))
-            return -1;
+        val->flag = FLAG_S4;
     }
     else {
-        ssize_t n = recv(val->fd, buffer, bfsize, 0);
-        if (n < 1) {
-            if (n) perror("ss recv");
-            return -1;
-        }
-        if (*buffer == S_VER5) {
-            if (val->flag != FLAG_S5) {
-                if (auth_socks5(val->fd, buffer, n)) {
-                    return -1;
-                }
-                val->flag = FLAG_S5;
-                return 0;
-            }
-            if (handle_socks5(val->fd, buffer, n, &dst)) {
-                return -1;
-            }
-        }
-        else if (*buffer == S_VER4) {
-            if (handle_socks4(val->fd, buffer, n, &dst)) {
-                return -1;
-            }
-            val->flag = FLAG_S4;
-        }
-        else {
-            fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
-            return -1;
-        }
+        fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
+        return -1;
     }
-    if (create_conn(pool, val, EV_CONNECT, &dst)) {
+    int s = create_conn(pool, val, EV_CONNECT, &dst);
+    if (s) {
         if (resp_error(val->fd, errno, val->flag) < 0)
             perror("send");
         return -1;
@@ -445,23 +356,13 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
 
 static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
 {
-    ssize_t n;
-    if (val->tmpbuf) {
-        buffer = val->tmpbuf;
-        n = val->size;
-    } else {
-        n = recv(val->fd, buffer, bfsize, 0);
-        if (n <= 0) {
-            if (n) perror("recv data");
-            return -1;
-        }
+    ssize_t n = recv(val->fd, buffer, bfsize, 0);
+    if (n <= 0) {
+        if (n) perror("recv data");
+        return -1;
     }
     if (desync(val->pair->fd, buffer, n)) {
         return -1;
-    }
-    if (val->tmpbuf) {
-        free(val->tmpbuf);
-        val->tmpbuf = 0;
     }
     val->type = EV_TUNNEL;
     return 0;
@@ -472,35 +373,28 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int e)
 {
     if (val->flag & FLAG_CONN) {
-        if (!e) {
-            val->type = EV_TUNNEL;
-            mod_etype(pool, val, POLLOUT, 0);
-        }
-        if (val->pair->flag) {
-            int error = 0;
-            socklen_t len = sizeof(error);
-            if (e) {
-                if (getsockopt(val->fd, SOL_SOCKET, 
-                        SO_ERROR, (char *)&error, &len)) {
-                    perror("getsockopt SO_ERROR");
-                    return -1;
-                }
-            }
-            if (resp_error(val->pair->fd,
-                    error, val->pair->flag) < 0) {
-                perror("send");
+        int error = 0;
+        socklen_t len = sizeof(error);
+        if (e) {
+            if (getsockopt(val->fd, SOL_SOCKET, 
+                    SO_ERROR, (char *)&error, &len)) {
+                perror("getsockopt SO_ERROR");
                 return -1;
             }
-            if (e) return -1;
-            val->pair->type = EV_CONNECT;
-            return 0;
         }
-        else if (!e) {
-            val = val->pair;
-            mod_etype(pool, val, POLLIN, 1);
+        if (resp_error(val->pair->fd,
+                error, val->pair->flag) < 0) {
+            perror("send");
+            return -1;
         }
+        if (e) {
+            return -1;
+        }
+        val->type = EV_TUNNEL;
+        mod_etype(pool, val, POLLOUT, 0);
+        val->pair->type = EV_CONNECT;
+        return 0;
     }
-    if (e) return -1;
     return on_data(val, buffer, bfsize);
 }
 
@@ -537,6 +431,8 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             if (sn < 0 && errno != EAGAIN) {
                 perror("send");
                 return -1;
+            } else if (sn < 0) {
+                sn = 0;
             }
             LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
             mod_etype(pool, val, POLLIN, 0);
@@ -548,12 +444,12 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
                     val->offset += sn;
                 break;
             }
-            val->size = sn > 0 ? n - sn : n;
+            val->size = n - sn;
             if (!(val->tmpbuf = malloc(val->size))) {
                 perror("malloc");
                 return -1;
             }
-            memcpy(val->tmpbuf, buffer + (sn > 0 ? sn : 0), val->size);
+            memcpy(val->tmpbuf, buffer + sn, val->size);
             break;
         }
         else if (val->tmpbuf) {

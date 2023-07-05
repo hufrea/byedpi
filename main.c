@@ -32,7 +32,6 @@ struct params params = {
     .def_ttl = 0,
     .mod_http = 0,
     
-    .mode = MODE_PROXY_S,
     .ipv6 = 1,
     .resolve = 1,
     .de_known = 0,
@@ -113,9 +112,6 @@ int main(int argc, char **argv)
         "    -D, --daemon              Daemonize\n"
         "    -f, --pidfile <file>      Write pid to file\n"
         "    -c, --max-conn <count>    Connection count limit, default 512\n"
-        #ifdef __linux__
-        "    -T, --transparent         Get address with getsockopt\n"
-        #endif
         "    -N, --no-domain           Deny domain resolving\n"
         "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
         //"Desync:\n"
@@ -131,9 +127,6 @@ int main(int argc, char **argv)
     
     const struct option options[] = {
         {"daemon",        0, 0, 'D'},
-        {"transparent",   0, 0, 'T'},
-        {"http",          0, 0, 'P'}, //
-        {"socks",         0, 0, 'O'},
         {"no-domain",     0, 0, 'N'},
         {"no-ipv6",       0, 0, 'X'}, //
         {"desync-known ", 0, 0, 'K'},
@@ -166,7 +159,7 @@ int main(int argc, char **argv)
     char *end = 0;
     
     while (!invalid && (rez = getopt_long_only(argc, argv,
-             "DTPONXKHhvf:i:p:b:B:c:m:s:t:l:o:n:M:g:w:x:", options, 0)) != -1) {
+             "DNXKHhvf:i:p:b:B:c:m:s:t:l:o:n:M:g:w:x:", options, 0)) != -1) {
         switch (rez) {
         
         case 'D':
@@ -175,20 +168,11 @@ int main(int argc, char **argv)
         case 'f':
             pidfile = optarg;
             break;
-        case 'T':
-            params.mode = MODE_TRANSPARENT;
-            break;
-        case 'O':
-            params.mode = MODE_PROXY_S;
-            break;
         case 'N':
             params.resolve = 0;
             break;
         case 'X':
             params.ipv6 = 0;
-            break;
-        case 'P':
-            params.mode = MODE_PROXY_H;
             break;
         case 'K':
             params.de_known = 1;

@@ -27,11 +27,9 @@ enum eid {
     EV_TUNNEL
 };
 
-#define FLAG_NOSEND 1
-#define FLAG_HTTP 2
-#define FLAG_S4 4
-#define FLAG_S5 8
-#define FLAG_CONN 16
+#define FLAG_S4 1
+#define FLAG_S5 2
+#define FLAG_CONN 4
 
 #ifndef CONEV_H
 char *eid_name[] = {

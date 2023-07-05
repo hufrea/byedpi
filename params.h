@@ -1,11 +1,5 @@
 #include <stdio.h>
 
-enum mode {
-    MODE_PROXY_H,
-    MODE_PROXY_S,
-    MODE_TRANSPARENT
-};
-
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
@@ -22,7 +16,6 @@ struct params {
     int def_ttl;
     int mod_http;
     
-    enum mode mode;
     char ipv6;
     char resolve;
     char de_known;
