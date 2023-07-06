@@ -102,8 +102,11 @@ void del_event(struct poolhd *pool, struct eval *val)
         ev->index = index;
     }
     if (val->pair) {
-        val->pair->pair = 0;
+        if (val->pair == val) {
+            val->pair->pair = 0;
+        }
         del_event(pool, val->pair);
+        val->pair = 0;
     }
 }
 

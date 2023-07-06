@@ -20,8 +20,14 @@ struct s4_req {
 struct s5_req {
     uint8_t ver, cmd, zero, atp;
     union {
-        struct in_addr i4;
-        struct in6_addr i6;
+        struct {
+            struct in_addr i4;
+            uint16_t p4;
+        };
+        struct {
+            struct in6_addr i6;
+            uint16_t p6;
+        };
         struct {
             uint8_t len;
             char domain[];
@@ -77,5 +83,10 @@ enum s4_rep {
 
 #define S_VER5 0x05
 #define S_VER4 0x04
+
+#define S_SIZE_MIN 8
+#define S_SIZE_I4 10
+#define S_SIZE_I6 22
+#define S_SIZE_ID 7
 
 int listener(struct sockaddr_ina srv);
