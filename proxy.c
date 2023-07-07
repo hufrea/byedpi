@@ -616,7 +616,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 {
     struct sockaddr_ina addr;
-    int skip = S_SIZE_I4, offs;
+    int skip = S_SIZE_I6, offs;
     do {
         socklen_t asz = sizeof(addr);
         ssize_t n = recvfrom(val->fd, buffer + skip,
