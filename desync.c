@@ -119,20 +119,13 @@ int disorder_attack(int sfd, char *buffer, ssize_t n, int pos, int fa)
 }
 
 
-int desync(int sfd, char *buffer, ssize_t n)
+int desync(int sfd, char *buffer, 
+        ssize_t n, struct sockaddr *dst)
 {
     int pos = params.split;
     char *host = 0;
     int len = 0, type = 0;
-    
-    struct sockaddr sa;
-    socklen_t alen = sizeof(sa);
-    
-    if (getsockname(sfd, &sa, &alen)) {
-        perror("getsockname");
-        return -1;
-    }
-    int fa = sa.sa_family;
+    int fa = dst->sa_family;
     
     if ((len = parse_tls(buffer, n, &host))) {
         type = IS_HTTPS;
@@ -182,6 +175,38 @@ int desync(int sfd, char *buffer, ssize_t n)
                 perror("send");
                 return -1;
             }
+    }
+    return 0;
+}
+
+
+int desync_udp(int fd, char *buffer, 
+        ssize_t n, struct sockaddr_in6 *dst)
+{
+    if (params.desync_udp & DESYNC_UDP_FAKE) {
+        if (setttl(fd, params.ttl, AF_INET) < 0) {
+            return -1;
+        }
+        if (setttl(fd, params.ttl, AF_INET6) < 0) {
+            return -1;
+        }
+        if (sendto(fd, fake_udp.data, fake_udp.size,
+                0, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
+            perror("sendto");
+            return -1;
+        }
+        if (setttl(fd, params.def_ttl, AF_INET) < 0) {
+            return -1;
+        }
+        if (setttl(fd, params.def_ttl, AF_INET6) < 0) {
+            return -1;
+        }
+    }
+    ssize_t ns = sendto(fd,
+        buffer, n, 0, (struct sockaddr *)dst, sizeof(*dst));
+    if (ns < 0) {
+        perror("sendto");
+        return -1;
     }
     return 0;
 }

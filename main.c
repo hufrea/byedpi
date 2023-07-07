@@ -20,7 +20,11 @@ struct packet fake_tls = {
 },
 fake_http = { 
     sizeof(http_data), http_data
+},
+fake_udp = {
+    sizeof(udp_data), udp_data
 };
+
 
 
 struct params params = {
@@ -28,6 +32,7 @@ struct params params = {
     .split = 3,
     .sfdelay = 3000,
     .attack = DESYNC_NONE,
+    .desync_udp = 0,
     .split_host = 0,
     .def_ttl = 0,
     .mod_http = 0,
@@ -44,9 +49,10 @@ struct params params = {
 };
 
 
-char *ftob(char *name)
+char *ftob(char *name, ssize_t *sl)
 {
     char *buffer = 0;
+    long size;
     
     FILE *file = fopen(name, "rb");
     if (!file)
@@ -55,7 +61,7 @@ char *ftob(char *name)
         if (fseek(file, 0, SEEK_END)) {
             break;
         }
-        long size = ftell(file);
+        size = ftell(file);
         if (!size || fseek(file, 0, SEEK_SET)) {
             break;
         }
@@ -67,6 +73,9 @@ char *ftob(char *name)
             buffer = 0;
         }
     } while (0);
+    if (buffer) {
+        *sl = size;
+    }
     fclose(file);
     return buffer;
 }
@@ -122,9 +131,11 @@ int main(int argc, char **argv)
         "    -H, --split-at-host       Add Host/SNI offset to split position\n"
         "    -t, --ttl <num>           TTL of fake packets, default 8\n"
         "    -l, --fake-tls <file>\n"
-        "    -o, --fake-http <file>    Set custom fake packet\n"
+        "    -o, --fake-http <file>\n"   
+        "    -e, --fake-udp <file>     Set custom fake packet\n"
         "    -n, --tls-sni <str>       Change SNI in fake CH\n"
         "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
+        "    -u, --desync-udp <f>      UDP desync method: fake\n"
     };
     
     const struct option options[] = {
@@ -147,8 +158,10 @@ int main(int argc, char **argv)
         {"ttl",           1, 0, 't'},
         {"fake-tls",      1, 0, 'l'},
         {"fake-http",     1, 0, 'o'},
+        {"fake-udp",      1, 0, 'e'},
         {"tls-sni",       1, 0, 'n'},
         {"mod-http",      1, 0, 'M'},
+        {"desync-udp",    1, 0, 'u'},
         {"global-ttl",    1, 0, 'g'}, //
         {"delay",         1, 0, 'w'}, //
         {"debug",         1, 0, 'x'}, //
@@ -162,7 +175,7 @@ int main(int argc, char **argv)
     char *end = 0;
     
     while (!invalid && (rez = getopt_long_only(argc, argv,
-             "DNXUKHhvf:i:p:b:B:c:m:s:t:l:o:n:M:g:w:x:", options, 0)) != -1) {
+             "DNXUKHhvf:i:p:b:B:c:m:s:t:l:o:e:n:M:u:g:w:x:", options, 0)) != -1) {
         switch (rez) {
         
         case 'D':
@@ -283,7 +296,7 @@ int main(int argc, char **argv)
             break;
             
         case 'l':
-            fake_tls.data = ftob(optarg);
+            fake_tls.data = ftob(optarg, &fake_tls.size);
             if (!fake_tls.data) {
                 perror("read file");
                 return -1;
@@ -291,8 +304,16 @@ int main(int argc, char **argv)
             break;
             
         case 'o':
-            fake_http.data = ftob(optarg);
+            fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
+                perror("read file");
+                return -1;
+            }
+            break;
+            
+        case 'e':
+            fake_udp.data = ftob(optarg, &fake_udp.size);
+            if (!fake_udp.data) {
                 perror("read file");
                 return -1;
             }
@@ -318,6 +339,13 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
+            break;
+            
+        case 'u':
+            if (*optarg != 'f')
+                invalid = 1;
+            else
+                params.desync_udp = DESYNC_UDP_FAKE;
             break;
             
         case 'g': //

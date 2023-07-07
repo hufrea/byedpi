@@ -7,11 +7,14 @@ enum demode {
     DESYNC_FAKE
 };
 
+#define DESYNC_UDP_FAKE 1
+
 struct params {
     int ttl;
     int split;
     size_t sfdelay;
     enum demode attack;
+    int desync_udp;
     char split_host;
     int def_ttl;
     int mod_http;
@@ -30,11 +33,12 @@ struct params {
 extern struct params params;
 
 struct packet {
-    size_t size;
+    ssize_t size;
     char  *data;
 };
 extern struct packet fake_tls;
 extern struct packet fake_http;
+extern struct packet fake_udp;
 
 #define LOG_S 1
 #define LOG_L 2

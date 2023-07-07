@@ -502,7 +502,8 @@ static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
         if (n) perror("recv data");
         return -1;
     }
-    if (desync(val->pair->fd, buffer, n)) {
+    if (desync(val->pair->fd, buffer, 
+            n, (struct sockaddr *)&val->in6)) {
         return -1;
     }
     val->type = EV_TUNNEL;
@@ -633,8 +634,15 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 return -1;
             }
             map_fix(&addr, 6);
-            ns = sendto(val->fd,
-                buffer + skip + offs, n - offs, 0, &addr.sa, asz);
+            
+            if ((val->flag & FLAG_CONN))
+                ns = sendto(val->fd,
+                    buffer + skip + offs, n - offs, 0, &addr.sa, asz);
+            else {
+                ns = desync_udp(val->fd, 
+                    buffer + skip + offs, n - offs, &addr.in6);
+                val->flag |= FLAG_CONN;
+            }
         } else {
             map_fix(&addr, 0);
             offs = s_set_addr(buffer + skip, skip, &addr, 1);
@@ -644,7 +652,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             ns = sendto(val->fd, buffer + skip - offs,
                 n + offs, 0, (struct sockaddr *)&val->in6, sizeof(val->in6));
         }
-        if (ns <= 0) {
+        if (ns < 0) {
             perror("sendto");
             return -1;
         }
