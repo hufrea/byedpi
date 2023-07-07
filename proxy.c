@@ -28,7 +28,67 @@ static void on_cancel(int sig) {
     NOT_EXIT = 0;
 }
 
-       
+
+static inline int ip_cmp(
+        struct sockaddr_ina *a, struct sockaddr_ina *b)
+{
+    if (a->sa.sa_family == AF_INET) {
+        return 
+            *((uint32_t *)(&a->in.sin_addr)) !=
+            *((uint32_t *)(&b->in.sin_addr));
+    }
+    return 
+        *((uint64_t *)(&a->in6.sin6_addr)) !=
+        *((uint64_t *)(&b->in6.sin6_addr)) || 
+        *((uint64_t *)(&a->in6.sin6_addr) + 1) !=
+        *((uint64_t *)(&b->in6.sin6_addr) + 1);
+}
+
+
+static inline void map_fix(struct sockaddr_ina *addr, int f6)
+{
+    struct {
+        uint64_t o64;
+        uint16_t o16;
+        uint16_t t16;
+        uint32_t o32;
+    } *ipv6m = (void *)&addr->in6.sin6_addr;
+    
+    if (addr->sa.sa_family == AF_INET && f6) {
+        addr->sa.sa_family = AF_INET6;
+        ipv6m->o32 = *(uint32_t *)(&addr->in.sin_addr);
+        ipv6m->o64 = 0;
+        ipv6m->o16 = 0;
+        ipv6m->t16 = 0xffff;
+    } 
+    else if (ipv6m->o64 == 0 && ipv6m->t16 == 0xffff && !f6) {
+        addr->sa.sa_family = AF_INET;
+        addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
+    }
+}
+
+
+static inline int nb_socket(int domain, int type) {
+    #ifdef __linux__
+    int fd = socket(domain, type | SOCK_NONBLOCK, 0);
+    #else
+    int fd = socket(domain, type, 0);
+    #endif
+    if (fd < 0) {
+        perror("socket");  
+        return -1;
+    }
+    #ifndef __linux__
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
+        perror("fcntl");
+        close(fd);
+        return -1;
+    }
+    #endif
+    return fd;
+}
+
+
 int resolve(char *host, int len, 
         struct sockaddr_ina *addr, int type) 
 {
@@ -131,13 +191,13 @@ int handle_socks4(int fd, char *bf,
         if (!ie)
             break;
         int len = (bf + n - ie) - 2;
-        if (len > 2) {
-            if (resolve(ie + 1, len, dst, SOCK_STREAM)) {
-                fprintf(stderr, "not resolved: %.*s\n", len, ie + 1);
-                break;
-            }
-            er = 0;
+        if (len < 3)
+            break;
+        if (resolve(ie + 1, len, dst, SOCK_STREAM)) {
+            fprintf(stderr, "not resolved: %.*s\n", len, ie + 1);
+            break;
         }
+        er = 0;
     } while (0);
     else {
         dst->in.sin_family = AF_INET;
@@ -156,7 +216,8 @@ int handle_socks4(int fd, char *bf,
 }
 
 
-int s_get_addr(char *buffer, ssize_t n, struct sockaddr_ina *addr) 
+int s_get_addr(char *buffer, ssize_t n, 
+        struct sockaddr_ina *addr, int type) 
 {
     struct s5_req *r = (struct s5_req *)buffer;
     
@@ -179,8 +240,9 @@ int s_get_addr(char *buffer, ssize_t n, struct sockaddr_ina *addr)
             }
             if (r->id.len == 1) {
                 addr->in.sin_family = AF_INET;
+                LOG(LOG_S, "domain len=1\n");
             }
-            else if (resolve(r->id.domain, r->id.len, addr, SOCK_STREAM)) {
+            else if (resolve(r->id.domain, r->id.len, addr, type)) {
                 fprintf(stderr, "not resolved: %.*s\n", r->id.len, r->id.domain);
                 return -S_ER_HOST;
             }
@@ -199,13 +261,17 @@ int s_get_addr(char *buffer, ssize_t n, struct sockaddr_ina *addr)
 }
 
 
-int s_set_addr(char *buffer, ssize_t n, struct sockaddr_ina *addr)
+int s_set_addr(char *buffer, ssize_t n,
+        struct sockaddr_ina *addr, char end)
 {
     struct s5_req *r = (struct s5_req *)buffer;
     if (n < S_SIZE_I4) {
         return -1;
     }
     if (addr->sa.sa_family == AF_INET) {
+        if (end) {
+            r = (struct s5_req *)(buffer - S_SIZE_I4);
+        }
         r->atp = S_ATP_I4;
         r->i4 = addr->in.sin_addr;
         r->p4 = addr->in.sin_port;
@@ -214,32 +280,14 @@ int s_set_addr(char *buffer, ssize_t n, struct sockaddr_ina *addr)
         if (n < S_SIZE_I6) {
             return -1;
         }
+        if (end) {
+            r = (struct s5_req *)(buffer - S_SIZE_I6);
+        }
         r->atp = S_ATP_I6;
         r->i6 = addr->in6.sin6_addr;
         r->p6 = addr->in6.sin6_port;
         return S_SIZE_I6;
     }
-}
-
-
-static inline int nb_socket(int domain, int type) {
-    #ifdef __linux__
-    int fd = socket(domain, type | SOCK_NONBLOCK, 0);
-    #else
-    int fd = socket(domain, type, 0);
-    #endif
-    if (fd < 0) {
-        perror("socket");  
-        return -1;
-    }
-    #ifndef __linux__
-    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
-        perror("fcntl");
-        close(fd);
-        return -1;
-    }
-    #endif
-    return fd;
 }
 
 
@@ -294,24 +342,16 @@ static inline int create_conn(struct poolhd *pool, struct eval *val,
 int udp_asc(struct poolhd *pool, 
         struct eval *val, struct sockaddr_ina *dst)
 {
-    int ufd = nb_socket(dst->sa.sa_family, SOCK_DGRAM);
+    int ufd = nb_socket(AF_INET6, SOCK_DGRAM);
     if (ufd < 0) {
         perror("socket");  
         return -1;
     }
     struct sockaddr_ina addr = {0};
     socklen_t asz = sizeof(addr);
+    int ip_is_set = ip_cmp(dst, &addr);
     
-    if (getsockname(val->fd, &addr.sa, &asz)) {
-        perror("getsockname");
-        close(ufd);
-        return -1;
-    }
-    if (addr.sa.sa_family == AF_INET)
-        addr.in.sin_port = 0;
-    else
-        addr.in6.sin6_port = 0;
-        
+    addr.sa.sa_family = AF_INET6;
     if (bind(ufd, &addr.sa, sizeof(addr)) < 0) {
         perror("bind");  
         close(ufd);
@@ -327,26 +367,21 @@ int udp_asc(struct poolhd *pool,
         close(ufd);
         return -1;
     }
-    upair->flag |= FLAG_CONN;
-    int utfd = nb_socket(dst->sa.sa_family, SOCK_DGRAM);
-    if (utfd < 0) {
-        del_event(pool, upair);
-        return -1;
+    upair->in6 = dst->in6;
+    if (!ip_is_set) {
+        if (dst->sa.sa_family == AF_INET)
+            upair->in.sin_addr = val->in.sin_addr;
+        else
+            upair->in6.sin6_addr = val->in6.sin6_addr;
     }
-    struct eval *utpair = add_event(pool, EV_UDP_TUNNEL, utfd, POLLIN);
-    if (!utpair) {
-        close(utfd);
-        del_event(pool, upair);
-        return -1;
-    }
+    map_fix((struct sockaddr_ina *)&upair->in6, 6);
     val->pair = upair;
-    upair->pair = utpair;
-    utpair->pair = upair;
+    upair->pair = val;
     
     struct s5_req s5r = { 
         .ver = 0x05 
     };
-    int offs = s_set_addr((char *)&s5r, sizeof(s5r), &addr);
+    int offs = s_set_addr((char *)&s5r, sizeof(s5r), &addr, 0);
     if (offs < 0) {
         return -1;
     }
@@ -383,7 +418,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         struct s5_req *r = (struct s5_req *)buffer;
         
-        int offs = s_get_addr(buffer, n, &dst);
+        int offs = s_get_addr(buffer, n, &dst, SOCK_STREAM);
         if (offs > 0) {
             if (r->cmd == S_CMD_AUDP) {
                 s = udp_asc(pool, val, &dst);
@@ -463,6 +498,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             close(c);
             continue;
         }
+        rval->in6 = client.in6;
     }
     return 0;
 }
@@ -580,10 +616,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 {
     struct sockaddr_ina addr;
-    int skip = 0, offs;
-    if (!(val->flag & FLAG_CONN)) {
-        skip = S_SIZE_I6;
-    }
+    int skip = S_SIZE_I4, offs;
     do {
         socklen_t asz = sizeof(addr);
         ssize_t n = recvfrom(val->fd, buffer + skip,
@@ -595,24 +628,30 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             perror("recv udp");
             return -1;
         }
-        if (val->flag & FLAG_CONN) {
-            if (connect(val->fd, &addr.sa, sizeof(addr)) < 0) {
-                perror("connect");
-                return -1;
+        
+        if (!val->in6.sin6_port) {
+            val->in6.sin6_port = addr.in6.sin6_port;
+        }
+        if (!ip_cmp((struct sockaddr_ina *)&val->in6, &addr) &&
+                    addr.in6.sin6_port == val->in6.sin6_port) {
+            if (buffer[skip + 2]) { // frag
+                return 0;
             }
-            offs = s_get_addr(buffer, n, &addr);
+            offs = s_get_addr(buffer + skip, n, &addr, SOCK_DGRAM);
             if (offs < 0) {
                 return -1;
             }
-            ns = sendto(val->pair->fd,
-                buffer + offs, n - offs, 0, &addr.sa, asz);
+            map_fix(&addr, 6);
+            ns = sendto(val->fd,
+                buffer + skip + offs, n - offs, 0, &addr.sa, asz);
         } else {
-            offs = s_set_addr(buffer, skip, &addr);
+            map_fix(&addr, 0);
+            offs = s_set_addr(buffer + skip, skip, &addr, 1);
             if (offs < 0 || offs > skip) {
                 return -1;
             }
-            ns = send(val->pair->fd,
-                buffer + skip - offs, n + offs, 0);
+            ns = sendto(val->fd, buffer + skip - offs,
+                n + offs, 0, (struct sockaddr *)&val->in6, sizeof(val->in6));
         }
         if (ns <= 0) {
             perror("sendto");

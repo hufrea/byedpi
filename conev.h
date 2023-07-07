@@ -52,6 +52,10 @@ struct eval {
     ssize_t size;
     int offset;
     int flag;
+    union {
+        struct sockaddr_in in;
+        struct sockaddr_in6 in6;
+    };
     #ifndef NOEPOLL
     uint32_t events;
     #endif
