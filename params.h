@@ -18,6 +18,7 @@ struct params {
     
     char ipv6;
     char resolve;
+    char udp;
     char de_known;
     int max_open;
     

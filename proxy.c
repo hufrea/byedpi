@@ -61,7 +61,8 @@ static inline void map_fix(struct sockaddr_ina *addr, int f6)
         ipv6m->o16 = 0;
         ipv6m->t16 = 0xffff;
     } 
-    else if (ipv6m->o64 == 0 && ipv6m->t16 == 0xffff && !f6) {
+    else if ((ipv6m->o64 | ipv6m->o16) == 0 && 
+            ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
         addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
     }
@@ -136,7 +137,7 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
 }
 
 
-int resp_error(int fd, int e, int flag)
+int resp_error(int fd, int e, int flag, int re)
 {
     if (flag & FLAG_S4) {
         struct s4_req s4r = { 
@@ -146,7 +147,8 @@ int resp_error(int fd, int e, int flag)
     }
     else if (flag & FLAG_S5) {
         uint8_t se;
-        switch (e) {
+        if (re) se = (uint8_t )re;
+        else switch (e) {
             case 0: se = S_ER_OK;
                 break;
             case ECONNREFUSED: 
@@ -204,10 +206,7 @@ int handle_socks4(int fd, char *bf,
         dst->in.sin_addr = r->i4;
     }
     if (er) {
-        struct s4_req s4r = { 
-            .cmd = S4_ER
-        };
-        if (send(fd, &s4r, sizeof(s4r), 0) < 0)
+        if (resp_error(fd, 1, FLAG_S4, 0) < 0)
             perror("send");
         return -1;
     }
@@ -291,8 +290,8 @@ int s_set_addr(char *buffer, ssize_t n,
 }
 
 
-static inline int create_conn(struct poolhd *pool, struct eval *val,
-        enum eid nxt, struct sockaddr_ina *dst)
+int create_conn(struct poolhd *pool,
+        struct eval *val, struct sockaddr_ina *dst)
 {
     int sfd = nb_socket(dst->sa.sa_family, SOCK_STREAM);
     if (sfd < 0) {
@@ -327,7 +326,7 @@ static inline int create_conn(struct poolhd *pool, struct eval *val,
         close(sfd);
         return -1;
     }
-    struct eval *pair = add_event(pool, nxt, sfd, POLLOUT);
+    struct eval *pair = add_event(pool, EV_CONNECT, sfd, POLLOUT);
     if (!pair) {
         close(sfd);
         return -1;
@@ -397,7 +396,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize)
 {
     struct sockaddr_ina dst = {0};
-    int s = 0;
+    int s = 0, ss_e = 0;
     
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
@@ -418,42 +417,34 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         struct s5_req *r = (struct s5_req *)buffer;
         
-        int offs = s_get_addr(buffer, n, &dst, SOCK_STREAM);
-        if (offs > 0) {
-            if (r->cmd == S_CMD_AUDP) {
-                s = udp_asc(pool, val, &dst);
-            }
-            else if (r->cmd == S_CMD_CONN) {
-                s = create_conn(pool, val, EV_CONNECT, &dst);
-            }
-            else {
+        ss_e = s_get_addr(buffer, n, &dst, SOCK_STREAM);
+        if (ss_e > 0) switch (r->cmd) {
+            case S_CMD_CONN:
+                s = create_conn(pool, val, &dst);
+                break;
+            case S_CMD_AUDP:
+                if (params.udp) {
+                    s = udp_asc(pool, val, &dst);
+                    break;
+                }
+            default:
                 fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
-                offs = -S_ER_CMD;
-            }
-        }
-        if (offs < 0) {
-            struct s5_rep s5r = { 
-                .ver = 0x05, .code = (uint8_t )-offs, 
-                .atp = S_ATP_I4
-            };
-            if (send(val->fd, &s5r, sizeof(s5r), 0) < 0)
-                perror("send");
-            return -1;
+                ss_e = -S_ER_CMD;
         }
     }
     else if (*buffer == S_VER4) {
         if (handle_socks4(val->fd, buffer, n, &dst)) {
             return -1;
         }
-        s = create_conn(pool, val, EV_CONNECT, &dst);
+        s = create_conn(pool, val, &dst);
         val->flag |= FLAG_S4;
     }
     else {
         fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
         return -1;
     }
-    if (s) {
-        if (resp_error(val->fd, errno, val->flag) < 0)
+    if (s || ss_e < 0) {
+        if (resp_error(val->fd, errno, val->flag, -ss_e) < 0)
             perror("send");
         return -1;
     }
@@ -533,7 +524,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
             }
         }
         if (resp_error(val->pair->fd,
-                error, val->pair->flag) < 0) {
+                error, val->pair->flag, 0) < 0) {
             perror("send");
             return -1;
         }
@@ -635,7 +626,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
         if (!ip_cmp((struct sockaddr_ina *)&val->in6, &addr) &&
                     addr.in6.sin6_port == val->in6.sin6_port) {
             if (buffer[skip + 2]) { // frag
-                return 0;
+                continue;
             }
             offs = s_get_addr(buffer + skip, n, &addr, SOCK_DGRAM);
             if (offs < 0) {

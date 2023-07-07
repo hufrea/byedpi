@@ -34,6 +34,7 @@ struct params params = {
     
     .ipv6 = 1,
     .resolve = 1,
+    .udp = 1,
     .de_known = 0,
     .max_open = 512,
     
@@ -113,6 +114,7 @@ int main(int argc, char **argv)
         "    -f, --pidfile <file>      Write pid to file\n"
         "    -c, --max-conn <count>    Connection count limit, default 512\n"
         "    -N, --no-domain           Deny domain resolving\n"
+        "    -U, --no-udp              Deny UDP associate\n"
         "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
         //"Desync:\n"
         "    -m, --method <s|d|f>      Desync method: split,disorder,fake\n"
@@ -129,6 +131,7 @@ int main(int argc, char **argv)
         {"daemon",        0, 0, 'D'},
         {"no-domain",     0, 0, 'N'},
         {"no-ipv6",       0, 0, 'X'}, //
+        {"no-udp",        0, 0, 'U'},
         {"desync-known ", 0, 0, 'K'},
         {"split-at-host", 0, 0, 'H'},
         {"help",          0, 0, 'h'},
@@ -159,7 +162,7 @@ int main(int argc, char **argv)
     char *end = 0;
     
     while (!invalid && (rez = getopt_long_only(argc, argv,
-             "DNXKHhvf:i:p:b:B:c:m:s:t:l:o:n:M:g:w:x:", options, 0)) != -1) {
+             "DNXUKHhvf:i:p:b:B:c:m:s:t:l:o:n:M:g:w:x:", options, 0)) != -1) {
         switch (rez) {
         
         case 'D':
@@ -173,6 +176,9 @@ int main(int argc, char **argv)
             break;
         case 'X':
             params.ipv6 = 0;
+            break;
+        case 'U':
+            params.udp = 0;
             break;
         case 'K':
             params.de_known = 1;
