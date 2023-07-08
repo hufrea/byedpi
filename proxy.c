@@ -45,7 +45,7 @@ static inline int ip_cmp(
 }
 
 
-static inline void map_fix(struct sockaddr_ina *addr, int f6)
+void map_fix(struct sockaddr_ina *addr, char f6)
 {
     struct {
         uint64_t o64;

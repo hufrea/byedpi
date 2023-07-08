@@ -183,11 +183,15 @@ int desync(int sfd, char *buffer,
 int desync_udp(int fd, char *buffer, 
         ssize_t n, struct sockaddr_in6 *dst)
 {
+    char is_mv4 = 1;
+    
+    if (dst->sin6_family == AF_INET6) {
+        static char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
+        is_mv4 = !memcmp(&dst->sin6_addr, pat, 12);
+    }
     if (params.desync_udp & DESYNC_UDP_FAKE) {
-        if (setttl(fd, params.ttl, AF_INET) < 0) {
-            return -1;
-        }
-        if (setttl(fd, params.ttl, AF_INET6) < 0) {
+        if (setttl(fd, params.ttl, 
+                is_mv4 ? AF_INET : dst->sin6_family) < 0) {
             return -1;
         }
         if (sendto(fd, fake_udp.data, fake_udp.size,
@@ -195,10 +199,8 @@ int desync_udp(int fd, char *buffer,
             perror("sendto");
             return -1;
         }
-        if (setttl(fd, params.def_ttl, AF_INET) < 0) {
-            return -1;
-        }
-        if (setttl(fd, params.def_ttl, AF_INET6) < 0) {
+        if (setttl(fd, params.def_ttl, 
+                is_mv4 ? AF_INET : dst->sin6_family) < 0) {
             return -1;
         }
     }
