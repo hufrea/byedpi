@@ -333,6 +333,7 @@ int create_conn(struct poolhd *pool,
     }
     val->pair = pair;
     pair->pair = val;
+    pair->in6 = dst->in6;
     pair->flag = FLAG_CONN;
     return 0;
 }
@@ -503,7 +504,7 @@ static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
         return -1;
     }
     if (desync(val->pair->fd, buffer, 
-            n, (struct sockaddr *)&val->in6)) {
+            n, (struct sockaddr *)&val->pair->in6)) {
         return -1;
     }
     val->type = EV_TUNNEL;

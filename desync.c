@@ -162,7 +162,6 @@ int desync(int sfd, char *buffer,
             return fake_attack(sfd, buffer, n, type, pos, fa);
             
         case DESYNC_DISORDER:
-            printf("disorder attack\n");
             return disorder_attack(sfd, buffer, n, pos, fa);
         
         case DESYNC_SPLIT:
