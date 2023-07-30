@@ -13,7 +13,7 @@
 #include <proxy.h>
 #include <packets.h>
 
-#define VERSION 1
+#define VERSION 2
 
 struct packet fake_tls = { 
     sizeof(tls_data), tls_data 

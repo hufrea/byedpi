@@ -461,18 +461,24 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
     
     while (1) {
         socklen_t len = sizeof(client);
+        #ifdef __linux__
+        int c = accept4(val->fd, &client.sa, &len, SOCK_NONBLOCK);
+        #else
         int c = accept(val->fd, &client.sa, &len);
+        #endif
         if (c < 0) {
             if (errno == EAGAIN) 
                 break;
             perror("accept");
             return -1;
         }
+        #ifndef __linux__
         if (fcntl(c, F_SETFL, O_NONBLOCK) < 0) {
             perror("fcntl");
             close(c);
             continue;
         }
+        #endif
         int one = 1;
         if (setsockopt(c, IPPROTO_TCP,
                 TCP_NODELAY, (char *)&one, sizeof(one))) {
@@ -641,11 +647,12 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                     buffer + skip + offs, n - offs, 0, &addr.sa, asz);
             else {
                 ns = desync_udp(val->fd, 
-                    buffer + skip + offs, n - offs, &addr.in6);
+                    buffer + skip + offs, n - offs, &addr.sa);
                 val->flag |= FLAG_CONN;
             }
         } else {
             map_fix(&addr, 0);
+            
             offs = s_set_addr(buffer + skip, skip, &addr, 1);
             if (offs < 0 || offs > skip) {
                 return -1;

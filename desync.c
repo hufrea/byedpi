@@ -27,17 +27,32 @@
 #include <packets.h>
 
 
+static inline int get_family(struct sockaddr *dst)
+{
+    if (dst->sa_family == AF_INET6) {
+        struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)dst;
+        static char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
+        
+        if (!memcmp(&d6->sin6_addr, pat, 12)) {
+            return AF_INET;
+        }
+    }
+    return dst->sa_family;
+}
+
+
 int setttl(int fd, int ttl, int family) {
     int _ttl = ttl;
+    
     if (family == AF_INET) {
-        if (setsockopt(fd, IPPROTO_IP, IP_TTL,
-                 &_ttl, sizeof(_ttl)) < 0) {
+        if (setsockopt(fd, IPPROTO_IP,
+                 IP_TTL, &_ttl, sizeof(_ttl)) < 0) {
             perror("setsockopt IP_TTL");
             return -1;
         }
     }
-    else if (setsockopt(fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS,
-             &_ttl, sizeof(_ttl)) < 0) {
+    else if (setsockopt(fd, IPPROTO_IPV6,
+             IPV6_UNICAST_HOPS, &_ttl, sizeof(_ttl)) < 0) {
         perror("setsockopt IPV6_UNICAST_HOPS");
         return -1;
     }
@@ -45,7 +60,8 @@ int setttl(int fd, int ttl, int family) {
 }
 
 
-int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos, int fa)
+int fake_attack(int sfd, char *buffer,
+        size_t n, int cnt, int pos, int fa)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -98,7 +114,8 @@ int fake_attack(int sfd, char *buffer, ssize_t n, int cnt, int pos, int fa)
 }
 
 
-int disorder_attack(int sfd, char *buffer, ssize_t n, int pos, int fa)
+int disorder_attack(int sfd, char *buffer,
+        ssize_t n, int pos, int fa)
 {
     int bttl = 1;
     if (setttl(sfd, bttl, fa) < 0) {
@@ -125,7 +142,7 @@ int desync(int sfd, char *buffer,
     int pos = params.split;
     char *host = 0;
     int len = 0, type = 0;
-    int fa = dst->sa_family;
+    int fa = get_family(dst);
     
     if ((len = parse_tls(buffer, n, &host))) {
         type = IS_HTTPS;
@@ -141,16 +158,17 @@ int desync(int sfd, char *buffer,
             return -1;
         }
     }
-    if (host && params.split_host)
+    if (host && params.split_host) {
         pos += (host - buffer);
-    else if (pos < 0)
+    }
+    else if (pos < 0) {
         pos += n;
-    
+    }
     LOG(LOG_L, "split pos: %d, n: %ld\n", pos, n);
     
     if (pos <= 0 || pos >= n ||
             params.attack == DESYNC_NONE ||
-            (!type && params.de_known)) 
+            (!type && params.de_known))
     {
         if (send(sfd, buffer, n, 0) < 0) {
             perror("send");
@@ -180,31 +198,26 @@ int desync(int sfd, char *buffer,
 
 
 int desync_udp(int fd, char *buffer, 
-        ssize_t n, struct sockaddr_in6 *dst)
+        ssize_t n, struct sockaddr *dst)
 {
-    char is_mv4 = 1;
+    int fa = get_family(dst);
+    socklen_t s = dst->sa_family == AF_INET6 ? 
+        sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
     
-    if (dst->sin6_family == AF_INET6) {
-        static char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
-        is_mv4 = !memcmp(&dst->sin6_addr, pat, 12);
-    }
     if (params.desync_udp & DESYNC_UDP_FAKE) {
-        if (setttl(fd, params.ttl, 
-                is_mv4 ? AF_INET : dst->sin6_family) < 0) {
+        if (setttl(fd, params.ttl, fa) < 0) {
             return -1;
         }
-        if (sendto(fd, fake_udp.data, fake_udp.size,
-                0, (struct sockaddr *)dst, sizeof(*dst)) < 0) {
+        if (sendto(fd, fake_udp.data,
+                fake_udp.size, 0, dst, s) < 0) {
             perror("sendto");
             return -1;
         }
-        if (setttl(fd, params.def_ttl, 
-                is_mv4 ? AF_INET : dst->sin6_family) < 0) {
+        if (setttl(fd, params.def_ttl, fa) < 0) {
             return -1;
         }
     }
-    ssize_t ns = sendto(fd,
-        buffer, n, 0, (struct sockaddr *)dst, sizeof(*dst));
+    ssize_t ns = sendto(fd, buffer, n, 0, dst, s);
     if (ns < 0) {
         perror("sendto");
         return -1;
