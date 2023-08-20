@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -17,7 +16,6 @@
 #include <netdb.h>
 
 #include <proxy.h>
-#include <packets.h>
 #include <params.h>
 #include <conev.h>
 #include <desync.h>
@@ -61,7 +59,7 @@ void map_fix(struct sockaddr_ina *addr, char f6)
         ipv6m->o16 = 0;
         ipv6m->t16 = 0xffff;
     } 
-    else if ((ipv6m->o64 | ipv6m->o16) == 0 && 
+    else if (!ipv6m->o64 && !ipv6m->o16 &&
             ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
         addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
@@ -139,13 +137,13 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
 
 int resp_error(int fd, int e, int flag, int re)
 {
-    if (flag & FLAG_S4) {
+    if (flag == FLAG_S4) {
         struct s4_req s4r = { 
             .cmd = e ? S4_ER : S4_OK
         };
         return send(fd, &s4r, sizeof(s4r), 0);
     }
-    else if (flag & FLAG_S5) {
+    else if (flag == FLAG_S5) {
         uint8_t se;
         if (re) se = (uint8_t )re;
         else switch (e) {
@@ -397,7 +395,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize)
 {
     struct sockaddr_ina dst = {0};
-    int s = 0, ss_e = 0;
+    int error = 0, offs_e = 0;
     
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
@@ -409,7 +407,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             if (auth_socks5(val->fd, buffer, n)) {
                 return -1;
             }
-            val->flag |= FLAG_S5;
+            val->flag = FLAG_S5;
             return 0;
         }
         if (n < S_SIZE_MIN) {
@@ -418,34 +416,40 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         struct s5_req *r = (struct s5_req *)buffer;
         
-        ss_e = s_get_addr(buffer, n, &dst, SOCK_STREAM);
-        if (ss_e > 0) switch (r->cmd) {
+        switch (r->cmd) {
             case S_CMD_CONN:
-                s = create_conn(pool, val, &dst);
+                offs_e = s_get_addr(buffer, n, &dst, SOCK_STREAM);
+                if (offs_e > 0) {
+                    error = create_conn(pool, val, &dst);
+                }
                 break;
             case S_CMD_AUDP:
+                offs_e = s_get_addr(buffer, n, &dst, SOCK_DGRAM);
+                if (offs_e <= 0) {
+                    break;
+                }
                 if (params.udp) {
-                    s = udp_asc(pool, val, &dst);
+                    error = udp_asc(pool, val, &dst);
                     break;
                 }
             default:
                 fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
-                ss_e = -S_ER_CMD;
+                offs_e = -S_ER_CMD;
         }
     }
     else if (*buffer == S_VER4) {
         if (handle_socks4(val->fd, buffer, n, &dst)) {
             return -1;
         }
-        s = create_conn(pool, val, &dst);
-        val->flag |= FLAG_S4;
+        error = create_conn(pool, val, &dst);
+        val->flag = FLAG_S4;
     }
     else {
         fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
         return -1;
     }
-    if (s || ss_e < 0) {
-        if (resp_error(val->fd, errno, val->flag, -ss_e) < 0)
+    if (error || offs_e < 0) {
+        if (resp_error(val->fd, errno, val->flag, -offs_e) < 0)
             perror("send");
         return -1;
     }
@@ -521,7 +525,7 @@ static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
 static inline int on_connect(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int e)
 {
-    if (val->flag & FLAG_CONN) {
+    if (val->flag == FLAG_CONN) {
         int error = 0;
         socklen_t len = sizeof(error);
         if (e) {
@@ -642,13 +646,13 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             }
             map_fix(&addr, 6);
             
-            if ((val->flag & FLAG_CONN))
+            if (val->flag == FLAG_CONN)
                 ns = sendto(val->fd,
                     buffer + skip + offs, n - offs, 0, &addr.sa, asz);
             else {
                 ns = desync_udp(val->fd, 
                     buffer + skip + offs, n - offs, &addr.sa);
-                val->flag |= FLAG_CONN;
+                val->flag = FLAG_CONN;
             }
         } else {
             map_fix(&addr, 0);

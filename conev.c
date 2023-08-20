@@ -117,6 +117,7 @@ void destroy_pool(struct poolhd *pool)
         struct eval *val = pool->links[x];
         if (val->fd) {
             close(val->fd);
+            val->fd = 0;
         }
         if (val->tmpbuf) {
             free(val->tmpbuf);

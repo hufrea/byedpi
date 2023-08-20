@@ -82,6 +82,7 @@ int fake_attack(int sfd, char *buffer,
         p = mmap(0, pos, PROT_WRITE, MAP_SHARED, ffd, 0);
         if (p == MAP_FAILED) {
             perror("mmap");
+            p = 0;
             break;
         }
         memcpy(p, pkt.data, psz < pos ? psz : pos);
@@ -150,8 +151,9 @@ int desync(int sfd, char *buffer,
     else if ((len = parse_http(buffer, n, &host, 0))) {
         type = IS_HTTP;
     }
-    LOG(LOG_S, "host: %.*s\n", len, host);
-    
+    if (len && host) {
+        LOG(LOG_S, "host: %.*s\n", len, host);
+    }
     if (type == IS_HTTP && params.mod_http) {
         if (mod_http(buffer, n, params.mod_http)) {
             fprintf(stderr, "mod http error\n");
