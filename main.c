@@ -1,19 +1,25 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
 #include <limits.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-#include <sys/socket.h>
-#include <arpa/inet.h>
 
 #include <params.h>
 #include <proxy.h>
 #include <packets.h>
 
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <fcntl.h>
+
+
+#define FAKE_SUPPORT 1
+
 #define VERSION 2
+
 
 struct packet fake_tls = { 
     sizeof(tls_data), tls_data 
@@ -26,7 +32,6 @@ fake_udp = {
 };
 
 
-
 struct params params = {
     .ttl = 8,
     .split = 3,
@@ -36,18 +41,95 @@ struct params params = {
     .split_host = 0,
     .def_ttl = 0,
     .mod_http = 0,
+    .de_known = 0,
     
     .ipv6 = 1,
     .resolve = 1,
     .udp = 1,
-    .de_known = 0,
     .max_open = 512,
-    
     .bfsize = 16384,
-    .send_bfsz = 65536,
+    .nodelay = 1,
+    .send_bfsz = 0,
+    .recv_bfsz = 0,
+    .baddr = {
+        .sin6_family = AF_INET6
+    },
     .debug = 0
 };
 
+
+const char help_text[] = {
+    "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
+    "    -p, --port <num>          Listening port, default 1080\n"
+    "    -D, --daemon              Daemonize\n"
+    "    -f, --pidfile <file>      Write pid to file\n"
+    "    -c, --max-conn <count>    Connection count limit, default 512\n"
+    "    -N, --no-domain           Deny domain resolving\n"
+    "    -U, --no-udp              Deny UDP associate\n"
+    "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
+    "    -b, --bfs <size>          Buffer size, default 16384\n"
+  //"    -L, --nodelay <0 or 1>    Set TCP_NODELAY option\n"
+    "    -S, --snd-buf <size>      Set SO_SNDBUF option\n"
+    "    -R, --rcv-buf <size>      Set SO_RCVBUF option\n"
+    "    -x, --debug               Print logs, 0, 1 or 2\n"
+    // desync options
+    "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
+    #ifdef FAKE_SUPPORT
+    "    -m, --method <s|d|f>      Desync method: split,disorder,fake\n"
+    #else
+    "    -m, --method <s|d>        Desync method: split,disorder\n"
+    #endif
+    "    -s, --split-pos <offset>  Split position, default 3\n"
+    "    -H, --split-at-host       Add Host/SNI offset to split position\n"
+    #ifdef FAKE_SUPPORT
+    "    -t, --ttl <num>           TTL of fake packets, default 8\n"
+    "    -l, --fake-tls <file>\n"
+    "    -o, --fake-http <file>\n"   
+    "    -e, --fake-udp <file>     Set custom fake packet\n"
+    "    -n, --tls-sni <str>       Change SNI in fake CH\n"
+    #endif
+    "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
+    "    -u, --desync-udp <f>      UDP desync method: fake\n"
+};
+
+
+const struct option options[] = {
+    {"daemon",        0, 0, 'D'},
+    {"no-domain",     0, 0, 'N'},
+    {"no-ipv6",       0, 0, 'X'},
+    {"no-udp",        0, 0, 'U'},
+    {"help",          0, 0, 'h'},
+    {"version",       0, 0, 'v'},
+    {"pidfile",       1, 0, 'f'},
+    {"ip",            1, 0, 'i'},
+    {"port",          1, 0, 'p'},
+    {"conn-ip",       1, 0, 'I'},
+    {"bfs",           1, 0, 'b'},
+  //{"nodelay",       1, 0, 'L'},
+    {"snd-buf",       1, 0, 'S'},
+    {"rcv-buf",       1, 0, 'R'},
+    {"max-conn",      1, 0, 'c'},
+    {"debug",         1, 0, 'x'},
+    
+    {"desync-known ", 0, 0, 'K'},
+    {"split-at-host", 0, 0, 'H'},
+    {"method",        1, 0, 'm'},
+    {"split-pos",     1, 0, 's'},
+    {"ttl",           1, 0, 't'},
+    #ifdef FAKE_SUPPORT
+    {"fake-tls",      1, 0, 'l'},
+    {"fake-http",     1, 0, 'o'},
+    {"fake-udp",      1, 0, 'e'},
+    {"tls-sni",       1, 0, 'n'},
+    #endif
+    {"mod-http",      1, 0, 'M'},
+    {"desync-udp",    1, 0, 'u'},
+    {"global-ttl",    1, 0, 'g'}, //
+    {"delay",         1, 0, 'w'}, //
+    
+    {0}
+};
+    
 
 char *ftob(char *name, ssize_t *sl)
 {
@@ -80,7 +162,6 @@ char *ftob(char *name, ssize_t *sl)
     return buffer;
 }
 
-
 void daemonize(void)
 {
     pid_t pid = fork();
@@ -103,6 +184,25 @@ void daemonize(void)
     dup(0);
 }
 
+int get_addr(char *str, struct sockaddr_ina *addr)
+{
+    struct addrinfo hints = {0}, *res = 0;
+    
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_flags = AI_NUMERICHOST;
+    
+    if (getaddrinfo(str, 0, &hints, &res) || !res) {
+        return -1;
+    }
+    if (res->ai_addr->sa_family == AF_INET6)
+        addr->in6 = *(struct sockaddr_in6 *)res->ai_addr;
+    else
+        addr->in = *(struct sockaddr_in *)res->ai_addr;
+    freeaddrinfo(res);
+    return 0;
+}
+
 
 int main(int argc, char **argv) 
 {
@@ -110,79 +210,40 @@ int main(int argc, char **argv)
         .in = {
             .sin_family = AF_INET,
             .sin_port = htons(1080)
-    }};
+    }},
+    b = { .in6 = params.baddr };
+    
+    int optc = sizeof(options)/sizeof(*options);
+    for (int i = 0, e = optc; i < e; i++)
+        optc += options[i].has_arg;
+        
+    char opt[optc + 1];
+    opt[optc] = 0;
+    
+    for (int i = 0, o = 0; o < optc; i++, o++) {
+        opt[o] = options[i].val;
+        for (int c = options[i].has_arg; c; c--) {
+            o++;
+            opt[o] = ':';
+        }
+    }
     
     char daemon = 0;
     char *pidfile = 0;
     
-    const char help_text[] = {
-        //"Proxy:\n"
-        "    -i, --ip, <ip>            Listening IP address\n"
-        "    -p, --port <num>          Listening port num\n"
-        "    -D, --daemon              Daemonize\n"
-        "    -f, --pidfile <file>      Write pid to file\n"
-        "    -c, --max-conn <count>    Connection count limit, default 512\n"
-        "    -N, --no-domain           Deny domain resolving\n"
-        "    -U, --no-udp              Deny UDP associate\n"
-        "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
-        //"Desync:\n"
-        "    -m, --method <s|d|f>      Desync method: split,disorder,fake\n"
-        "    -s, --split-pos <offset>  Split position, default 3\n"
-        "    -H, --split-at-host       Add Host/SNI offset to split position\n"
-        "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-        "    -l, --fake-tls <file>\n"
-        "    -o, --fake-http <file>\n"   
-        "    -e, --fake-udp <file>     Set custom fake packet\n"
-        "    -n, --tls-sni <str>       Change SNI in fake CH\n"
-        "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
-        "    -u, --desync-udp <f>      UDP desync method: fake\n"
-    };
-    
-    const struct option options[] = {
-        {"daemon",        0, 0, 'D'},
-        {"no-domain",     0, 0, 'N'},
-        {"no-ipv6",       0, 0, 'X'}, //
-        {"no-udp",        0, 0, 'U'},
-        {"desync-known ", 0, 0, 'K'},
-        {"split-at-host", 0, 0, 'H'},
-        {"help",          0, 0, 'h'},
-        {"version",       0, 0, 'v'},
-        {"pidfile",       1, 0, 'f'},
-        {"ip",            1, 0, 'i'},
-        {"port",          1, 0, 'p'},
-        {"bfs",           1, 0, 'b'}, //
-        {"snd-bfs",       1, 0, 'B'}, //
-        {"max-conn",      1, 0, 'c'},
-        {"method",        1, 0, 'm'},
-        {"split-pos",     1, 0, 's'},
-        {"ttl",           1, 0, 't'},
-        {"fake-tls",      1, 0, 'l'},
-        {"fake-http",     1, 0, 'o'},
-        {"fake-udp",      1, 0, 'e'},
-        {"tls-sni",       1, 0, 'n'},
-        {"mod-http",      1, 0, 'M'},
-        {"desync-udp",    1, 0, 'u'},
-        {"global-ttl",    1, 0, 'g'}, //
-        {"delay",         1, 0, 'w'}, //
-        {"debug",         1, 0, 'x'}, //
-        
-        {0}
-    };
     int rez;
     int invalid = 0;
     
     long val = 0;
     char *end = 0;
+    uint16_t port = htons(1080);
     
-    while (!invalid && (rez = getopt_long_only(argc, argv,
-             "DNXUKHhvf:i:p:b:B:c:m:s:t:l:o:e:n:M:u:g:w:x:", options, 0)) != -1) {
+    while (!invalid && (rez = getopt_long_only(
+             argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
         
         case 'D':
             daemon = 1;
-            break;
-        case 'f':
-            pidfile = optarg;
             break;
         case 'N':
             params.resolve = 0;
@@ -193,41 +254,18 @@ int main(int argc, char **argv)
         case 'U':
             params.udp = 0;
             break;
-        case 'K':
-            params.de_known = 1;
-            break;
         case 'h':
             printf(help_text);
             return 0;
         case 'v':
             printf("%d\n", VERSION);
             return 0;
-            
-        case 'b': //
-            val = strtol(optarg, &end, 0);
-            if (val <= 0 || val > INT_MAX/4 || *end)
-                invalid = 1;
-            else
-                params.bfsize = val;
+        case 'f':
+            pidfile = optarg;
             break;
-            
-        case 'B': //
-            val = strtol(optarg, &end, 0);
-            if (val <= 0 || val > INT_MAX || *end)
-                invalid = 1;
-            else
-                params.send_bfsz = val;
-            break;
-            
+        
         case 'i':
-            if (strchr(optarg, ':'))
-                s.in.sin_family = AF_INET6;
-            else
-                s.in.sin_family = AF_INET;
-                
-            if (!inet_pton(s.in.sin_family, optarg,
-                    (s.in.sin_family == AF_INET ? 
-                    (char *)&s.in.sin_addr : (char *)&s.in6.sin6_addr)))
+            if (get_addr(optarg, &s) < 0)
                 invalid = 1;
             break;
             
@@ -236,7 +274,46 @@ int main(int argc, char **argv)
             if (val <= 0 || val > 0xffff || *end)
                 invalid = 1;
             else
-                s.in.sin_port = htons(val);
+                port = htons(val);
+            break;
+            
+        case 'I':
+            if (get_addr(optarg, &b) < 0)
+                invalid = 1;
+            else
+                params.baddr = b.in6;
+            break;
+            
+        case 'b':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > INT_MAX/4 || *end)
+                invalid = 1;
+            else
+                params.bfsize = val;
+            break;
+            
+        case 'L':
+            val = strtol(optarg, &end, 0);
+            if (val < 0 || val > 1 || *end)
+                invalid = 1;
+            else
+                params.nodelay = val;
+            break;
+            
+        case 'S':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > INT_MAX || *end)
+                invalid = 1;
+            else
+                params.send_bfsz = val;
+            break;
+            
+        case 'R':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > INT_MAX || *end)
+                invalid = 1;
+            else
+                params.recv_bfsz = val;
             break;
             
         case 'c':
@@ -247,6 +324,22 @@ int main(int argc, char **argv)
                 params.max_open = val;
             break;
            
+        case 'x': //
+            params.debug = strtol(optarg, 0, 0);
+            if (params.debug < 0)
+                invalid = 1;
+            break;
+            
+        // desync options
+        
+        case 'K':
+            params.de_known = 1;
+            break;
+            
+        case 'H':
+            params.split_host = 1;
+            break;
+            
         case 'm':
             if (params.attack != DESYNC_NONE) {
                 fprintf(stderr, "methods incompatible\n");
@@ -273,10 +366,6 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 params.split = val;
-            break;
-            
-        case 'H':
-            params.split_host = 1;
             break;
             
         case 't':
@@ -362,11 +451,6 @@ int main(int argc, char **argv)
                 invalid = 1;
             break;
             
-        case 'x': //
-            params.debug = strtol(optarg, 0, 0);
-            if (params.debug < 0)
-                invalid = 1;
-            break;
             
         case 0:
             break;
@@ -383,10 +467,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "invalid value: -%c %s\n", rez, optarg);
         return -1;
     }
-    if (params.send_bfsz * 2 <= params.bfsize) {
+    s.in.sin_port = port;
+    b.in.sin_port = 0;
+    
+    if (b.sa.sa_family != AF_INET6) {
+        params.ipv6 = 0;
+    }
+    if (params.send_bfsz && 
+            params.send_bfsz * 2 <= params.bfsize) {
         fprintf(stderr, "send buffer too small\n");
         return -1;
     }
+
     FILE *file;
     if (pidfile) {
         file = fopen(pidfile, "w");
@@ -419,5 +511,6 @@ int main(int argc, char **argv)
         close(fd);
         params.def_ttl = orig_ttl;
     }
+    
     return listener(s);
 }

@@ -6,6 +6,11 @@
 #include <string.h>
 #include <signal.h>
 
+#include <proxy.h>
+#include <params.h>
+#include <conev.h>
+#include <desync.h>
+
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -15,11 +20,7 @@
 #include <netinet/tcp.h>
 #include <netdb.h>
 
-#include <proxy.h>
-#include <params.h>
-#include <conev.h>
-#include <desync.h>
-
+    
 int NOT_EXIT = 1;
 
 static void on_cancel(int sig) {
@@ -27,18 +28,18 @@ static void on_cancel(int sig) {
 }
 
 
-static inline int ip_cmp(
+static inline int ip_equ(
         struct sockaddr_ina *a, struct sockaddr_ina *b)
 {
     if (a->sa.sa_family == AF_INET) {
         return 
-            *((uint32_t *)(&a->in.sin_addr)) !=
+            *((uint32_t *)(&a->in.sin_addr)) ==
             *((uint32_t *)(&b->in.sin_addr));
     }
     return 
-        *((uint64_t *)(&a->in6.sin6_addr)) !=
-        *((uint64_t *)(&b->in6.sin6_addr)) || 
-        *((uint64_t *)(&a->in6.sin6_addr) + 1) !=
+        *((uint64_t *)(&a->in6.sin6_addr)) ==
+        *((uint64_t *)(&b->in6.sin6_addr)) &&
+        *((uint64_t *)(&a->in6.sin6_addr) + 1) ==
         *((uint64_t *)(&b->in6.sin6_addr) + 1);
 }
 
@@ -67,7 +68,8 @@ void map_fix(struct sockaddr_ina *addr, char f6)
 }
 
 
-static inline int nb_socket(int domain, int type) {
+static inline int nb_socket(int domain, int type)
+{
     #ifdef __linux__
     int fd = socket(domain, type | SOCK_NONBLOCK, 0);
     #else
@@ -88,14 +90,38 @@ static inline int nb_socket(int domain, int type) {
 }
 
 
+int setopts(int fd) 
+{
+    if (params.nodelay &&
+            setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+                (char *)&params.nodelay, sizeof(params.nodelay))) {
+        perror("setsockopt TCP_NODELAY");
+        return -1;
+    }
+    if (params.send_bfsz && 
+            setsockopt(fd, SOL_SOCKET, SO_SNDBUF, 
+                (char *)&params.send_bfsz, sizeof(params.send_bfsz))) {
+        perror("setsockopt SO_SNDBUF");
+        return -1;
+    }
+    if (params.recv_bfsz && 
+            setsockopt(fd, SOL_SOCKET, SO_RCVBUF, 
+                (char *)&params.recv_bfsz, sizeof(params.recv_bfsz))) {
+        perror("setsockopt SO_RCVBUF");
+        return -1;
+    }
+    return 0;
+}
+
+
 int resolve(char *host, int len, 
         struct sockaddr_ina *addr, int type) 
 {
     struct addrinfo hints = {0}, *res = 0;
     
     hints.ai_socktype = type;
-    hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_ADDRCONFIG;
+    hints.ai_family = params.ipv6 ? AF_UNSPEC : AF_INET;
     
     char rchar = host[len];
     host[len] = '\0';
@@ -141,7 +167,7 @@ int resp_error(int fd, int e, int flag, int re)
         struct s4_req s4r = { 
             .cmd = e ? S4_ER : S4_OK
         };
-        return send(fd, &s4r, sizeof(s4r), 0);
+        return send(fd, (char *)&s4r, sizeof(s4r), 0);
     }
     else if (flag == FLAG_S5) {
         uint8_t se;
@@ -165,7 +191,7 @@ int resp_error(int fd, int e, int flag, int re)
             .ver = 0x05, .code = se, 
             .atp = S_ATP_I4
         };
-        return send(fd, &s5r, sizeof(s5r), 0);
+        return send(fd, (char *)&s5r, sizeof(s5r), 0);
     }
     return 0;
 }
@@ -235,7 +261,7 @@ int s_get_addr(char *buffer, ssize_t n,
             if (!params.resolve) {
                 return -S_ER_ATP;
             }
-            if (r->id.len == 1) {
+            if (r->id.len == 1 && type == SOCK_DGRAM) {
                 addr->in.sin_family = AF_INET;
                 LOG(LOG_S, "domain len=1\n");
             }
@@ -291,34 +317,45 @@ int s_set_addr(char *buffer, ssize_t n,
 int create_conn(struct poolhd *pool,
         struct eval *val, struct sockaddr_ina *dst)
 {
-    int sfd = nb_socket(dst->sa.sa_family, SOCK_STREAM);
+    struct sockaddr_ina addr = *dst;
+    
+    if (params.baddr.sin6_family == AF_INET6) {
+        map_fix(&addr, 6);
+    }
+    int sfd = nb_socket(addr.sa.sa_family, SOCK_STREAM);
     if (sfd < 0) {
         perror("socket");  
+        return -1;
+    }
+    if (addr.sa.sa_family == AF_INET6) {
+        int no = 0;
+        if (setsockopt(sfd, IPPROTO_IPV6,
+                IPV6_V6ONLY, (char *)&no, sizeof(no))) {
+            perror("setsockopt IPV6_V6ONLY");
+            close(sfd);
+            return -1;
+        }
+    }
+    if (bind(sfd, (struct sockaddr *)&params.baddr, 
+            sizeof(params.baddr)) < 0) {
+        perror("bind");  
+        close(sfd);
         return -1;
     }
     #ifdef __linux__
     int syn_count = 1;
     if (setsockopt(sfd, IPPROTO_TCP,
-            TCP_SYNCNT, &syn_count, sizeof(syn_count))) {
+            TCP_SYNCNT, (char *)&syn_count, sizeof(syn_count))) {
         perror("setsockopt TCP_SYNCNT");
         close(sfd);
         return -1;
     }
     #endif
-    int one = 1;
-    if (setsockopt(sfd, IPPROTO_TCP,
-            TCP_NODELAY, (char *)&one, sizeof(one))) {
-        perror("setsockopt TCP_NODELAY");
+    if (setopts(sfd) < 0) {
         close(sfd);
         return -1;
     }
-    if (setsockopt(sfd, SOL_SOCKET, SO_SNDBUF, 
-            &params.send_bfsz, sizeof(params.send_bfsz)) < 0) {
-        close(sfd);
-        perror("setsockopt SO_SNDBUF");
-        return -1;
-    }
-    int status = connect(sfd, &dst->sa, sizeof(*dst));
+    int status = connect(sfd, &addr.sa, sizeof(addr));
     if (status < 0 && errno != EINPROGRESS) {
         perror("connect");
         close(sfd);
@@ -340,22 +377,47 @@ int create_conn(struct poolhd *pool,
 int udp_asc(struct poolhd *pool, 
         struct eval *val, struct sockaddr_ina *dst)
 {
-    int ufd = nb_socket(AF_INET6, SOCK_DGRAM);
+    struct sockaddr_ina bnda = {
+        .sa = {.sa_family = dst->sa.sa_family}}, dsta = {0};
+    socklen_t asz = sizeof(bnda);
+    
+    int ip_not_set = ip_equ(&bnda, dst);
+    bnda.in6 = params.baddr;
+    
+    if (ip_not_set) {
+        dsta.in6 = val->in6;
+        dsta.in.sin_port = dst->in.sin_port;
+    } else {
+        dsta.in6 = dst->in6;
+    }
+    
+    if (bnda.sa.sa_family == AF_INET6) {
+        map_fix(&dsta, 6);
+    }
+    if (dsta.sa.sa_family == AF_INET6) {
+        map_fix(&bnda, 6);
+    }
+    
+    int ufd = nb_socket(bnda.sa.sa_family, SOCK_DGRAM);
     if (ufd < 0) {
         perror("socket");  
         return -1;
     }
-    struct sockaddr_ina addr = {0};
-    socklen_t asz = sizeof(addr);
-    int ip_is_set = ip_cmp(dst, &addr);
-    
-    addr.sa.sa_family = AF_INET6;
-    if (bind(ufd, &addr.sa, sizeof(addr)) < 0) {
+    if (bnda.sa.sa_family == AF_INET6) {
+        int no = 0;
+        if (setsockopt(ufd, IPPROTO_IPV6,
+                IPV6_V6ONLY, (char *)&no, sizeof(no))) {
+            perror("setsockopt IPV6_V6ONLY");
+            close(ufd);
+            return -1;
+        }
+    }
+    if (bind(ufd, &bnda.sa, sizeof(bnda)) < 0) {
         perror("bind");  
         close(ufd);
         return -1;
     }
-    if (getsockname(ufd, &addr.sa, &asz)) {
+    if (getsockname(ufd, &bnda.sa, &asz)) {
         perror("getsockname");
         close(ufd);
         return -1;
@@ -365,25 +427,18 @@ int udp_asc(struct poolhd *pool,
         close(ufd);
         return -1;
     }
-    upair->in6 = dst->in6;
-    if (!ip_is_set) {
-        if (dst->sa.sa_family == AF_INET)
-            upair->in.sin_addr = val->in.sin_addr;
-        else
-            upair->in6.sin6_addr = val->in6.sin6_addr;
-    }
-    map_fix((struct sockaddr_ina *)&upair->in6, 6);
     val->pair = upair;
     upair->pair = val;
+    upair->in6 = dsta.in6;
     
     struct s5_req s5r = { 
         .ver = 0x05 
     };
-    int offs = s_set_addr((char *)&s5r, sizeof(s5r), &addr, 0);
+    int offs = s_set_addr((char *)&s5r, sizeof(s5r), &bnda, 0);
     if (offs < 0) {
         return -1;
     }
-    if (send(val->fd, &s5r, offs, 0) < 0) {
+    if (send(val->fd, (char *)&s5r, offs, 0) < 0) {
         perror("send");
         return -1;
     }
@@ -471,7 +526,8 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         int c = accept(val->fd, &client.sa, &len);
         #endif
         if (c < 0) {
-            if (errno == EAGAIN) 
+            if (errno == EAGAIN ||
+                    errno == EINPROGRESS)
                 break;
             perror("accept");
             return -1;
@@ -483,16 +539,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             continue;
         }
         #endif
-        int one = 1;
-        if (setsockopt(c, IPPROTO_TCP,
-                TCP_NODELAY, (char *)&one, sizeof(one))) {
-            perror("setsockopt TCP_NODELAY");
-            close(c);
-            continue;
-        }
-        if (setsockopt(c, SOL_SOCKET, SO_SNDBUF, 
-                &params.send_bfsz, sizeof(params.send_bfsz)) < 0) {
-            perror("setsockopt SO_SNDBUF");
+        if (setopts(c) < 0) {
             close(c);
             continue;
         }
@@ -502,22 +549,6 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         }
         rval->in6 = client.in6;
     }
-    return 0;
-}
-
-
-static inline int on_data(struct eval *val, char *buffer, size_t bfsize)
-{
-    ssize_t n = recv(val->fd, buffer, bfsize, 0);
-    if (n <= 0) {
-        if (n) perror("recv data");
-        return -1;
-    }
-    if (desync(val->pair->fd, buffer, 
-            n, (struct sockaddr *)&val->pair->in6)) {
-        return -1;
-    }
-    val->type = EV_TUNNEL;
     return 0;
 }
 
@@ -546,9 +577,20 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
         val->type = EV_TUNNEL;
         mod_etype(pool, val, POLLOUT, 0);
         val->pair->type = EV_CONNECT;
-        return 0;
     }
-    return on_data(val, buffer, bfsize);
+    else {
+        ssize_t n = recv(val->fd, buffer, bfsize, 0);
+        if (n <= 0) {
+            if (n) perror("recv data");
+            return -1;
+        }
+        if (desync(val->pair->fd, buffer, 
+                n, (struct sockaddr *)&val->pair->in6)) {
+            return -1;
+        }
+        val->type = EV_TUNNEL;
+    }
+    return 0;
 }
 
 
@@ -618,10 +660,12 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 
 int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 {
-    struct sockaddr_ina addr;
     int skip = S_SIZE_I6, offs;
     do {
+        struct sockaddr_ina addr = {0};
+        struct sockaddr_ina *dst = (struct sockaddr_ina *)&val->in6;
         socklen_t asz = sizeof(addr);
+        
         ssize_t n = recvfrom(val->fd, buffer + skip,
             bfsize - skip, 0, &addr.sa, &asz), ns;
             
@@ -632,11 +676,11 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             return -1;
         }
         
-        if (!val->in6.sin6_port) {
-            val->in6.sin6_port = addr.in6.sin6_port;
+        if (!dst->in.sin_port) {
+            dst->in.sin_port = addr.in.sin_port;
         }
-        if (!ip_cmp((struct sockaddr_ina *)&val->in6, &addr) &&
-                    addr.in6.sin6_port == val->in6.sin6_port) {
+        
+        if (ip_equ(dst, &addr) && dst->in.sin_port == addr.in.sin_port) {
             if (buffer[skip + 2]) { // frag
                 continue;
             }
@@ -644,8 +688,12 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             if (offs < 0) {
                 return -1;
             }
-            map_fix(&addr, 6);
-            
+            if (dst->in.sin_family == AF_INET6) {
+                map_fix(&addr, 6);
+            }
+            if (dst->in.sin_family != addr.sa.sa_family) {
+                return -1;
+            }
             if (val->flag == FLAG_CONN)
                 ns = sendto(val->fd,
                     buffer + skip + offs, n - offs, 0, &addr.sa, asz);
@@ -661,6 +709,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             if (offs < 0 || offs > skip) {
                 return -1;
             }
+            memset(buffer + skip - offs, 0, 3);
             ns = sendto(val->fd, buffer + skip - offs,
                 n + offs, 0, (struct sockaddr *)&val->in6, sizeof(val->in6));
         }
@@ -751,9 +800,10 @@ int big_loop(int srvfd)
 
 int listener(struct sockaddr_ina srv)
 {
+    #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN))
         perror("signal SIGPIPE!");
-        
+    #endif
     if (signal(SIGINT, on_cancel))
         perror("signal SIGINT!");
     
