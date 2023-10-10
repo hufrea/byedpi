@@ -24,8 +24,7 @@ enum eid {
     EV_REQUEST,
     EV_CONNECT,
     EV_IGNORE,
-    EV_TUNNEL,
-    EV_UDP_TUNNEL
+    EV_TUNNEL
 };
 
 #define FLAG_S4 1
@@ -38,8 +37,7 @@ char *eid_name[] = {
     "EV_REQUEST",
     "EV_CONNECT",
     "EV_IGNORE",
-    "EV_TUNNEL",
-    "EV_UDP_TUNNEL"
+    "EV_TUNNEL"
 };
 #endif
 

@@ -197,32 +197,3 @@ int desync(int sfd, char *buffer,
     }
     return 0;
 }
-
-
-int desync_udp(int fd, char *buffer, 
-        ssize_t n, struct sockaddr *dst)
-{
-    int fa = get_family(dst);
-    socklen_t s = dst->sa_family == AF_INET6 ? 
-        sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
-    
-    if (params.desync_udp & DESYNC_UDP_FAKE) {
-        if (setttl(fd, params.ttl, fa) < 0) {
-            return -1;
-        }
-        if (sendto(fd, fake_udp.data,
-                fake_udp.size, 0, dst, s) < 0) {
-            perror("sendto");
-            return -1;
-        }
-        if (setttl(fd, params.def_ttl, fa) < 0) {
-            return -1;
-        }
-    }
-    ssize_t ns = sendto(fd, buffer, n, 0, dst, s);
-    if (ns < 0) {
-        perror("sendto");
-        return -1;
-    }
-    return 0;
-}

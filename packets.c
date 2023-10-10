@@ -47,8 +47,6 @@ char http_data[43] = {
     "Host: www.wikipedia.org\r\n\r\n"
 };
 
-char udp_data[64] = {0};
-
 
 int find_tls_ext_offset(uint16_t type, char *data, size_t size) 
 {

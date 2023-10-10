@@ -11,7 +11,6 @@
 
 extern char tls_data[517];
 extern char http_data[43];
-extern char udp_data[64];
 
 int change_tls_sni(char *host, char *buffer, size_t bsize);
 

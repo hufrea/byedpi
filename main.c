@@ -26,9 +26,6 @@ struct packet fake_tls = {
 },
 fake_http = { 
     sizeof(http_data), http_data
-},
-fake_udp = {
-    sizeof(udp_data), udp_data
 };
 
 
@@ -37,7 +34,6 @@ struct params params = {
     .split = 3,
     .sfdelay = 3000,
     .attack = DESYNC_NONE,
-    .desync_udp = 0,
     .split_host = 0,
     .def_ttl = 0,
     .mod_http = 0,
@@ -45,7 +41,6 @@ struct params params = {
     
     .ipv6 = 1,
     .resolve = 1,
-    .udp = 1,
     .max_open = 512,
     .bfsize = 16384,
     .nodelay = 1,
@@ -65,7 +60,6 @@ const char help_text[] = {
     "    -f, --pidfile <file>      Write pid to file\n"
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
-    "    -U, --no-udp              Deny UDP associate\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --bfs <size>          Buffer size, default 16384\n"
   //"    -L, --nodelay <0 or 1>    Set TCP_NODELAY option\n"
@@ -84,12 +78,10 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -l, --fake-tls <file>\n"
-    "    -o, --fake-http <file>\n"   
-    "    -e, --fake-udp <file>     Set custom fake packet\n"
+    "    -o, --fake-http <file>    Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake CH\n"
     #endif
     "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
-    "    -u, --desync-udp <f>      UDP desync method: fake\n"
 };
 
 
@@ -97,7 +89,6 @@ const struct option options[] = {
     {"daemon",        0, 0, 'D'},
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
-    {"no-udp",        0, 0, 'U'},
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"pidfile",       1, 0, 'f'},
@@ -119,11 +110,9 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake-tls",      1, 0, 'l'},
     {"fake-http",     1, 0, 'o'},
-    {"fake-udp",      1, 0, 'e'},
     {"tls-sni",       1, 0, 'n'},
     #endif
     {"mod-http",      1, 0, 'M'},
-    {"desync-udp",    1, 0, 'u'},
     {"global-ttl",    1, 0, 'g'}, //
     {"delay",         1, 0, 'w'}, //
     
@@ -250,9 +239,6 @@ int main(int argc, char **argv)
             break;
         case 'X':
             params.ipv6 = 0;
-            break;
-        case 'U':
-            params.udp = 0;
             break;
         case 'h':
             printf(help_text);
@@ -400,14 +386,6 @@ int main(int argc, char **argv)
             }
             break;
             
-        case 'e':
-            fake_udp.data = ftob(optarg, &fake_udp.size);
-            if (!fake_udp.data) {
-                perror("read file");
-                return -1;
-            }
-            break;
-            
         case 'M':
             end = optarg;
             while (end && !invalid) {
@@ -428,13 +406,6 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
-            break;
-            
-        case 'u':
-            if (*optarg != 'f')
-                invalid = 1;
-            else
-                params.desync_udp = DESYNC_UDP_FAKE;
             break;
             
         case 'g': //
