@@ -36,6 +36,7 @@ struct params params = {
     .attack = DESYNC_NONE,
     .split_host = 0,
     .def_ttl = 0,
+    .custom_ttl = 0,
     .mod_http = 0,
     .de_known = 0,
     
@@ -61,11 +62,12 @@ const char help_text[] = {
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
-    "    -b, --bfs <size>          Buffer size, default 16384\n"
-  //"    -L, --nodelay <0 or 1>    Set TCP_NODELAY option\n"
-    "    -S, --snd-buf <size>      Set SO_SNDBUF option\n"
-    "    -R, --rcv-buf <size>      Set SO_RCVBUF option\n"
+    "    -b, --buf-size <size>     Buffer size, default 16384\n"
     "    -x, --debug               Print logs, 0, 1 or 2\n"
+  //"    -L, --nodelay <0 or 1>    Set TCP_NODELAY option\n"
+    "    -S, --snd-buf <size>      Set SO_SNDBUF option for out. conn.\n"
+    "    -R, --rcv-buf <size>      Set SO_RCVBUF option for out. conn.\n"
+    "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     #ifdef FAKE_SUPPORT
@@ -95,7 +97,7 @@ const struct option options[] = {
     {"ip",            1, 0, 'i'},
     {"port",          1, 0, 'p'},
     {"conn-ip",       1, 0, 'I'},
-    {"bfs",           1, 0, 'b'},
+    {"buf-size",      1, 0, 'b'},
   //{"nodelay",       1, 0, 'L'},
     {"snd-buf",       1, 0, 'S'},
     {"rcv-buf",       1, 0, 'R'},
@@ -113,7 +115,7 @@ const struct option options[] = {
     {"tls-sni",       1, 0, 'n'},
     #endif
     {"mod-http",      1, 0, 'M'},
-    {"global-ttl",    1, 0, 'g'}, //
+    {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
     
     {0}
@@ -151,6 +153,7 @@ char *ftob(char *name, ssize_t *sl)
     return buffer;
 }
 
+
 void daemonize(void)
 {
     pid_t pid = fork();
@@ -162,7 +165,7 @@ void daemonize(void)
         exit(0);
     }
     if (setsid() < 0) {
-		exit(1);
+	    exit(1);
     }
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
@@ -172,6 +175,7 @@ void daemonize(void)
     dup(0);
     dup(0);
 }
+
 
 int get_addr(char *str, struct sockaddr_ina *addr)
 {
@@ -190,6 +194,24 @@ int get_addr(char *str, struct sockaddr_ina *addr)
         addr->in = *(struct sockaddr_in *)res->ai_addr;
     freeaddrinfo(res);
     return 0;
+}
+
+
+int get_default_ttl()
+{
+    int orig_ttl = -1, fd;
+    socklen_t tsize = sizeof(orig_ttl);
+    
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket");
+        return -1;
+    }
+    if (getsockopt(fd, IPPROTO_IP, IP_TTL,
+             (char *)&orig_ttl, &tsize) < 0) {
+        perror("getsockopt IP_TTL");
+    }
+    close(fd);
+    return orig_ttl;
 }
 
 
@@ -338,9 +360,11 @@ int main(int argc, char **argv)
                 case 'd': 
                     params.attack = DESYNC_DISORDER;
                     break;
+                #ifdef FAKE_SUPPORT
                 case 'f': 
                     params.attack = DESYNC_FAKE;
                     break;
+                #endif
                 default:
                     invalid = 1;
             }
@@ -408,12 +432,14 @@ int main(int argc, char **argv)
             }
             break;
             
-        case 'g': //
+        case 'g':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || val > 255 || *end)
                 invalid = 1;
-            else
+            else {
                 params.def_ttl = val;
+                params.custom_ttl = 1;
+            }
             break;
             
         case 'w': //
@@ -466,21 +492,10 @@ int main(int argc, char **argv)
         fclose(file);
     }
     
-    if (!params.def_ttl) {
-        int orig_ttl, fd;
-        socklen_t tsize = sizeof(orig_ttl);
-        if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-            perror("socket");  
-            return -1;  
-        }
-        if (getsockopt(fd, IPPROTO_IP, IP_TTL,
-                 (char *)&orig_ttl, &tsize) < 0) {
-            perror("getsockopt IP_TTL");
-            close(fd);
+    if (!params.def_ttl && params.attack != DESYNC_NONE) {
+        if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
-        close(fd);
-        params.def_ttl = orig_ttl;
     }
     
     return listener(s);

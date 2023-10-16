@@ -168,6 +168,11 @@ int desync(int sfd, char *buffer,
     }
     LOG(LOG_L, "split pos: %d, n: %ld\n", pos, n);
     
+    if (params.custom_ttl) {
+        if (setttl(sfd, params.def_ttl, fa) < 0) {
+            return -1;
+        }
+    }
     if (pos <= 0 || pos >= n ||
             params.attack == DESYNC_NONE ||
             (!type && params.de_known))

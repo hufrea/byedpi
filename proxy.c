@@ -272,6 +272,12 @@ int create_conn(struct poolhd *pool,
     
     if (params.baddr.sin6_family == AF_INET6) {
         map_fix(&addr, 6);
+    } else {
+        map_fix(&addr, 0);
+    }
+    if (addr.sa.sa_family != params.baddr.sin6_family) {
+        fprintf(stderr, "different addresses family\n");
+        return -1;
     }
     int sfd = nb_socket(addr.sa.sa_family, SOCK_STREAM);
     if (sfd < 0) {
@@ -408,7 +414,9 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             continue;
         }
         #endif
-        if (setopts(c) < 0) {
+        if (setsockopt(c, IPPROTO_TCP, TCP_NODELAY,
+                (char *)&params.nodelay, sizeof(params.nodelay))) {
+            perror("setsockopt TCP_NODELAY");
             close(c);
             continue;
         }

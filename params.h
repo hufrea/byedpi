@@ -16,6 +16,7 @@ struct params {
     enum demode attack;
     char split_host;
     int def_ttl;
+    char custom_ttl;
     int mod_http;
     
     char ipv6;
