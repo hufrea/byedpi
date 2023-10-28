@@ -475,60 +475,58 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int out)
 {
     ssize_t n = 0;
-    char *rb = buffer;
     struct eval *pair = val->pair;
     
     if (pair->tmpbuf && out) {
-        mod_etype(pool, val, POLLOUT, 0);
-        mod_etype(pool, val->pair, POLLIN, 1);
-        
         pair = val;
         val = val->pair;
-    }
-    do {
-        if (val->tmpbuf) {
-            n = val->size - val->offset;
-            rb = val->tmpbuf + val->offset;
-        } else {
-            n = recv(val->fd, buffer, bfsize, 0);
-            if (n < 0 && errno == EAGAIN)
-                break;
-            if (n < 1) {
-                if (n) perror("recv server");
-                return -1;
-            }
-        }
-        ssize_t sn = send(pair->fd, rb, n, 0);
+        
+        n = val->size - val->offset;
+        ssize_t sn = send(pair->fd, val->tmpbuf + val->offset, n, 0);
         if (sn != n) {
             if (sn < 0 && errno != EAGAIN) {
                 perror("send");
                 return -1;
-            } else if (sn < 0) {
+            }
+            if (sn > 0)
+                val->offset += sn;
+            return 0;
+        }
+        free(val->tmpbuf);
+        val->tmpbuf = 0;
+        
+        mod_etype(pool, val, POLLOUT, 0);
+        mod_etype(pool, val->pair, POLLIN, 1);
+    }
+    do {
+        n = recv(val->fd, buffer, bfsize, 0);
+        if (n < 0 && errno == EAGAIN)
+            break;
+        if (n < 1) {
+            if (n) perror("recv");
+            return -1;
+        }
+        ssize_t sn = send(pair->fd, buffer, n, 0);
+        if (sn != n) {
+            if (sn < 0) {
+                if (errno != EAGAIN) {
+                    perror("send");
+                    return -1;
+                }
                 sn = 0;
             }
             LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
-            mod_etype(pool, val, POLLIN, 0);
-            mod_etype(pool, pair, POLLOUT, 1);
             
-            if (val->tmpbuf) {
-                LOG(LOG_S, "EAGAIN, AGAIN ! (fd: %d)\n", pair->fd);
-                if (sn > 0)
-                    val->offset += sn;
-                break;
-            }
             val->size = n - sn;
             if (!(val->tmpbuf = malloc(val->size))) {
                 perror("malloc");
                 return -1;
             }
             memcpy(val->tmpbuf, buffer + sn, val->size);
+            
+            mod_etype(pool, val, POLLIN, 0);
+            mod_etype(pool, pair, POLLOUT, 1);
             break;
-        }
-        else if (val->tmpbuf) {
-            free(val->tmpbuf);
-            val->tmpbuf = 0;
-            rb = buffer;
-            continue;
         }
     } while (n == bfsize);
     return 0;
