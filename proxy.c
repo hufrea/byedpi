@@ -145,7 +145,17 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
 }
 
 
-int resp_error(int fd, int e, int flag, int re)
+int resp_s5_error(int fd, int e)
+{
+    struct s5_rep s5r = { 
+        .ver = 0x05, .code = (uint8_t )e, 
+        .atp = S_ATP_I4
+    };
+    return send(fd, (char *)&s5r, sizeof(s5r), 0);
+}
+
+
+int resp_error(int fd, int e, int flag)
 {
     if (flag == FLAG_S4) {
         struct s4_req s4r = { 
@@ -154,76 +164,65 @@ int resp_error(int fd, int e, int flag, int re)
         return send(fd, (char *)&s4r, sizeof(s4r), 0);
     }
     else if (flag == FLAG_S5) {
-        uint8_t se;
-        if (re) se = (uint8_t )re;
-        else switch (e) {
-            case 0: se = S_ER_OK;
+        switch (e) {
+            case 0: e = S_ER_OK;
                 break;
             case ECONNREFUSED: 
-                se = S_ER_CONN;
+                e = S_ER_CONN;
                 break;
             case EHOSTUNREACH:
             case ETIMEDOUT: 
-                se = S_ER_HOST;
+                e = S_ER_HOST;
                 break;
             case ENETUNREACH: 
-                se = S_ER_NET;
+                e = S_ER_NET;
                 break;
-            default: se = S_ER_GEN;
+            default: e = S_ER_GEN;
         }
-        struct s5_rep s5r = { 
-            .ver = 0x05, .code = se, 
-            .atp = S_ATP_I4
-        };
-        return send(fd, (char *)&s5r, sizeof(s5r), 0);
+        return resp_s5_error(fd, e);
     }
     return 0;
 }
 
 
-int handle_socks4(int fd, char *bf,
+int s4_get_addr(int fd, char *bf,
         size_t n, struct sockaddr_ina *dst)
 {
     if (n < sizeof(struct s4_req) + 1) {
         return -1;
     }
     struct s4_req *r = (struct s4_req *)bf;
-    char er = 0;
     
     if (r->cmd != S_CMD_CONN) {
-        er = 1;
+        return -1;
     }
-    else if (ntohl(r->i4.s_addr) <= 255) do {
-        er = 1;
-        if (!params.resolve || bf[n - 1])
-            break;
-        char *ie = strchr(bf + sizeof(*r), 0);
-        if (!ie)
-            break;
-        int len = (bf + n - ie) - 2;
-        if (len < 3)
-            break;
-        if (resolve(ie + 1, len, dst)) {
-            fprintf(stderr, "not resolved: %.*s\n", len, ie + 1);
-            break;
+    if (ntohl(r->i4.s_addr) <= 255) {
+        if (!params.resolve || bf[n - 1] != 0) {
+            return -1;
         }
-        er = 0;
-    } while (0);
+        char *id_end = strchr(bf + sizeof(*r), 0);
+        if (!id_end) {
+            return -1;
+        }
+        int len = (bf + n - id_end) - 2;
+        if (len < 3 || len > 255) {
+            return -1;
+        }
+        if (resolve(id_end + 1, len, dst)) {
+            fprintf(stderr, "not resolved: %.*s\n", len, id_end + 1);
+            return -1;
+        }
+    }
     else {
         dst->in.sin_family = AF_INET;
         dst->in.sin_addr = r->i4;
-    }
-    if (er) {
-        if (resp_error(fd, 1, FLAG_S4, 0) < 0)
-            perror("send");
-        return -1;
     }
     dst->in.sin_port = r->port;
     return 0;
 }
 
 
-int s_get_addr(char *buffer, ssize_t n, 
+int s5_get_addr(char *buffer, ssize_t n, 
         struct sockaddr_ina *addr) 
 {
     struct s5_req *r = (struct s5_req *)buffer;
@@ -234,6 +233,10 @@ int s_get_addr(char *buffer, ssize_t n,
     if (n < o)  {
         fprintf(stderr, "ss: bad request\n");
         return S_ER_GEN;
+    }
+    if (r->cmd != S_CMD_CONN) {
+        fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
+        return S_ER_CMD;
     }
     switch (r->atp) {
         case S_ATP_I4:
@@ -335,7 +338,6 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize)
 {
     struct sockaddr_ina dst = {0};
-    int error = 0, s5e = 0;
     
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
@@ -354,33 +356,31 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             fprintf(stderr, "ss: request to small\n");
             return -1;
         }
-        struct s5_req *r = (struct s5_req *)buffer;
-        
-        if (r->cmd != S_CMD_CONN) {
-			fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
-			s5e = S_ER_CMD;
-	    }
-	    else {
-            s5e = s_get_addr(buffer, n, &dst);
-            if (!s5e) {
-                error = create_conn(pool, val, &dst);
-            }
+        int s5e = s5_get_addr(buffer, n, &dst);
+        if (!s5e &&
+                create_conn(pool, val, &dst)) {
+            s5e = S_ER_GEN;
+        }
+        if (s5e) {
+            resp_s5_error(val->fd, s5e);
+            return -1;
         }
     }
     else if (*buffer == S_VER4) {
-        if (handle_socks4(val->fd, buffer, n, &dst)) {
+        val->flag = FLAG_S4;
+        
+        int error = s4_get_addr(val->fd, buffer, n, &dst);
+        if (!error) {
+            error = create_conn(pool, val, &dst);
+        }
+        if (error) {
+            if (resp_error(val->fd, error, FLAG_S4) < 0)
+                perror("send");
             return -1;
         }
-        error = create_conn(pool, val, &dst);
-        val->flag = FLAG_S4;
     }
     else {
         fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
-        return -1;
-    }
-    if (error || s5e) {
-        if (resp_error(val->fd, error ? errno : 0, val->flag, s5e) < 0)
-            perror("send");
         return -1;
     }
     val->type = EV_IGNORE;
@@ -444,7 +444,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
             }
         }
         if (resp_error(val->pair->fd,
-                error, val->pair->flag, 0) < 0) {
+                error, val->pair->flag) < 0) {
             perror("send");
             return -1;
         }
