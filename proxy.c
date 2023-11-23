@@ -130,18 +130,18 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
     if (n <= 2 || (uint8_t)buffer[1] != (n - 2)) {
         return -1;
     }
-    buffer[1] = S_AUTH_BAD;
-    long i = 2;
-    for (; i < n; i++)
+    uint8_t c = S_AUTH_BAD;
+    for (long i = 2; i < n; i++)
         if (buffer[i] == S_AUTH_NONE) {
-            buffer[1] = S_AUTH_NONE;
+            c = S_AUTH_NONE;
             break;
         }
+    buffer[1] = c;
     if (send(fd, buffer, 2, 0) < 0) {
         perror("send");
         return -1;
     }
-    return i < n ? 0 : -1;
+    return c != S_AUTH_BAD ? 0 : -1;
 }
 
 
@@ -185,26 +185,26 @@ int resp_error(int fd, int e, int flag)
 }
 
 
-int s4_get_addr(int fd, char *bf,
-        size_t n, struct sockaddr_ina *dst)
+int s4_get_addr(char *buff, size_t n,
+        struct sockaddr_ina *dst)
 {
     if (n < sizeof(struct s4_req) + 1) {
         return -1;
     }
-    struct s4_req *r = (struct s4_req *)bf;
+    struct s4_req *r = (struct s4_req *)buff;
     
     if (r->cmd != S_CMD_CONN) {
         return -1;
     }
     if (ntohl(r->i4.s_addr) <= 255) {
-        if (!params.resolve || bf[n - 1] != 0) {
+        if (!params.resolve || buff[n - 1] != 0) {
             return -1;
         }
-        char *id_end = strchr(bf + sizeof(*r), 0);
+        char *id_end = strchr(buff + sizeof(*r), 0);
         if (!id_end) {
             return -1;
         }
-        int len = (bf + n - id_end) - 2;
+        int len = (buff + n - id_end) - 2;
         if (len < 3 || len > 255) {
             return -1;
         }
@@ -222,7 +222,7 @@ int s4_get_addr(int fd, char *bf,
 }
 
 
-int s5_get_addr(char *buffer, ssize_t n, 
+int s5_get_addr(char *buffer, ssize_t n,
         struct sockaddr_ina *addr) 
 {
     struct s5_req *r = (struct s5_req *)buffer;
@@ -369,7 +369,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
     else if (*buffer == S_VER4) {
         val->flag = FLAG_S4;
         
-        int error = s4_get_addr(val->fd, buffer, n, &dst);
+        int error = s4_get_addr(buffer, n, &dst);
         if (!error) {
             error = create_conn(pool, val, &dst);
         }
