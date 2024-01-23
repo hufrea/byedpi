@@ -451,8 +451,10 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
         if (e) {
             return -1;
         }
+        if (mod_etype(pool, val, POLLOUT, 0)) {
+            return -1;
+        }
         val->type = EV_TUNNEL;
-        mod_etype(pool, val, POLLOUT, 0);
         val->pair->type = EV_CONNECT;
     }
     else {
@@ -495,8 +497,10 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         free(val->tmpbuf);
         val->tmpbuf = 0;
         
-        mod_etype(pool, val, POLLOUT, 0);
-        mod_etype(pool, val->pair, POLLIN, 1);
+        if (mod_etype(pool, val, POLLIN, 1) ||
+                mod_etype(pool, pair, POLLOUT, 0)) {
+            return -1;
+        }
     }
     do {
         n = recv(val->fd, buffer, bfsize, 0);
@@ -524,8 +528,10 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             }
             memcpy(val->tmpbuf, buffer + sn, val->size);
             
-            mod_etype(pool, val, POLLIN, 0);
-            mod_etype(pool, pair, POLLOUT, 1);
+            if (mod_etype(pool, val, POLLIN, 0) ||
+                    mod_etype(pool, pair, POLLOUT, 1)) {
+                return -1;
+            }
             break;
         }
     } while (n == bfsize);
