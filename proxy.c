@@ -74,30 +74,6 @@ static inline int nb_socket(int domain, int type)
 }
 
 
-int setopts(int fd) 
-{
-    if (params.nodelay &&
-            setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
-                (char *)&params.nodelay, sizeof(params.nodelay))) {
-        perror("setsockopt TCP_NODELAY");
-        return -1;
-    }
-    if (params.send_bfsz && 
-            setsockopt(fd, SOL_SOCKET, SO_SNDBUF, 
-                (char *)&params.send_bfsz, sizeof(params.send_bfsz))) {
-        perror("setsockopt SO_SNDBUF");
-        return -1;
-    }
-    if (params.recv_bfsz && 
-            setsockopt(fd, SOL_SOCKET, SO_RCVBUF, 
-                (char *)&params.recv_bfsz, sizeof(params.recv_bfsz))) {
-        perror("setsockopt SO_RCVBUF");
-        return -1;
-    }
-    return 0;
-}
-
-
 int resolve(char *host, int len, 
         struct sockaddr_ina *addr) 
 {
@@ -311,7 +287,10 @@ int create_conn(struct poolhd *pool,
         return -1;
     }
     #endif
-    if (setopts(sfd) < 0) {
+    int one = 1;
+    if (setsockopt(sfd, IPPROTO_TCP,
+            TCP_NODELAY, (char *)&one, sizeof(one))) {
+        perror("setsockopt TCP_NODELAY");
         close(sfd);
         return -1;
     }
@@ -414,8 +393,9 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             continue;
         }
         #endif
+        int one = 1;
         if (setsockopt(c, IPPROTO_TCP, TCP_NODELAY,
-                (char *)&params.nodelay, sizeof(params.nodelay))) {
+                (char *)&one, sizeof(one))) {
             perror("setsockopt TCP_NODELAY");
             close(c);
             continue;

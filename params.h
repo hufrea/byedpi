@@ -24,9 +24,6 @@ struct params {
     int max_open;
     int debug;
     size_t bfsize;
-    int nodelay;
-    int send_bfsz;
-    int recv_bfsz;
     struct sockaddr_in6 baddr;
 };
 

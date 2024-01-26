@@ -44,9 +44,6 @@ struct params params = {
     .resolve = 1,
     .max_open = 512,
     .bfsize = 16384,
-    .nodelay = 1,
-    .send_bfsz = 0,
-    .recv_bfsz = 0,
     .baddr = {
         .sin6_family = AF_INET6
     },
@@ -64,9 +61,6 @@ const char help_text[] = {
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
     "    -x, --debug               Print logs, 0, 1 or 2\n"
-  //"    -L, --nodelay <0 or 1>    Set TCP_NODELAY option\n"
-    "    -S, --snd-buf <size>      Set SO_SNDBUF option for out. conn.\n"
-    "    -R, --rcv-buf <size>      Set SO_RCVBUF option for out. conn.\n"
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
@@ -98,9 +92,6 @@ const struct option options[] = {
     {"port",          1, 0, 'p'},
     {"conn-ip",       1, 0, 'I'},
     {"buf-size",      1, 0, 'b'},
-  //{"nodelay",       1, 0, 'L'},
-    {"snd-buf",       1, 0, 'S'},
-    {"rcv-buf",       1, 0, 'R'},
     {"max-conn",      1, 0, 'c'},
     {"debug",         1, 0, 'x'},
     
@@ -165,7 +156,7 @@ void daemonize(void)
         exit(0);
     }
     if (setsid() < 0) {
-	    exit(1);
+        exit(1);
     }
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
@@ -298,30 +289,6 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 params.bfsize = val;
-            break;
-            
-        case 'L':
-            val = strtol(optarg, &end, 0);
-            if (val < 0 || val > 1 || *end)
-                invalid = 1;
-            else
-                params.nodelay = val;
-            break;
-            
-        case 'S':
-            val = strtol(optarg, &end, 0);
-            if (val <= 0 || val > INT_MAX || *end)
-                invalid = 1;
-            else
-                params.send_bfsz = val;
-            break;
-            
-        case 'R':
-            val = strtol(optarg, &end, 0);
-            if (val <= 0 || val > INT_MAX || *end)
-                invalid = 1;
-            else
-                params.recv_bfsz = val;
             break;
             
         case 'c':
@@ -469,11 +436,6 @@ int main(int argc, char **argv)
     
     if (b.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
-    }
-    if (params.send_bfsz && 
-            params.send_bfsz * 2 <= params.bfsize) {
-        fprintf(stderr, "send buffer too small\n");
-        return -1;
     }
 
     FILE *file;
