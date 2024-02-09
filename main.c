@@ -18,7 +18,7 @@
 
 #define FAKE_SUPPORT 1
 
-#define VERSION 2
+#define VERSION 3
 
 
 struct packet fake_tls = { 
