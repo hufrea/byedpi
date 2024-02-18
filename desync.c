@@ -1,30 +1,37 @@
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <sys/mman.h>
 
-#ifdef __linux__
-#include <sys/sendfile.h>
-#define _sendfile(outfd, infd, start, len) sendfile(outfd, infd, start, len)
-#else
-#include <sys/uio.h>
-#define _sendfile(outfd, infd, start, len) sendfile(infd, outfd, start, len, 0, 0)
-#endif
+#ifndef _WIN32
+    #include <unistd.h>
+    #include <time.h>
+    #include <sys/time.h>
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <netinet/tcp.h>
+    #include <sys/mman.h>
+    
+    #ifdef __linux__
+        #include <sys/sendfile.h>
+        #define _sendfile(outfd, infd, start, len) sendfile(outfd, infd, start, len)
+    #else
+        #include <sys/uio.h>
+        #define _sendfile(outfd, infd, start, len) sendfile(infd, outfd, start, len, 0, 0)
+    #endif
 
-#ifdef MFD_CLOEXEC
-#include <sys/syscall.h>
-#define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
+    #ifdef MFD_CLOEXEC
+        #include <sys/syscall.h>
+        #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
+    #else
+        #define memfd_create(name, flags) fileno(tmpfile())
+    #endif
 #else
-#define memfd_create(name, flags) fileno(tmpfile())
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
 #endif
 
 #include <params.h>
 #include <packets.h>
+#include <error.h>
 
 
 static inline int get_family(struct sockaddr *dst)
@@ -46,20 +53,20 @@ int setttl(int fd, int ttl, int family) {
     
     if (family == AF_INET) {
         if (setsockopt(fd, IPPROTO_IP,
-                 IP_TTL, &_ttl, sizeof(_ttl)) < 0) {
-            perror("setsockopt IP_TTL");
+                 IP_TTL, (char *)&_ttl, sizeof(_ttl)) < 0) {
+            uniperror("setsockopt IP_TTL");
             return -1;
         }
     }
     else if (setsockopt(fd, IPPROTO_IPV6,
-             IPV6_UNICAST_HOPS, &_ttl, sizeof(_ttl)) < 0) {
-        perror("setsockopt IPV6_UNICAST_HOPS");
+             IPV6_UNICAST_HOPS, (char *)&_ttl, sizeof(_ttl)) < 0) {
+        uniperror("setsockopt IPV6_UNICAST_HOPS");
         return -1;
     }
     return 0;
 }
 
-
+#ifndef _WIN32
 int fake_attack(int sfd, char *buffer,
         size_t n, int cnt, int pos, int fa)
 {
@@ -113,7 +120,7 @@ int fake_attack(int sfd, char *buffer,
     close(ffd);
     return status;
 }
-
+#endif
 
 int disorder_attack(int sfd, char *buffer,
         ssize_t n, int pos, int fa)
@@ -123,14 +130,14 @@ int disorder_attack(int sfd, char *buffer,
         return -1;
     }
     if (send(sfd, buffer, pos, 0) < 0) {
-        perror("send");
+        uniperror("send");
         return -1;
     }
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
     if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-        perror("send");
+        uniperror("send");
         return -1;
     }
     return 0;
@@ -190,25 +197,26 @@ int desync(int sfd, char *buffer, size_t bfsize,
             (!type && params.de_known))
     {
         if (send(sfd, buffer, n, 0) < 0) {
-            perror("send");
+            uniperror("send");
             return -1;
         }
     }
     else switch (params.attack) {
+        #ifndef _WIN32
         case DESYNC_FAKE:
             return fake_attack(sfd, buffer, n, type, pos, fa);
-            
+        #endif
         case DESYNC_DISORDER:
             return disorder_attack(sfd, buffer, n, pos, fa);
         
         case DESYNC_SPLIT:
         default:
             if (send(sfd, buffer, pos, 0) < 0) {
-                perror("send");
+                uniperror("send");
                 return -1;
             }
             if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-                perror("send");
+                uniperror("send");
                 return -1;
             }
     }

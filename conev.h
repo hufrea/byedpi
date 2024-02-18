@@ -1,22 +1,31 @@
 #include <stdint.h>
-#include <netinet/in.h>
 
 #ifndef __linux__
-#define NOEPOLL
+    #define NOEPOLL
 #endif
 
-#ifndef NOEPOLL
-#include <sys/epoll.h>
-#define POLLIN EPOLLIN
-#define POLLOUT EPOLLOUT
-#define POLLERR EPOLLERR
-#define POLLHUP EPOLLHUP
-#define POLLRDHUP EPOLLRDHUP
+#ifdef _WIN32
+    #include <ws2tcpip.h>
+    #define poll(fds, cnt, to) WSAPoll(fds, cnt, to)
+    #define close(fd) closesocket(fd)
 #else
-#include <sys/poll.h>
-#ifndef POLLRDHUP
-#define POLLRDHUP POLLHUP
+    #include <netinet/in.h>
+    #include <unistd.h>
+    
+    #ifndef NOEPOLL
+        #include <sys/epoll.h>
+        #define POLLIN EPOLLIN
+        #define POLLOUT EPOLLOUT
+        #define POLLERR EPOLLERR
+        #define POLLHUP EPOLLHUP
+        #define POLLRDHUP EPOLLRDHUP
+    #else
+        #include <sys/poll.h>
+    #endif
 #endif
+
+#ifndef POLLRDHUP
+    #define POLLRDHUP POLLHUP
 #endif
 
 enum eid {

@@ -1,5 +1,10 @@
 #include <stdio.h>
-#include <arpa/inet.h>
+
+#ifdef _WIN32
+    #include <ws2tcpip.h>
+#else
+    #include <arpa/inet.h>
+#endif
 
 enum demode {
     DESYNC_NONE,

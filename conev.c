@@ -1,10 +1,10 @@
 #define CONEV_H
 #include <conev.h>
+#include <error.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <unistd.h>
 
 
 struct poolhd *init_pool(int count)
@@ -68,7 +68,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     struct pollfd *pfd = &(pool->pevents[pool->count]);
     
     pfd->fd = fd;
-    pfd->events = POLLIN | POLLERR | POLLRDHUP | e;
+    pfd->events = POLLIN | e;
     pfd->revents = 0;
     #endif
     
@@ -181,7 +181,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
     for (int i = *offs; ; i--) {
         if (i < 0) {
             if (poll(pool->pevents, pool->count, -1) <= 0) {
-                perror("poll");
+                uniperror("poll");
                 return 0;
             }
             i = pool->count - 1;

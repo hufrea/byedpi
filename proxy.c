@@ -10,15 +10,23 @@
 #include <params.h>
 #include <conev.h>
 #include <desync.h>
+#include <error.h>
 
-#include <errno.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    
+    #define close(fd) closesocket(fd)
+#else
+    #include <errno.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <netinet/tcp.h>
+    #include <netdb.h>
+#endif
 
     
 int NOT_EXIT = 1;
@@ -60,15 +68,24 @@ static inline int nb_socket(int domain, int type)
     int fd = socket(domain, type, 0);
     #endif
     if (fd < 0) {
-        perror("socket");  
+        uniperror("socket");  
         return -1;
     }
+    #ifdef _WIN32
+    unsigned long mode = 1;
+    if (ioctlsocket(fd, FIONBIO, &mode) < 0) {
+        uniperror("ioctlsocket");
+        close(fd);
+        return -1;
+    }
+    #else
     #ifndef __linux__
     if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
         perror("fcntl");
         close(fd);
         return -1;
     }
+    #endif
     #endif
     return fd;
 }
@@ -114,7 +131,7 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
         }
     buffer[1] = c;
     if (send(fd, buffer, 2, 0) < 0) {
-        perror("send");
+        uniperror("send");
         return -1;
     }
     return c != S_AUTH_BAD ? 0 : -1;
@@ -140,7 +157,7 @@ int resp_error(int fd, int e, int flag)
         return send(fd, (char *)&s4r, sizeof(s4r), 0);
     }
     else if (flag == FLAG_S5) {
-        switch (e) {
+        switch (unie(e)) {
             case 0: e = S_ER_OK;
                 break;
             case ECONNREFUSED: 
@@ -260,21 +277,21 @@ int create_conn(struct poolhd *pool,
     }
     int sfd = nb_socket(addr.sa.sa_family, SOCK_STREAM);
     if (sfd < 0) {
-        perror("socket");  
+        uniperror("socket");  
         return -1;
     }
     if (addr.sa.sa_family == AF_INET6) {
         int no = 0;
         if (setsockopt(sfd, IPPROTO_IPV6,
                 IPV6_V6ONLY, (char *)&no, sizeof(no))) {
-            perror("setsockopt IPV6_V6ONLY");
+            uniperror("setsockopt IPV6_V6ONLY");
             close(sfd);
             return -1;
         }
     }
     if (bind(sfd, (struct sockaddr *)&params.baddr, 
             sizeof(params.baddr)) < 0) {
-        perror("bind");  
+        uniperror("bind");  
         close(sfd);
         return -1;
     }
@@ -282,7 +299,7 @@ int create_conn(struct poolhd *pool,
     int syn_count = 1;
     if (setsockopt(sfd, IPPROTO_TCP,
             TCP_SYNCNT, (char *)&syn_count, sizeof(syn_count))) {
-        perror("setsockopt TCP_SYNCNT");
+        uniperror("setsockopt TCP_SYNCNT");
         close(sfd);
         return -1;
     }
@@ -290,13 +307,14 @@ int create_conn(struct poolhd *pool,
     int one = 1;
     if (setsockopt(sfd, IPPROTO_TCP,
             TCP_NODELAY, (char *)&one, sizeof(one))) {
-        perror("setsockopt TCP_NODELAY");
+        uniperror("setsockopt TCP_NODELAY");
         close(sfd);
         return -1;
     }
     int status = connect(sfd, &addr.sa, sizeof(addr));
-    if (status < 0 && errno != EINPROGRESS) {
-        perror("connect");
+    if (status < 0 && 
+            get_e() != EINPROGRESS && get_e() != EAGAIN) {
+        uniperror("connect");
         close(sfd);
         return -1;
     }
@@ -320,7 +338,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
     
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
-        if (n) perror("ss recv");
+        if (n) uniperror("ss recv");
         return -1;
     }
     if (*buffer == S_VER5) {
@@ -354,7 +372,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         if (error) {
             if (resp_error(val->fd, error, FLAG_S4) < 0)
-                perror("send");
+                uniperror("send");
             return -1;
         }
     }
@@ -380,15 +398,21 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         int c = accept(val->fd, &client.sa, &len);
         #endif
         if (c < 0) {
-            if (errno == EAGAIN ||
-                    errno == EINPROGRESS)
+            if (get_e() == EAGAIN ||
+                    get_e() == EINPROGRESS)
                 break;
-            perror("accept");
+            uniperror("accept");
             return -1;
         }
         #ifndef __linux__
+        #ifdef _WIN32
+        unsigned long mode = 1;
+        if (ioctlsocket(c, FIONBIO, &mode) < 0) {
+            uniperror("ioctlsocket");
+        #else
         if (fcntl(c, F_SETFL, O_NONBLOCK) < 0) {
             perror("fcntl");
+        #endif
             close(c);
             continue;
         }
@@ -396,7 +420,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         int one = 1;
         if (setsockopt(c, IPPROTO_TCP, TCP_NODELAY,
                 (char *)&one, sizeof(one))) {
-            perror("setsockopt TCP_NODELAY");
+            uniperror("setsockopt TCP_NODELAY");
             close(c);
             continue;
         }
@@ -419,13 +443,13 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
         if (e) {
             if (getsockopt(val->fd, SOL_SOCKET, 
                     SO_ERROR, (char *)&error, &len)) {
-                perror("getsockopt SO_ERROR");
+                uniperror("getsockopt SO_ERROR");
                 return -1;
             }
         }
         if (resp_error(val->pair->fd,
                 error, val->pair->flag) < 0) {
-            perror("send");
+            uniperror("send");
             return -1;
         }
         if (e) {
@@ -440,7 +464,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
     else {
         ssize_t n = recv(val->fd, buffer, bfsize, 0);
         if (n <= 0) {
-            if (n) perror("recv data");
+            if (n) uniperror("recv data");
             return -1;
         }
         if (desync(val->pair->fd, buffer, bfsize,
@@ -466,8 +490,8 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         n = val->size - val->offset;
         ssize_t sn = send(pair->fd, val->tmpbuf + val->offset, n, 0);
         if (sn != n) {
-            if (sn < 0 && errno != EAGAIN) {
-                perror("send");
+            if (sn < 0 && get_e() != EAGAIN) {
+                uniperror("send");
                 return -1;
             }
             if (sn > 0)
@@ -484,17 +508,17 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
     }
     do {
         n = recv(val->fd, buffer, bfsize, 0);
-        if (n < 0 && errno == EAGAIN)
+        if (n < 0 && get_e() == EAGAIN)
             break;
         if (n < 1) {
-            if (n) perror("recv");
+            if (n) uniperror("recv");
             return -1;
         }
         ssize_t sn = send(pair->fd, buffer, n, 0);
         if (sn != n) {
             if (sn < 0) {
-                if (errno != EAGAIN) {
-                    perror("send");
+                if (get_e() != EAGAIN) {
+                    uniperror("send");
                     return -1;
                 }
                 sn = 0;
@@ -541,9 +565,9 @@ int big_loop(int srvfd)
     while (NOT_EXIT) {
         val = next_event(pool, &i, &etype);
         if (!val) {
-            if (errno == EINTR) 
+            if (get_e() == EINTR) 
                 continue;
-            perror("(e)poll");
+            uniperror("(e)poll");
             break;
         }
         LOG(LOG_L, "new event: fd: %d, evt: %s\n", val->fd, eid_name[val->type]);
@@ -600,23 +624,23 @@ int listener(struct sockaddr_ina srv)
     
     int srvfd = nb_socket(srv.sa.sa_family, SOCK_STREAM);
     if (srvfd < 0) {
-        perror("socket");  
+        uniperror("socket");  
         return -1;  
     }
     int opt = 1;
     if (setsockopt(srvfd, SOL_SOCKET, 
             SO_REUSEADDR, (char *)&opt, sizeof(opt)) == -1) {
-        perror("setsockopt");
+        uniperror("setsockopt");
         close(srvfd);
         return -1;
     }
     if (bind(srvfd, &srv.sa, sizeof(srv)) < 0) {
-        perror("bind");  
+        uniperror("bind");  
         close(srvfd);
         return -1;
     }
     if (listen(srvfd, 10)) {
-        perror("listen");
+        uniperror("listen");
         close(srvfd);
         return -1;
     }

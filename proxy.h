@@ -1,5 +1,10 @@
 #include <stdint.h>
-#include <arpa/inet.h>
+
+#ifdef _WIN32
+    #include <ws2tcpip.h>
+#else
+    #include <arpa/inet.h>
+#endif
 
 struct sockaddr_ina {
     union {

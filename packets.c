@@ -6,7 +6,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <arpa/inet.h>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+#else
+    #include <arpa/inet.h>
+#endif
 
 #define ANTOHS(data, i) \
     (uint16_t)((data[i] << 8) + (uint8_t)data[i + 1])
@@ -167,8 +172,14 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
     
     if (!(isdigit(*(l_end - 1))))
         h_end = 0;
-    else
-        h_end = memrchr(host, ':', l_end - host);
+    else {
+        char *h = host;
+        h_end = 0;
+        do {
+            h = memchr(h, ':', l_end - h);
+            if (h) h_end = h;
+        } while (h);
+    }
     
     if (!h_end) {
         if (port) *port = 80;

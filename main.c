@@ -9,16 +9,21 @@
 #include <params.h>
 #include <proxy.h>
 #include <packets.h>
+#include <error.h>
 
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <netdb.h>
-#include <fcntl.h>
+#ifndef _WIN32
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <netdb.h>
+    #include <fcntl.h>
 
+    #define FAKE_SUPPORT 1
+#else
+    #include <ws2tcpip.h>
+    #define close(fd) closesocket(fd)
+#endif
 
-#define FAKE_SUPPORT 1
-
-#define VERSION 3
+#define VERSION 4
 
 
 struct packet fake_tls = { 
@@ -57,8 +62,6 @@ struct params params = {
 const char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
-    "    -D, --daemon              Daemonize\n"
-    "    -f, --pidfile <file>      Write pid to file\n"
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
@@ -87,12 +90,10 @@ const char help_text[] = {
 
 
 const struct option options[] = {
-    {"daemon",        0, 0, 'D'},
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
-    {"pidfile",       1, 0, 'f'},
     {"ip",            1, 0, 'i'},
     {"port",          1, 0, 'p'},
     {"conn-ip",       1, 0, 'I'},
@@ -152,29 +153,6 @@ char *ftob(char *name, ssize_t *sl)
 }
 
 
-void daemonize(void)
-{
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        exit(1);
-    }
-    else if (pid) {
-        exit(0);
-    }
-    if (setsid() < 0) {
-        exit(1);
-    }
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
-    
-    open("/dev/null", O_RDWR);
-    dup(0);
-    dup(0);
-}
-
-
 int get_addr(char *str, struct sockaddr_ina *addr)
 {
     struct addrinfo hints = {0}, *res = 0;
@@ -201,12 +179,12 @@ int get_default_ttl()
     socklen_t tsize = sizeof(orig_ttl);
     
     if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("socket");
+        uniperror("socket");
         return -1;
     }
     if (getsockopt(fd, IPPROTO_IP, IP_TTL,
              (char *)&orig_ttl, &tsize) < 0) {
-        perror("getsockopt IP_TTL");
+        uniperror("getsockopt IP_TTL");
     }
     close(fd);
     return orig_ttl;
@@ -215,6 +193,14 @@ int get_default_ttl()
 
 int main(int argc, char **argv) 
 {
+    #ifdef _WIN32
+    WSADATA wsa;
+    
+    if (WSAStartup(MAKEWORD(2, 2), &wsa)) {
+        uniperror("WSAStartup");
+        return -1;
+    }
+    #endif
     struct sockaddr_ina s = {
         .in = {
             .sin_family = AF_INET,
@@ -251,9 +237,6 @@ int main(int argc, char **argv)
              argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
         
-        case 'D':
-            daemon = 1;
-            break;
         case 'N':
             params.resolve = 0;
             break;
@@ -266,9 +249,6 @@ int main(int argc, char **argv)
         case 'v':
             printf("%d\n", VERSION);
             return 0;
-        case 'f':
-            pidfile = optarg;
-            break;
         
         case 'i':
             if (get_addr(optarg, &s) < 0)
@@ -458,28 +438,14 @@ int main(int argc, char **argv)
     if (b.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }
-
-    FILE *file;
-    if (pidfile) {
-        file = fopen(pidfile, "w");
-        if (!file) {
-            perror("fopen");
-            return -1;
-        }
-    }
-    if (daemon) {
-        daemonize();
-    }
-    if (pidfile) {
-        fprintf(file, "%d", getpid());
-        fclose(file);
-    }
-    
     if (!params.def_ttl && params.attack != DESYNC_NONE) {
         if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
     }
-    
-    return listener(s);
+    int status = listener(s);
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
+    return status;
 }
