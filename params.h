@@ -18,6 +18,9 @@ struct params {
     int def_ttl;
     char custom_ttl;
     int mod_http;
+    char tlsrec;
+    int tlsrec_pos;
+    char tlsrec_sni;
     
     char ipv6;
     char resolve;

@@ -137,7 +137,7 @@ int disorder_attack(int sfd, char *buffer,
 }
 
 
-int desync(int sfd, char *buffer, 
+int desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst)
 {
     int pos = params.split;
@@ -154,12 +154,24 @@ int desync(int sfd, char *buffer,
     if (len && host) {
         LOG(LOG_S, "host: %.*s\n", len, host);
     }
+    
     if (type == IS_HTTP && params.mod_http) {
         if (mod_http(buffer, n, params.mod_http)) {
             fprintf(stderr, "mod http error\n");
             return -1;
         }
     }
+    else if (type == IS_HTTPS && params.tlsrec) {
+        int o = params.tlsrec_pos;
+        if (params.tlsrec_sni) {
+            o += (host - buffer - 9 - 5);
+        }
+        else if (o < 0) {
+            o += n;
+        }
+        n = part_tls(buffer, bfsize, n, o);
+    }
+    
     if (host && params.split_host) {
         pos += (host - buffer);
     }

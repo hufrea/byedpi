@@ -19,3 +19,5 @@ int parse_tls(char *buffer, size_t bsize, char **hs);
 int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port);
 
 int mod_http(char *buffer, size_t bsize, int m);
+
+ssize_t part_tls(char *buffer, size_t bsize, ssize_t n, int pos);

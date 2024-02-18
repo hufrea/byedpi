@@ -443,7 +443,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
             if (n) perror("recv data");
             return -1;
         }
-        if (desync(val->pair->fd, buffer, 
+        if (desync(val->pair->fd, buffer, bfsize,
                 n, (struct sockaddr *)&val->pair->in6)) {
             return -1;
         }
@@ -596,8 +596,7 @@ int listener(struct sockaddr_ina srv)
     if (signal(SIGPIPE, SIG_IGN))
         perror("signal SIGPIPE!");
     #endif
-    if (signal(SIGINT, on_cancel))
-        perror("signal SIGINT!");
+    signal(SIGINT, on_cancel);
     
     int srvfd = nb_socket(srv.sa.sa_family, SOCK_STREAM);
     if (srvfd < 0) {

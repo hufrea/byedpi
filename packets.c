@@ -212,3 +212,19 @@ int mod_http(char *buffer, size_t bsize, int m)
     }
     return 0;
 }
+
+
+ssize_t part_tls(char *buffer, size_t bsize, ssize_t n, int pos)
+{
+    if ((n < 3) || (bsize - n < 5) || 
+            (pos < 0) || (pos + 5 > n)) {
+        return n;
+    }
+    uint16_t r_sz = ANTOHS(buffer, 3);
+    memmove(buffer + 5 + pos + 5, buffer + 5 + pos, n - (5 + pos));
+    memcpy(buffer + 5 + pos, buffer, 3);
+    
+    *(uint16_t *)(buffer + 3) = htons(pos);
+    *(uint16_t *)(buffer + 5 + pos + 3) = htons(r_sz - pos);
+    return n + 5;
+}

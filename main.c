@@ -38,6 +38,9 @@ struct params params = {
     .def_ttl = 0,
     .custom_ttl = 0,
     .mod_http = 0,
+    .tlsrec = 0,
+    .tlsrec_pos = 0,
+    .tlsrec_sni = 0,
     .de_known = 0,
     
     .ipv6 = 1,
@@ -78,6 +81,8 @@ const char help_text[] = {
     "    -n, --tls-sni <str>       Change SNI in fake CH\n"
     #endif
     "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
+    "    -r, --tlsrec <offset>     Make 2 TLS records\n"
+    "    -L, --tlsrec-at-sni       Add SNI offset to tlsrec position\n"
 };
 
 
@@ -106,6 +111,8 @@ const struct option options[] = {
     {"tls-sni",       1, 0, 'n'},
     #endif
     {"mod-http",      1, 0, 'M'},
+    {"tlsrec",        1, 0, 'r'},
+    {"tlsrec-at-sni", 0, 0, 'L'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
     
@@ -397,6 +404,20 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
+            break;
+            
+        case 'r':
+            val = strtol(optarg, &end, 0);
+            if (val > 0xffff || *end)
+                invalid = 1;
+            else {
+                params.tlsrec_pos = val;
+                params.tlsrec = 1;
+            }
+            break;
+            
+        case 'L':
+            params.tlsrec_sni = 1;
             break;
             
         case 'g':

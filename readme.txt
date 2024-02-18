@@ -54,3 +54,7 @@ $ ./ciadpi --method disorder --split-pos 3 --port 1080
         "Host: name" -> "Host: NaMe"
     rmspace:
         "Host: name" -> "Host:name\t"
+-r, --tlsrec <offset>
+    Разделить ClientHello на отдельные записи по указанному смещению
+-L, --tlsrec-at-sni
+    Если найден SNI, то считать относительно его смещения
