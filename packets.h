@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 #define IS_UNKNOWN 0
 #define IS_HTTP 1
