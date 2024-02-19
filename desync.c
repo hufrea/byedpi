@@ -171,7 +171,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
     else if (type == IS_HTTPS && params.tlsrec) {
         int o = params.tlsrec_pos;
         if (params.tlsrec_sni) {
-            o += (host - buffer - 9 - 5);
+            o += (host - buffer - 5);
         }
         else if (o < 0) {
             o += n;
@@ -179,8 +179,11 @@ int desync(int sfd, char *buffer, size_t bfsize,
         n = part_tls(buffer, bfsize, n, o);
     }
     
-    if (host && params.split_host) {
-        pos += (host - buffer);
+    if (params.split_host) {
+        if (host)
+            pos += (host - buffer);
+        else
+            pos = 0;
     }
     else if (pos < 0) {
         pos += n;

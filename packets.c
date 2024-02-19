@@ -232,6 +232,9 @@ ssize_t part_tls(char *buffer, size_t bsize, ssize_t n, int pos)
         return n;
     }
     uint16_t r_sz = ANTOHS(buffer, 3);
+    if (r_sz < pos) {
+        return n;
+    }
     memmove(buffer + 5 + pos + 5, buffer + 5 + pos, n - (5 + pos));
     memcpy(buffer + 5 + pos, buffer, 3);
     
