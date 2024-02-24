@@ -1,10 +1,8 @@
 #define CONEV_H
 #include <conev.h>
-#include <error.h>
 
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 
 struct poolhd *init_pool(int count)
@@ -19,7 +17,6 @@ struct poolhd *init_pool(int count)
     #ifndef NOEPOLL
     int efd = epoll_create(count);
     if (efd < 0) {
-        uniperror("epoll_create");
         free(pool);
         return 0;
     }
@@ -149,7 +146,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
     if (i < 0) {
         i = (epoll_wait(pool->efd, pool->pevents, pool->max, -1) - 1);
         if (i < 0) {
-            uniperror("epoll_wait");
             return 0;
         }
     }
@@ -169,10 +165,7 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type, char add)
     else
        ev.events &= ~type;
     val->events = ev.events;
-    int s = epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
-    if (s)
-        uniperror("epoll_ctl");
-    return s;
+    return epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
 }
 
 #else
@@ -181,7 +174,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
     for (int i = *offs; ; i--) {
         if (i < 0) {
             if (poll(pool->pevents, pool->count, -1) <= 0) {
-                uniperror("poll");
                 return 0;
             }
             i = pool->count - 1;

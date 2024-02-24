@@ -98,7 +98,7 @@ int fake_attack(int sfd, char *buffer,
             break;
         }
         if (_sendfile(sfd, ffd, 0, pos) < 0) {
-            perror("sendfile");
+            uniperror("sendfile");
             break;
         }
         struct timespec delay = { 
@@ -111,7 +111,7 @@ int fake_attack(int sfd, char *buffer,
             break;
         }
         if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-            perror("send");
+            uniperror("send");
             break;
         }
         status = 0;
@@ -165,7 +165,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
     if (type == IS_HTTP && params.mod_http) {
         LOG(LOG_S, "modify HTTP: n=%ld\n", n);
         if (mod_http(buffer, n, params.mod_http)) {
-            fprintf(stderr, "mod http error\n");
+            LOG(LOG_E, "mod http error\n");
             return -1;
         }
     }

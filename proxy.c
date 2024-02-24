@@ -456,6 +456,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val,
             return -1;
         }
         if (mod_etype(pool, val, POLLOUT, 0)) {
+            uniperror("mod_etype");
             return -1;
         }
         val->type = EV_TUNNEL;
@@ -503,6 +504,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
         
         if (mod_etype(pool, val, POLLIN, 1) ||
                 mod_etype(pool, pair, POLLOUT, 0)) {
+            uniperror("mod_etype");
             return -1;
         }
     }
@@ -534,6 +536,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             
             if (mod_etype(pool, val, POLLIN, 0) ||
                     mod_etype(pool, pair, POLLOUT, 1)) {
+                uniperror("mod_etype");
                 return -1;
             }
             break;
