@@ -5,9 +5,6 @@
 #else
     #include <arpa/inet.h>
 #endif
-#if __ANDROID_NDK__
-    #include <android/log.h>
-#endif
 
 enum demode {
     DESYNC_NONE,
@@ -46,16 +43,3 @@ struct packet {
 };
 extern struct packet fake_tls;
 extern struct packet fake_http;
-
-#if __ANDROID_NDK__
-    #define LOG_S ANDROID_LOG_DEBUG
-    #define LOG_L ANDROID_LOG_VERBOSE
-    #define LOG(s, str, ...) \
-        __android_log_print(s, "proxy", str, ##__VA_ARGS__)
-#else
-    #define LOG_S 1
-    #define LOG_L 2
-    #define LOG(s, str, ...) \
-        if (params.debug >= s) printf(str, ##__VA_ARGS__)
-#endif
-    

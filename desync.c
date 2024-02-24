@@ -75,7 +75,7 @@ int fake_attack(int sfd, char *buffer,
     
     int ffd = memfd_create("name", O_RDWR);
     if (ffd < 0) {
-        perror("memfd_create");
+        uniperror("memfd_create");
         return -1;
     }
     char *p = 0;
@@ -83,12 +83,12 @@ int fake_attack(int sfd, char *buffer,
     
     while (status) {
         if (ftruncate(ffd, pos) < 0) {
-            perror("ftruncate");
+            uniperror("ftruncate");
             break;
         }
         p = mmap(0, pos, PROT_WRITE, MAP_SHARED, ffd, 0);
         if (p == MAP_FAILED) {
-            perror("mmap");
+            uniperror("mmap");
             p = 0;
             break;
         }
@@ -163,6 +163,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
     }
     
     if (type == IS_HTTP && params.mod_http) {
+        LOG(LOG_S, "modify HTTP: n=%ld\n", n);
         if (mod_http(buffer, n, params.mod_http)) {
             fprintf(stderr, "mod http error\n");
             return -1;
@@ -176,6 +177,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         else if (o < 0) {
             o += n;
         }
+        LOG(LOG_S, "tlsrec: pos=%d, n=%ld\n", o, n);
         n = part_tls(buffer, bfsize, n, o);
     }
     
@@ -188,7 +190,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
     else if (pos < 0) {
         pos += n;
     }
-    LOG(LOG_L, "split pos: %d, n: %ld\n", pos, n);
+    LOG(LOG_L, "split-pos=%d, n=%ld\n", pos, n);
     
     if (params.custom_ttl) {
         if (setttl(sfd, params.def_ttl, fa) < 0) {
