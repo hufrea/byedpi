@@ -5,6 +5,9 @@
 #else
     #include <arpa/inet.h>
 #endif
+#if __ANDROID__
+    #include <android/log.h>
+#endif
 
 enum demode {
     DESYNC_NONE,
@@ -44,9 +47,15 @@ struct packet {
 extern struct packet fake_tls;
 extern struct packet fake_http;
 
-#define LOG_S 1
-#define LOG_L 2
-
-#define LOG(s, str, ...) \
-    if (params.debug >= s) printf(str, ##__VA_ARGS__)
+#if __ANDROID__
+    #define LOG_S ANDROID_LOG_INFO
+    #define LOG_L ANDROID_LOG_DEBUG
+    #define LOG(s, str, ...) \
+        __android_log_print(ANDROID_LOG_DEBUG, "ByeDPINative", str, ##__VA_ARGS__)
+#else
+    #define LOG_S 1
+    #define LOG_L 2
+    #define LOG(s, str, ...) \
+        if (params.debug >= s) printf(str, ##__VA_ARGS__)
+#endif
     
