@@ -22,7 +22,7 @@
 #else
     #ifdef ANDROID_APP
     #define uniperror(str) \
-        __android_log_print(ANDROID_LOG_ERROR, "proxy",
+        __android_log_print(ANDROID_LOG_ERROR, "proxy", \
             "%s: %s\n", str, strerror(errno))
     #else
     #define uniperror(str) \
