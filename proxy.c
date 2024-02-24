@@ -81,7 +81,7 @@ static inline int nb_socket(int domain, int type)
     #else
     #ifndef __linux__
     if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
-        perror("fcntl");
+        uniperror("fcntl");
         close(fd);
         return -1;
     }
@@ -202,7 +202,7 @@ int s4_get_addr(char *buff, size_t n,
             return -1;
         }
         if (resolve(id_end + 1, len, dst)) {
-            fprintf(stderr, "not resolved: %.*s\n", len, id_end + 1);
+            LOG(LOG_E, "not resolved: %.*s\n", len, id_end + 1);
             return -1;
         }
     }
@@ -224,11 +224,11 @@ int s5_get_addr(char *buffer, ssize_t n,
             (r->atp == S_ATP_ID ? r->id.len + S_SIZE_ID : 
             (r->atp == S_ATP_I6 ? S_SIZE_I6 : 0)));
     if (n < o)  {
-        fprintf(stderr, "ss: bad request\n");
+        LOG(LOG_E, "ss: bad request\n");
         return S_ER_GEN;
     }
     if (r->cmd != S_CMD_CONN) {
-        fprintf(stderr, "ss: unsupported cmd: 0x%x\n", r->cmd);
+        LOG(LOG_E, "ss: unsupported cmd: 0x%x\n", r->cmd);
         return S_ER_CMD;
     }
     switch (r->atp) {
@@ -243,7 +243,7 @@ int s5_get_addr(char *buffer, ssize_t n,
             }
             if (r->id.len < 3 || 
                     resolve(r->id.domain, r->id.len, addr)) {
-                fprintf(stderr, "not resolved: %.*s\n", r->id.len, r->id.domain);
+                LOG(LOG_E, "not resolved: %.*s\n", r->id.len, r->id.domain);
                 return S_ER_HOST;
             }
             break;
@@ -272,7 +272,7 @@ int create_conn(struct poolhd *pool,
         map_fix(&addr, 0);
     }
     if (addr.sa.sa_family != params.baddr.sin6_family) {
-        fprintf(stderr, "different addresses family\n");
+        LOG(LOG_E, "different addresses family\n");
         return -1;
     }
     int sfd = nb_socket(addr.sa.sa_family, SOCK_STREAM);
@@ -350,7 +350,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return 0;
         }
         if (n < S_SIZE_MIN) {
-            fprintf(stderr, "ss: request to small\n");
+            LOG(LOG_E, "ss: request to small\n");
             return -1;
         }
         int s5e = s5_get_addr(buffer, n, &dst);
@@ -377,7 +377,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
     }
     else {
-        fprintf(stderr, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
+        LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
         return -1;
     }
     val->type = EV_IGNORE;
@@ -411,7 +411,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             uniperror("ioctlsocket");
         #else
         if (fcntl(c, F_SETFL, O_NONBLOCK) < 0) {
-            perror("fcntl");
+            uniperror("fcntl");
         #endif
             close(c);
             continue;
@@ -603,11 +603,11 @@ int big_loop(int srvfd)
                 continue;
             
             default:
-                fprintf(stderr, "???\n");
+                LOG(LOG_E, "???\n");
                 NOT_EXIT = 0;
         }
     }
-    fprintf(stderr, "exit\n");
+    LOG(LOG_E, "exit\n");
     free(buffer);
     destroy_pool(pool);
     return 0;
@@ -618,7 +618,7 @@ int listener(struct sockaddr_ina srv)
 {
     #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN))
-        perror("signal SIGPIPE!");
+        uniperror("signal SIGPIPE!");
     #endif
     signal(SIGINT, on_cancel);
     

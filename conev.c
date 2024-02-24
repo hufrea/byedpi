@@ -19,7 +19,7 @@ struct poolhd *init_pool(int count)
     #ifndef NOEPOLL
     int efd = epoll_create(count);
     if (efd < 0) {
-        perror("epoll_create");
+        uniperror("epoll_create");
         free(pool);
         return 0;
     }
@@ -149,7 +149,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
     if (i < 0) {
         i = (epoll_wait(pool->efd, pool->pevents, pool->max, -1) - 1);
         if (i < 0) {
-            perror("epoll_wait");
+            uniperror("epoll_wait");
             return 0;
         }
     }
@@ -171,7 +171,7 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type, char add)
     val->events = ev.events;
     int s = epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
     if (s)
-        perror("epoll_ctl");
+        uniperror("epoll_ctl");
     return s;
 }
 
