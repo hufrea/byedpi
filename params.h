@@ -48,10 +48,10 @@ extern struct packet fake_tls;
 extern struct packet fake_http;
 
 #if __ANDROID__
-    #define LOG_S ANDROID_LOG_INFO
-    #define LOG_L ANDROID_LOG_DEBUG
+    #define LOG_S ANDROID_LOG_DEBUG
+    #define LOG_L ANDROID_LOG_VERBOSE
     #define LOG(s, str, ...) \
-        __android_log_print(ANDROID_LOG_DEBUG, "ByeDPINative", str, ##__VA_ARGS__)
+        __android_log_print(s, "proxy", str, ##__VA_ARGS__)
 #else
     #define LOG_S 1
     #define LOG_L 2
