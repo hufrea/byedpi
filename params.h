@@ -5,7 +5,7 @@
 #else
     #include <arpa/inet.h>
 #endif
-#if __ANDROID__
+#if __ANDROID_NDK__
     #include <android/log.h>
 #endif
 
@@ -47,7 +47,7 @@ struct packet {
 extern struct packet fake_tls;
 extern struct packet fake_http;
 
-#if __ANDROID__
+#if __ANDROID_NDK__
     #define LOG_S ANDROID_LOG_DEBUG
     #define LOG_L ANDROID_LOG_VERBOSE
     #define LOG(s, str, ...) \
