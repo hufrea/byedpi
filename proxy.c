@@ -553,14 +553,21 @@ int big_loop(int srvfd)
     struct poolhd *pool = init_pool(params.max_open * 2 + 1);
     if (!pool) {
         perror("init pool");
+        close(srvfd);
+        return -1;
+    }
+    if (!add_event(pool, EV_ACCEPT, srvfd, 0)) {
+        perror("add event");
+        destroy_pool(pool);
+        close(srvfd);
         return -1;
     }
     char *buffer = malloc(params.bfsize);
     if (!buffer) {
         perror("malloc");
+        destroy_pool(pool);
         return -1;
     }
-    add_event(pool, EV_ACCEPT, srvfd, 0);
     
     struct eval *val;
     int i = -1, etype;
@@ -620,7 +627,7 @@ int big_loop(int srvfd)
 int listener(struct sockaddr_ina srv)
 {
     #ifdef SIGPIPE
-    if (signal(SIGPIPE, SIG_IGN))
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
         uniperror("signal SIGPIPE!");
     #endif
     signal(SIGINT, on_cancel);
@@ -647,7 +654,5 @@ int listener(struct sockaddr_ina srv)
         close(srvfd);
         return -1;
     }
-    int status = big_loop(srvfd);
-    close(srvfd);
-    return status;
+    return big_loop(srvfd);
 }

@@ -153,7 +153,7 @@ char *ftob(char *name, ssize_t *sl)
 }
 
 
-int get_addr(char *str, struct sockaddr_ina *addr)
+int get_addr(const char *str, struct sockaddr_ina *addr)
 {
     struct addrinfo hints = {0}, *res = 0;
     
