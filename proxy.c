@@ -546,7 +546,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 }
 
 
-int big_loop(int srvfd) 
+int event_loop(int srvfd) 
 {
     size_t bfsize = params.bfsize;
     
@@ -587,7 +587,8 @@ int big_loop(int srvfd)
         }
         switch (val->type) {
             case EV_ACCEPT:
-                if (on_accept(pool, val))
+                if ((etype & POLLHUP) ||
+                        on_accept(pool, val))
                     NOT_EXIT = 0;
                 continue;
             
@@ -598,12 +599,14 @@ int big_loop(int srvfd)
                 continue;
         
             case EV_TUNNEL:
-                if (on_tunnel(pool, val, buffer, bfsize, etype & POLLOUT))
+                if (on_tunnel(pool, val, 
+                        buffer, bfsize, etype & POLLOUT))
                     del_event(pool, val);
                 continue;
         
             case EV_CONNECT:
-                if (on_connect(pool, val, buffer, bfsize, etype & POLLERR))
+                if (on_connect(pool, val, 
+                        buffer, bfsize, etype & POLLERR))
                     del_event(pool, val);
                 continue;
                 
@@ -617,22 +620,16 @@ int big_loop(int srvfd)
                 NOT_EXIT = 0;
         }
     }
-    LOG(LOG_E, "exit\n");
+    LOG(LOG_S, "exit\n");
     free(buffer);
     destroy_pool(pool);
     return 0;
 }
 
 
-int listener(struct sockaddr_ina srv)
+int listen_socket(struct sockaddr_ina *srv)
 {
-    #ifdef SIGPIPE
-    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
-        uniperror("signal SIGPIPE!");
-    #endif
-    signal(SIGINT, on_cancel);
-    
-    int srvfd = nb_socket(srv.sa.sa_family, SOCK_STREAM);
+    int srvfd = nb_socket(srv->sa.sa_family, SOCK_STREAM);
     if (srvfd < 0) {
         uniperror("socket");  
         return -1;  
@@ -644,7 +641,7 @@ int listener(struct sockaddr_ina srv)
         close(srvfd);
         return -1;
     }
-    if (bind(srvfd, &srv.sa, sizeof(srv)) < 0) {
+    if (bind(srvfd, &srv->sa, sizeof(*srv)) < 0) {
         uniperror("bind");  
         close(srvfd);
         return -1;
@@ -654,5 +651,22 @@ int listener(struct sockaddr_ina srv)
         close(srvfd);
         return -1;
     }
-    return big_loop(srvfd);
+    return srvfd;
 }
+
+
+int run(struct sockaddr_ina *srv)
+{
+    #ifdef SIGPIPE
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+        uniperror("signal SIGPIPE!");
+    #endif
+    signal(SIGINT, on_cancel);
+    
+    int fd = listen_socket(srv);
+    if (fd < 0) {
+        return -1;
+    }
+    return event_loop(fd);
+}
+    

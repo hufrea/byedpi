@@ -443,7 +443,7 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    int status = listener(s);
+    int status = run(&s);
     #ifdef _WIN32
     WSACleanup();
     #endif

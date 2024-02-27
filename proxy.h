@@ -94,4 +94,6 @@ enum s4_rep {
 #define S_SIZE_I6 22
 #define S_SIZE_ID 7
 
-int listener(struct sockaddr_ina srv);
+int listen_socket(struct sockaddr_ina *srv);
+int event_loop(int srvfd);
+int run(struct sockaddr_ina *srv);
