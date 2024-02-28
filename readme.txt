@@ -1,10 +1,11 @@
 Реализация некоторых способов запутывания DPI.
-Программа представляет собой SOCKS прокси сервер, который не нуждается в повышенных привилегиях.
+Программа представляет собой локальный SOCKS прокси сервер.
 
-Пример использования:
+--------------
+Использование:
 $ ./ciadpi --method disorder --split-pos 3
 
-Чуть более подробный текст "--help":
+Описание аргументов:
 -i, --ip <ip>
     Прослушиваемый IP, по умолчанию 0.0.0.0
 
@@ -81,3 +82,20 @@ $ ./ciadpi --method disorder --split-pos 3
 
 -L, --tlsrec-at-sni
     Отсчитывать позицию tlsrec относительно SNI
+    
+-------
+Сборка:
+Для сборки понадобится: 
+make, gcc/clang для Linux, mingw для Windows
+
+# Linux
+$ make
+# Windows
+$ make windows CC=x86_64-w64-mingw32-gcc
+
+-----------------
+Как это работает?
+Подробно описано тут:
+https://github.com/bol-van/zapret/blob/master/docs/readme.txt
+https://geneva.cs.umd.edu/papers/geneva_ccs19.pdf
+https://habr.com/ru/post/335436
