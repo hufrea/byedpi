@@ -177,8 +177,11 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
         h_end = 0;
         do {
             h = memchr(h, ':', l_end - h);
-            if (h) h_end = h;
-        } while (h);
+            if (h) {
+                h_end = h;
+                h++;
+            }
+        } while (h && h < l_end);
     }
     
     if (!h_end) {
