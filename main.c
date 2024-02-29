@@ -31,7 +31,11 @@ struct packet fake_tls = {
 },
 fake_http = { 
     sizeof(http_data), http_data
+},
+oob_data = { 
+    1, "a"
 };
+
 
 
 struct params params = {
@@ -71,9 +75,9 @@ const char help_text[] = {
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     #ifdef FAKE_SUPPORT
-    "    -m, --method <s|d|f>      Desync method: split,disorder,fake\n"
+    "    -m, --method <s|d|o|f>    Desync method: split,disorder,oob,fake\n"
     #else
-    "    -m, --method <s|d>        Desync method: split,disorder\n"
+    "    -m, --method <s|d|o>      Desync method: split,disorder,oob\n"
     #endif
     "    -s, --split-pos <offset>  Split position, default 3\n"
     "    -H, --split-at-host       Add Host/SNI offset to split position\n"
@@ -83,6 +87,7 @@ const char help_text[] = {
     "    -o, --fake-http <file>    Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake CH\n"
     #endif
+    "    -e, --oob-data <file>     Set custom oob bytes\n"
     "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <offset>     Make 2 TLS records\n"
     "    -L, --tlsrec-at-sni       Add SNI offset to tlsrec position\n"
@@ -111,6 +116,7 @@ const struct option options[] = {
     {"fake-http",     1, 0, 'o'},
     {"tls-sni",       1, 0, 'n'},
     #endif
+    {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
     {"tlsrec-at-sni", 0, 0, 'L'},
@@ -314,6 +320,9 @@ int main(int argc, char **argv)
                 case 'd': 
                     params.attack = DESYNC_DISORDER;
                     break;
+                case 'o': 
+                    params.attack = DESYNC_OOB;
+                    break;
                 #ifdef FAKE_SUPPORT
                 case 'f': 
                     params.attack = DESYNC_FAKE;
@@ -359,6 +368,14 @@ int main(int argc, char **argv)
         case 'o':
             fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
+                perror("read file");
+                return -1;
+            }
+            break;
+            
+        case 'e':
+            oob_data.data = ftob(optarg, &oob_data.size);
+            if (!oob_data.data) {
                 perror("read file");
                 return -1;
             }

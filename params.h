@@ -10,6 +10,7 @@ enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
     DESYNC_DISORDER,
+    DESYNC_OOB,
     DESYNC_FAKE
 };
 
@@ -43,3 +44,4 @@ struct packet {
 };
 extern struct packet fake_tls;
 extern struct packet fake_http;
+extern struct packet oob_data;

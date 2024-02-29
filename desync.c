@@ -144,6 +144,38 @@ int disorder_attack(int sfd, char *buffer,
 }
 
 
+int oob_attack(int sfd, char *buffer,
+        ssize_t n, int pos, int fa)
+{
+    struct packet pkt = oob_data;
+    
+    if (send(sfd, buffer, pos, 0) < 0) {
+        uniperror("send");
+        return -1;
+    }
+    for (int i = 0; i < pkt.size; i++) {
+        if (send(sfd, pkt.data + i, 1, MSG_OOB) < 0) {
+            uniperror("send");
+            return -1;
+        }
+        #ifndef _WIN32
+        if (pkt.size == 1) {
+            break;
+        }
+        struct timespec delay = { 
+            .tv_nsec = params.sfdelay * 1000
+        };
+        nanosleep(&delay, 0);
+        #endif
+    }
+    if (send(sfd, buffer + pos, n - pos, 0) < 0) {
+        uniperror("send");
+        return -1;
+    }
+    return 0;
+}
+
+            
 int desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst)
 {
@@ -214,6 +246,9 @@ int desync(int sfd, char *buffer, size_t bfsize,
         case DESYNC_DISORDER:
             return disorder_attack(sfd, buffer, n, pos, fa);
         
+        case DESYNC_OOB:
+            return oob_attack(sfd, buffer, n, pos, fa);
+            
         case DESYNC_SPLIT:
         default:
             if (send(sfd, buffer, pos, 0) < 0) {
