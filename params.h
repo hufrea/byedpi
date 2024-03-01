@@ -18,7 +18,7 @@ struct params {
     char de_known;
     int ttl;
     int split;
-    size_t sfdelay;
+    long sfdelay;
     enum demode attack;
     char split_host;
     int def_ttl;
