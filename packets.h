@@ -13,7 +13,7 @@
 extern char tls_data[517];
 extern char http_data[43];
 
-int change_tls_sni(char *host, char *buffer, size_t bsize);
+int change_tls_sni(const char *host, char *buffer, size_t bsize);
 
 int parse_tls(char *buffer, size_t bsize, char **hs);
 

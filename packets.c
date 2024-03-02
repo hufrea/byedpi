@@ -85,7 +85,7 @@ int find_tls_ext_offset(uint16_t type, char *data, size_t size)
 }
 
 
-int change_tls_sni(char *host, char *buffer, size_t bsize)
+int change_tls_sni(const char *host, char *buffer, size_t bsize)
 {
     int sni_offs, pad_offs;
     
