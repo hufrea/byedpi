@@ -159,30 +159,20 @@ int disorder_attack(int sfd, char *buffer,
 int oob_attack(int sfd, char *buffer,
         ssize_t n, int pos, int fa)
 {
-    int size = oob_data.size;
-    char *data = oob_data.data;
+    int size = oob_data.size - 1;
+    char *data = oob_data.data + 1;
     
-    if (pos < n && size) {
-        char rchar = buffer[pos];
-        buffer[pos] = data[0];
-        
-        if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
-            uniperror("send");
-            buffer[pos] = rchar;
-            return -1;
-        }
+    char rchar = buffer[pos];
+    buffer[pos] = data[0];
+    
+    if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
+        uniperror("send");
         buffer[pos] = rchar;
-        size--;
-        data++;
-        if (size) {
-            delay(params.sfdelay);
-        }
+        return -1;
     }
-    else {
-        if (send(sfd, buffer, pos, 0) < 0) {
-            uniperror("send");
-            return -1;
-        }
+    buffer[pos] = rchar;
+    if (size) {
+        delay(params.sfdelay);
     }
     for (int i = 0; i < size; i++) {
         if (send(sfd, data + i, 1, MSG_OOB) < 0) {
