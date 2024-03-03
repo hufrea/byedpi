@@ -18,7 +18,7 @@
 
 #ifdef _WIN32
     #define uniperror(str) \
-        fprintf(stderr, "%s: %d\n", str, WSAGetLastError())
+        fprintf(stderr, "%s: %d\n", str, GetLastError())
 #else
     #ifdef ANDROID_APP
     #define uniperror(str) \
