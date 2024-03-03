@@ -529,7 +529,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             
             val->size = n - sn;
             if (!(val->tmpbuf = malloc(val->size))) {
-                perror("malloc");
+                uniperror("malloc");
                 return -1;
             }
             memcpy(val->tmpbuf, buffer + sn, val->size);
@@ -552,19 +552,19 @@ int event_loop(int srvfd)
     
     struct poolhd *pool = init_pool(params.max_open * 2 + 1);
     if (!pool) {
-        perror("init pool");
+        uniperror("init pool");
         close(srvfd);
         return -1;
     }
     if (!add_event(pool, EV_ACCEPT, srvfd, 0)) {
-        perror("add event");
+        uniperror("add event");
         destroy_pool(pool);
         close(srvfd);
         return -1;
     }
     char *buffer = malloc(params.bfsize);
     if (!buffer) {
-        perror("malloc");
+        uniperror("malloc");
         destroy_pool(pool);
         return -1;
     }

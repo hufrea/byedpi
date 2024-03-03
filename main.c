@@ -360,7 +360,7 @@ int main(int argc, char **argv)
         case 'l':
             fake_tls.data = ftob(optarg, &fake_tls.size);
             if (!fake_tls.data) {
-                perror("read file");
+                uniperror("read file");
                 return -1;
             }
             break;
@@ -368,7 +368,7 @@ int main(int argc, char **argv)
         case 'o':
             fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
-                perror("read file");
+                uniperror("read file");
                 return -1;
             }
             break;
@@ -376,7 +376,7 @@ int main(int argc, char **argv)
         case 'e':
             oob_data.data = ftob(optarg, &oob_data.size);
             if (!oob_data.data) {
-                perror("read file");
+                uniperror("read file");
                 return -1;
             }
             break;
