@@ -14,13 +14,18 @@ enum demode {
     DESYNC_FAKE
 };
 
+struct part {
+    int m;
+    long pos;
+    struct part *next;
+};
+
 struct params {
     char de_known;
     int ttl;
-    int split;
-    long sfdelay;
-    enum demode attack;
+    struct part *parts;
     char split_host;
+    long sfdelay;
     int def_ttl;
     char custom_ttl;
     int mod_http;

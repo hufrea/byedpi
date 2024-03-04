@@ -79,8 +79,8 @@ static inline void delay(long mk)
 #endif
 
 #ifndef _WIN32
-int fake_attack(int sfd, char *buffer,
-        size_t n, int cnt, int pos, int fa)
+int send_fake(int sfd, char *buffer,
+        int cnt, long pos, int fa)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -113,17 +113,10 @@ int fake_attack(int sfd, char *buffer,
             uniperror("sendfile");
             break;
         }
-        struct timespec delay = { 
-            .tv_nsec = params.sfdelay * 1000
-        };
-        nanosleep(&delay, 0);
+        delay(params.sfdelay);
         memcpy(p, buffer, pos);
         
         if (setttl(sfd, params.def_ttl, fa) < 0) {
-            break;
-        }
-        if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-            uniperror("send");
             break;
         }
         status = 0;
@@ -134,8 +127,43 @@ int fake_attack(int sfd, char *buffer,
 }
 #endif
 
-int disorder_attack(int sfd, char *buffer,
-        ssize_t n, int pos, int fa)
+int send_oob(int sfd, char *buffer,
+        ssize_t n, long pos)
+{
+    ssize_t size = oob_data.size;
+    char *data = oob_data.data;
+    
+    if (pos + 1 < n) {
+        char rchar = buffer[pos];
+        buffer[pos] = data[0];
+        
+        if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
+            uniperror("send");
+            buffer[pos] = rchar;
+            return -1;
+        }
+        buffer[pos] = rchar;
+        size--;
+        data++;
+        if (size) {
+            delay(params.sfdelay);
+        }
+    }
+    for (long i = 0; i < size; i++) {
+        if (send(sfd, data + i, 1, MSG_OOB) < 0) {
+            uniperror("send");
+            return -1;
+        }
+        if (size != 1) {
+            delay(params.sfdelay);
+        }
+    }
+    return 0;
+}
+
+
+int send_disorder(int sfd, 
+        char *buffer, long pos, int fa)
 {
     int bttl = 1;
     if (setttl(sfd, bttl, fa) < 0) {
@@ -148,53 +176,13 @@ int disorder_attack(int sfd, char *buffer,
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
-    if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-        uniperror("send");
-        return -1;
-    }
     return 0;
 }
 
 
-int oob_attack(int sfd, char *buffer,
-        ssize_t n, int pos, int fa)
-{
-    int size = oob_data.size - 1;
-    char *data = oob_data.data + 1;
-    
-    char rchar = buffer[pos];
-    buffer[pos] = data[0];
-    
-    if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
-        uniperror("send");
-        buffer[pos] = rchar;
-        return -1;
-    }
-    buffer[pos] = rchar;
-    if (size) {
-        delay(params.sfdelay);
-    }
-    for (int i = 0; i < size; i++) {
-        if (send(sfd, data + i, 1, MSG_OOB) < 0) {
-            uniperror("send");
-            return -1;
-        }
-        if (size != 1) {
-            delay(params.sfdelay);
-        }
-    }
-    if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-        uniperror("send");
-        return -1;
-    }
-    return 0;
-}
-
-            
 int desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst)
 {
-    int pos = params.split;
     char *host = 0;
     int len = 0, type = 0;
     int fa = get_family(dst);
@@ -228,52 +216,70 @@ int desync(int sfd, char *buffer, size_t bfsize,
         n = part_tls(buffer, bfsize, n, o);
     }
     
-    if (params.split_host) {
-        if (host)
-            pos += (host - buffer);
-        else
-            pos = 0;
-    }
-    else if (pos < 0) {
-        pos += n;
-    }
-    LOG(LOG_L, "split-pos=%d, n=%ld\n", pos, n);
-    
     if (params.custom_ttl) {
         if (setttl(sfd, params.def_ttl, fa) < 0) {
             return -1;
         }
     }
-    if (pos <= 0 || pos >= n ||
-            params.attack == DESYNC_NONE ||
-            (!type && params.de_known))
-    {
-        if (send(sfd, buffer, n, 0) < 0) {
-            uniperror("send");
-            return -1;
-        }
+    struct part *part = params.parts;
+    long lp = 0;
+    
+    if ((!type && params.de_known)) {
+        part = 0;
     }
-    else switch (params.attack) {
+    while (part) {
+        long pos = part->pos;
+        if (params.split_host) {
+            if (host)
+                pos += (host - buffer);
+            else
+                pos = 0;
+        }
+        else if (pos < 0) {
+            pos += n;
+        }
+        if (pos <= 0 || pos >= n || pos <= lp) {
+            break;
+        }
+        LOG(LOG_S, "split: pos=%ld-%ld, m=%d\n", lp, pos, part->m);
+        
+        int s = 0;
+        switch (part->m) {
         #ifndef _WIN32
         case DESYNC_FAKE:
-            return fake_attack(sfd, buffer, n, type, pos, fa);
+            s = send_fake(sfd, 
+                buffer + lp, type, pos - lp, fa);
+            break;
         #endif
         case DESYNC_DISORDER:
-            return disorder_attack(sfd, buffer, n, pos, fa);
+            s = send_disorder(sfd, 
+                buffer + lp, pos - lp, fa);
+            break;
         
         case DESYNC_OOB:
-            return oob_attack(sfd, buffer, n, pos, fa);
+            s = send_oob(sfd, 
+                buffer + lp, n - lp, pos - lp);
+            break;
             
         case DESYNC_SPLIT:
         default:
-            if (send(sfd, buffer, pos, 0) < 0) {
+            if (send(sfd, buffer + lp, pos - lp, 0) < 0) {
                 uniperror("send");
                 return -1;
             }
-            if (send(sfd, buffer + pos, n - pos, 0) < 0) {
-                uniperror("send");
-                return -1;
-            }
+        }
+        if (s) {
+            return -1;
+        }
+        lp = pos;
+        part = part->next;
+    }
+    if (lp < n) {
+        LOG(LOG_S, "send: pos=%ld-%ld\n", lp, n);
+        if (send(sfd, buffer + lp, n - lp, 0) < 0) {
+            uniperror("send");
+            return -1;
+        }
     }
     return 0;
 }

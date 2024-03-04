@@ -40,9 +40,8 @@ oob_data = {
 
 struct params params = {
     .ttl = 8,
-    .split = 3,
+    .parts = 0,
     .sfdelay = 3000,
-    .attack = DESYNC_NONE,
     .split_host = 0,
     .def_ttl = 0,
     .custom_ttl = 0,
@@ -74,17 +73,15 @@ const char help_text[] = {
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
-    #ifdef FAKE_SUPPORT
-    "    -m, --method <s|d|o|f>    Desync method: split,disorder,oob,fake\n"
-    #else
-    "    -m, --method <s|d|o>      Desync method: split,disorder,oob\n"
-    #endif
-    "    -s, --split-pos <offset>  Split position, default 3\n"
     "    -H, --split-at-host       Add Host/SNI offset to split position\n"
+    "    -s, --split <offset>      Split packet at spec position\n"
+    "    -s, --disorder <offset>   Split and send reverse order\n"
+    "    -o, --oob <offset>        Split and send as OOB data\n"
     #ifdef FAKE_SUPPORT
+    "    -f, --fake <offset>       Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -l, --fake-tls <file>\n"
-    "    -o, --fake-http <file>    Set custom fake packet\n"
+    "    -j, --fake-http <file>    Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake CH\n"
     #endif
     "    -e, --oob-data <file>     Set custom oob bytes\n"
@@ -108,12 +105,14 @@ const struct option options[] = {
     
     {"desync-known ", 0, 0, 'K'},
     {"split-at-host", 0, 0, 'H'},
-    {"method",        1, 0, 'm'},
-    {"split-pos",     1, 0, 's'},
+    {"split",         1, 0, 's'},
+    {"disorder",      1, 0, 'd'},
+    {"oob",           1, 0, 'o'},
+    {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
     #ifdef FAKE_SUPPORT
     {"fake-tls",      1, 0, 'l'},
-    {"fake-http",     1, 0, 'o'},
+    {"fake-http",     1, 0, 'j'},
     {"tls-sni",       1, 0, 'n'},
     #endif
     {"oob-data",      1, 0, 'e'},
@@ -308,37 +307,57 @@ int main(int argc, char **argv)
             params.split_host = 1;
             break;
             
-        case 'm':
-            if (params.attack != DESYNC_NONE) {
-                fprintf(stderr, "methods incompatible\n");
-                invalid = 1;
-            }
-            else switch (*optarg) {
-                case 's': 
-                    params.attack = DESYNC_SPLIT;
-                    break;
-                case 'd': 
-                    params.attack = DESYNC_DISORDER;
-                    break;
-                case 'o': 
-                    params.attack = DESYNC_OOB;
-                    break;
-                #ifdef FAKE_SUPPORT
-                case 'f': 
-                    params.attack = DESYNC_FAKE;
-                    break;
-                #endif
-                default:
-                    invalid = 1;
-            }
-            break;
-        
-        case 's':    
+        case 's':
+        case 'd':
+        case 'o':
+        case 'f':
             val = strtol(optarg, &end, 0);
-            if (val < INT_MIN || val > INT_MAX || *end)
+            if (*end) {
                 invalid = 1;
-            else
-                params.split = val;
+                break;
+            }
+            struct part *part = malloc(sizeof(struct part));
+            if (!part) {
+                uniperror("malloc");
+                return -1;
+            }
+            switch (rez) {
+                case 's': part->m = DESYNC_SPLIT;
+                    break;
+                case 'd': part->m = DESYNC_DISORDER;
+                    break;
+                case 'o': part->m = DESYNC_OOB;
+                    break;
+                case 'f': part->m = DESYNC_FAKE;
+            }
+            part->pos = val;
+            
+            if (!params.parts) {
+                params.parts = part;
+            }
+            else {
+                struct part *p = params.parts, *v = 0;
+                while (p) {
+                    if (val < p->pos) {
+                        if (v) {
+                            part->next = p;
+                            v->next = part;
+                        }
+                        else {
+                            part->next = params.parts;
+                            params.parts = part;
+                        }
+                        break;
+                    }
+                    if (!p->next) {
+                        p->next = part;
+                        part->next = 0;
+                        break;
+                    }
+                    v = p;
+                    p = p->next;
+                }
+            }
             break;
             
         case 't':
@@ -365,7 +384,7 @@ int main(int argc, char **argv)
             }
             break;
             
-        case 'o':
+        case 'j':
             fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
                 uniperror("read file");
@@ -456,7 +475,7 @@ int main(int argc, char **argv)
     if (b.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }
-    if (!params.def_ttl && params.attack != DESYNC_NONE) {
+    if (!params.def_ttl) {
         if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
