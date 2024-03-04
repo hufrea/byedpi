@@ -3,7 +3,7 @@
 
 --------------
 Использование:
-$ ./ciadpi --method disorder --split-pos 3
+$ ./ciadpi --split 3 --disorder 10
 
 Описание аргументов:
 -i, --ip <ip>
