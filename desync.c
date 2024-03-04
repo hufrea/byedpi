@@ -205,15 +205,27 @@ int desync(int sfd, char *buffer, size_t bfsize,
         }
     }
     else if (type == IS_HTTPS && params.tlsrec) {
-        int o = params.tlsrec_pos;
-        if (params.tlsrec_sni) {
-            o += (host - buffer - 5);
+        struct part *part = params.tlsrec;
+        int i = 0;
+        long lp = 0;
+        while (part) {
+            long pos = part->pos + i * 5;
+            if (params.tlsrec_sni) {
+                pos += (host - buffer - 5);
+            }
+            else if (pos < 0) {
+                pos += n;
+            }
+            LOG(LOG_S, "tlsrec: pos=%ld, n=%ld\n", pos, n);
+            if (!part_tls(buffer + lp, 
+                    bfsize - lp, n - lp, pos - lp)) {
+                break;
+            }
+            n += 5;
+            lp = pos + 5;
+            i++;
+            part = part->next;
         }
-        else if (o < 0) {
-            o += n;
-        }
-        LOG(LOG_S, "tlsrec: pos=%d, n=%ld\n", o, n);
-        n = part_tls(buffer, bfsize, n, o);
     }
     
     if (params.custom_ttl) {

@@ -47,7 +47,6 @@ struct params params = {
     .custom_ttl = 0,
     .mod_http = 0,
     .tlsrec = 0,
-    .tlsrec_pos = 0,
     .tlsrec_sni = 0,
     .de_known = 0,
     
@@ -84,9 +83,9 @@ const char help_text[] = {
     "    -j, --fake-http <file>    Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake CH\n"
     #endif
-    "    -e, --oob-data <file>     Set custom oob bytes\n"
+    "    -e, --oob-data <file>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
-    "    -r, --tlsrec <offset>     Make 2 TLS records\n"
+    "    -r, --tlsrec <offset>     Make TLS record at offset\n"
     "    -L, --tlsrec-at-sni       Add SNI offset to tlsrec position\n"
 };
 
@@ -193,6 +192,44 @@ int get_default_ttl()
     }
     close(fd);
     return orig_ttl;
+}
+
+
+struct part *add_part(struct part **root, long val)
+{
+    struct part *part = malloc(sizeof(struct part));
+    if (!part) {
+        uniperror("malloc");
+        return 0;
+    }
+    part->pos = val;
+    
+    struct part *p = *root, *v = 0;
+    if (!p) {
+        *root = part;
+        return part;
+    }
+    while (p) {
+        if (val < p->pos) {
+            if (v) {
+                part->next = p;
+                v->next = part;
+            }
+            else {
+                part->next = *root;
+                *root = part;
+            }
+            break;
+        }
+        if (!p->next) {
+            p->next = part;
+            part->next = 0;
+            break;
+        }
+        v = p;
+        p = p->next;
+    }
+    return part;
 }
 
 
@@ -316,9 +353,8 @@ int main(int argc, char **argv)
                 invalid = 1;
                 break;
             }
-            struct part *part = malloc(sizeof(struct part));
+            struct part *part = add_part(&params.parts, val);
             if (!part) {
-                uniperror("malloc");
                 return -1;
             }
             switch (rez) {
@@ -329,34 +365,6 @@ int main(int argc, char **argv)
                 case 'o': part->m = DESYNC_OOB;
                     break;
                 case 'f': part->m = DESYNC_FAKE;
-            }
-            part->pos = val;
-            
-            if (!params.parts) {
-                params.parts = part;
-            }
-            else {
-                struct part *p = params.parts, *v = 0;
-                while (p) {
-                    if (val < p->pos) {
-                        if (v) {
-                            part->next = p;
-                            v->next = part;
-                        }
-                        else {
-                            part->next = params.parts;
-                            params.parts = part;
-                        }
-                        break;
-                    }
-                    if (!p->next) {
-                        p->next = part;
-                        part->next = 0;
-                        break;
-                    }
-                    v = p;
-                    p = p->next;
-                }
             }
             break;
             
@@ -424,11 +432,13 @@ int main(int argc, char **argv)
             
         case 'r':
             val = strtol(optarg, &end, 0);
-            if (val > 0xffff || *end)
+            if (val > 0xffff || *end) {
                 invalid = 1;
-            else {
-                params.tlsrec_pos = val;
-                params.tlsrec = 1;
+                break;
+            }
+            part = add_part(&params.tlsrec, val);
+            if (!part) {
+                return -1;
             }
             break;
             
