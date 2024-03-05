@@ -40,14 +40,14 @@ oob_data = {
 
 struct params params = {
     .ttl = 8,
+    .parts_n = 0,
     .parts = 0,
-    .sfdelay = 3000,
-    .split_host = 0,
+    .sfdelay = 3,
     .def_ttl = 0,
     .custom_ttl = 0,
     .mod_http = 0,
     .tlsrec = 0,
-    .tlsrec_sni = 0,
+    .tlsrec_n = 0,
     .de_known = 0,
     
     .ipv6 = 1,
@@ -72,12 +72,11 @@ const char help_text[] = {
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
-    "    -H, --split-at-host       Add Host/SNI offset to split position\n"
-    "    -s, --split <offset>      Split packet at spec position\n"
-    "    -s, --disorder <offset>   Split and send reverse order\n"
-    "    -o, --oob <offset>        Split and send as OOB data\n"
+    "    -s, --split <n[+s]>       Split packet at n, +s to add SNI offset\n"
+    "    -s, --disorder <n[+s]>    Split and send reverse order\n"
+    "    -o, --oob <n[+s]>         Split and send as OOB data\n"
     #ifdef FAKE_SUPPORT
-    "    -f, --fake <offset>       Split and send fake packet\n"
+    "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -l, --fake-tls <file>\n"
     "    -j, --fake-http <file>    Set custom fake packet\n"
@@ -85,8 +84,7 @@ const char help_text[] = {
     #endif
     "    -e, --oob-data <file>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
-    "    -r, --tlsrec <offset>     Make TLS record at offset\n"
-    "    -L, --tlsrec-at-sni       Add SNI offset to tlsrec position\n"
+    "    -r, --tlsrec <n[+s]>      Make TLS record at offset\n"
 };
 
 
@@ -103,13 +101,12 @@ const struct option options[] = {
     {"debug",         1, 0, 'x'},
     
     {"desync-known ", 0, 0, 'K'},
-    {"split-at-host", 0, 0, 'H'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
+    #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
-    #ifdef FAKE_SUPPORT
     {"fake-tls",      1, 0, 'l'},
     {"fake-http",     1, 0, 'j'},
     {"tls-sni",       1, 0, 'n'},
@@ -117,7 +114,6 @@ const struct option options[] = {
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
-    {"tlsrec-at-sni", 0, 0, 'L'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
     
@@ -195,41 +191,39 @@ int get_default_ttl()
 }
 
 
-struct part *add_part(struct part **root, long val)
+struct part *add_part(struct part **root, int *n)
 {
-    struct part *part = malloc(sizeof(struct part));
-    if (!part) {
-        uniperror("malloc");
+    struct part *p = realloc(
+        *root, sizeof(struct part) * (*n + 1));
+    if (!p) {
+        uniperror("realloc");
         return 0;
     }
+    *root = p;
+    *n = *n + 1;
+    return &((*root)[(*n) - 1]);
+}
+
+
+int parse_offset(struct part *part, const char *str)
+{
+    char *end = 0;
+    long val = strtol(str, &end, 0);
+    if (*end == '+') switch (*(end + 1)) {
+        case 's': 
+            part->flag = OFFSET_SNI;
+            break;
+        case 'h': 
+            part->flag = OFFSET_HOST;
+            break;
+        default:
+            return -1;
+    }
+    else if (*end) {
+        return -1;
+    }
     part->pos = val;
-    
-    struct part *p = *root, *v = 0;
-    if (!p) {
-        *root = part;
-        return part;
-    }
-    while (p) {
-        if (val < p->pos) {
-            if (v) {
-                part->next = p;
-                v->next = part;
-            }
-            else {
-                part->next = *root;
-                *root = part;
-            }
-            break;
-        }
-        if (!p->next) {
-            p->next = part;
-            part->next = 0;
-            break;
-        }
-        v = p;
-        p = p->next;
-    }
-    return part;
+    return 0;
 }
 
 
@@ -264,9 +258,6 @@ int main(int argc, char **argv)
             opt[o] = ':';
         }
     }
-    
-    char daemon = 0;
-    char *pidfile = 0;
     
     int rez;
     int invalid = 0;
@@ -340,22 +331,19 @@ int main(int argc, char **argv)
             params.de_known = 1;
             break;
             
-        case 'H':
-            params.split_host = 1;
-            break;
-            
         case 's':
         case 'd':
         case 'o':
         case 'f':
-            val = strtol(optarg, &end, 0);
-            if (*end) {
-                invalid = 1;
-                break;
-            }
-            struct part *part = add_part(&params.parts, val);
+            ;
+            struct part *part = add_part(
+                &params.parts, &params.parts_n);
             if (!part) {
                 return -1;
+            }
+            if (parse_offset(part, optarg)) {
+                invalid = 1;
+                break;
             }
             switch (rez) {
                 case 's': part->m = DESYNC_SPLIT;
@@ -431,19 +419,15 @@ int main(int argc, char **argv)
             break;
             
         case 'r':
-            val = strtol(optarg, &end, 0);
-            if (val > 0xffff || *end) {
-                invalid = 1;
-                break;
-            }
-            part = add_part(&params.tlsrec, val);
+            part = add_part(&params.tlsrec, &params.tlsrec_n);
             if (!part) {
                 return -1;
             }
-            break;
-            
-        case 'L':
-            params.tlsrec_sni = 1;
+            if (parse_offset(part, optarg)
+                   || part->pos > 0xffff) {
+                invalid = 1;
+                break;
+            }
             break;
             
         case 'g':
@@ -459,7 +443,7 @@ int main(int argc, char **argv)
         case 'w': //
             params.sfdelay = strtol(optarg, &end, 0);
             if (params.sfdelay < 0 || optarg == end 
-                    || params.sfdelay >= 1000000 || *end)
+                    || params.sfdelay >= 1000 || *end)
                 invalid = 1;
             break;
             

@@ -25,6 +25,7 @@
         #define memfd_create(name, flags) fileno(tmpfile())
     #endif
 #else
+    #include <windows.h>
     #include <winsock2.h>
     #include <ws2tcpip.h>
 #endif
@@ -67,15 +68,15 @@ int setttl(int fd, int ttl, int family) {
 }
 
 #ifndef _WIN32
-static inline void delay(long mk)
+static inline void delay(long ms)
 {
     struct timespec time = { 
-         .tv_nsec = mk * 1000
+         .tv_nsec = ms * 1000000
     };
     nanosleep(&time, 0);
 }
 #else
-#define delay(mk) {}
+#define delay(ms) Sleep(ms)
 #endif
 
 #ifndef _WIN32
@@ -204,27 +205,30 @@ int desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         }
     }
-    else if (type == IS_HTTPS && params.tlsrec) {
-        struct part *part = params.tlsrec;
-        int i = 0;
+    else if (type == IS_HTTPS && params.tlsrec_n) {
         long lp = 0;
-        while (part) {
-            long pos = part->pos + i * 5;
-            if (params.tlsrec_sni) {
+        for (int i = 0; i < params.tlsrec_n; i++) {
+            struct part part = params.tlsrec[i];
+            
+            long pos = part.pos + i * 5;
+            if (part.flag == OFFSET_SNI) {
                 pos += (host - buffer - 5);
             }
             else if (pos < 0) {
                 pos += n;
             }
-            LOG(LOG_S, "tlsrec: pos=%ld, n=%ld\n", pos, n);
-            if (!part_tls(buffer + lp, 
-                    bfsize - lp, n - lp, pos - lp)) {
+            if (pos < lp) {
+                LOG(LOG_E, "tlsrec cancel: %ld < %ld\n", pos, lp);
                 break;
             }
+            if (!part_tls(buffer + lp, 
+                    bfsize - lp, n - lp, pos - lp)) {
+                LOG(LOG_E, "tlsrec error: pos=%ld, n=%ld\n", pos, n);
+                break;
+            }
+            LOG(LOG_S, "tlsrec: pos=%ld, n=%ld\n", pos, n);
             n += 5;
             lp = pos + 5;
-            i++;
-            part = part->next;
         }
     }
     
@@ -233,30 +237,37 @@ int desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         }
     }
-    struct part *part = params.parts;
     long lp = 0;
     
     if ((!type && params.de_known)) {
-        part = 0;
     }
-    while (part) {
-        long pos = part->pos;
-        if (params.split_host) {
-            if (host)
+    else for (int i = 0; i < params.parts_n; i++) {
+        struct part part = params.parts[i];
+        
+        long pos = part.pos;
+        if (part.flag == OFFSET_SNI) {
+            if (type != IS_HTTPS) 
+                break;
+            else 
                 pos += (host - buffer);
-            else
-                pos = 0;
+        }
+        else if (part.flag == OFFSET_HOST) {
+            if (type != IS_HTTP) 
+                break;
+            else 
+                pos += (host - buffer);
         }
         else if (pos < 0) {
             pos += n;
         }
         if (pos <= 0 || pos >= n || pos <= lp) {
+            LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%ld\n", lp, pos, n);
             break;
         }
-        LOG(LOG_S, "split: pos=%ld-%ld, m=%d\n", lp, pos, part->m);
+        LOG(LOG_S, "split: pos=%ld-%ld, m=%d\n", lp, pos, part.m);
         
         int s = 0;
-        switch (part->m) {
+        switch (part.m) {
         #ifndef _WIN32
         case DESYNC_FAKE:
             s = send_fake(sfd, 
@@ -284,7 +295,6 @@ int desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         }
         lp = pos;
-        part = part->next;
     }
     if (lp < n) {
         LOG(LOG_S, "send: pos=%ld-%ld\n", lp, n);

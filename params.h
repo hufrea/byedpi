@@ -6,6 +6,9 @@
     #include <arpa/inet.h>
 #endif
 
+#define OFFSET_SNI 1
+#define OFFSET_HOST 2
+
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
@@ -16,21 +19,21 @@ enum demode {
 
 struct part {
     int m;
+    int flag;
     long pos;
-    struct part *next;
 };
 
 struct params {
     char de_known;
     int ttl;
+    int parts_n;
     struct part *parts;
-    char split_host;
     long sfdelay;
     int def_ttl;
     char custom_ttl;
     int mod_http;
+    int tlsrec_n;
     struct part *tlsrec;
-    char tlsrec_sni;
     
     char ipv6;
     char resolve;
