@@ -25,8 +25,8 @@
         #define memfd_create(name, flags) fileno(tmpfile())
     #endif
 #else
-    #include <windows.h>
     #include <winsock2.h>
+    #include <windows.h>
     #include <ws2tcpip.h>
 #endif
 
@@ -131,24 +131,20 @@ int send_fake(int sfd, char *buffer,
 int send_oob(int sfd, char *buffer,
         ssize_t n, long pos)
 {
-    ssize_t size = oob_data.size;
-    char *data = oob_data.data;
+    ssize_t size = oob_data.size - 1;
+    char *data = oob_data.data + 1;
     
-    if (pos + 1 < n) {
-        char rchar = buffer[pos];
-        buffer[pos] = data[0];
-        
-        if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
-            uniperror("send");
-            buffer[pos] = rchar;
-            return -1;
-        }
+    char rchar = buffer[pos];
+    buffer[pos] = oob_data.data[0];
+    
+    if (send(sfd, buffer, pos + 1, MSG_OOB) < 0) {
+        uniperror("send");
         buffer[pos] = rchar;
-        size--;
-        data++;
-        if (size) {
-            delay(params.sfdelay);
-        }
+        return -1;
+    }
+    buffer[pos] = rchar;
+    if (size) {
+        delay(params.sfdelay);
     }
     for (long i = 0; i < size; i++) {
         if (send(sfd, data + i, 1, MSG_OOB) < 0) {
@@ -195,7 +191,8 @@ int desync(int sfd, char *buffer, size_t bfsize,
         type = IS_HTTP;
     }
     if (len && host) {
-        LOG(LOG_S, "host: %.*s\n", len, host);
+        LOG(LOG_S, "host: %.*s (%ld)\n",
+            len, host, host - buffer);
     }
     
     if (type == IS_HTTP && params.mod_http) {
@@ -239,7 +236,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
     }
     long lp = 0;
     
-    if ((!type && params.de_known)) {
+    if (!type && params.de_known) {
     }
     else for (int i = 0; i < params.parts_n; i++) {
         struct part part = params.parts[i];
@@ -247,13 +244,13 @@ int desync(int sfd, char *buffer, size_t bfsize,
         long pos = part.pos;
         if (part.flag == OFFSET_SNI) {
             if (type != IS_HTTPS) 
-                break;
+                continue;
             else 
                 pos += (host - buffer);
         }
         else if (part.flag == OFFSET_HOST) {
             if (type != IS_HTTP) 
-                break;
+                continue;
             else 
                 pos += (host - buffer);
         }

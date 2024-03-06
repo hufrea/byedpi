@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION 4
+#define VERSION 5
 
 
 struct packet fake_tls = { 
@@ -72,7 +72,9 @@ const char help_text[] = {
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
-    "    -s, --split <n[+s]>       Split packet at n, +s to add SNI offset\n"
+    "    -s, --split <n[+s]>       Split packet at n\n"
+    "                              +s - add SNI offset\n"
+    "                              +h - add HTTP Host offset\n"
     "    -s, --disorder <n[+s]>    Split and send reverse order\n"
     "    -o, --oob <n[+s]>         Split and send as OOB data\n"
     #ifdef FAKE_SUPPORT
@@ -80,10 +82,10 @@ const char help_text[] = {
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -l, --fake-tls <file>\n"
     "    -j, --fake-http <file>    Set custom fake packet\n"
-    "    -n, --tls-sni <str>       Change SNI in fake CH\n"
+    "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
     "    -e, --oob-data <file>     Set custom OOB data\n"
-    "    -M, --mod-http <h,d,r>    Modify http: hcsmix,dcsmix,rmspace\n"
+    "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at offset\n"
 };
 
