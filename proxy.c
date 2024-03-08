@@ -472,7 +472,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             break;
         if (n < 1) {
             if (n) uniperror("recv");
-            return -1;
+            return get_e();
         }
         val->recv_count += n;
         
@@ -565,12 +565,17 @@ int on_desync(struct poolhd *pool, struct eval *val,
     int m;
     
     if (val->flag == FLAG_CONN) {
-        if (on_tunnel(pool, val, buffer, bfsize, 0)) {
-            return try_again(pool, val);
+        int e = on_tunnel(pool, val, buffer, bfsize, 0);
+        if (e) {
+            if (unie(e) == ECONNRESET) {
+                return try_again(pool, val);
+            }
+            return -1;
         }
         free(val->pair->buff.data);
         val->pair->buff.data = 0;
         val->pair->buff.size = 0;
+        val->type = EV_TUNNEL;
         
         m = val->pair->try_count;
         return mode_add_get(

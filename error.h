@@ -44,6 +44,8 @@ inline const int unie(int e)
             return EHOSTUNREACH;
         case WSAECONNREFUSED:
             return ECONNREFUSED;
+        case WSAECONNRESET:
+            return ECONNRESET;
     }
     #endif
     return e;
