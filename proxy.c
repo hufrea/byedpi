@@ -508,14 +508,8 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 
 int try_again(struct poolhd *pool, struct eval *val)
 {
-    if (val->flag != FLAG_CONN) {
-        return -1;
-    }
-    if (val->recv_count) {
-        return -1;
-    }
     struct eval *client = val->pair;
-    if (client->try_count >= params.dp_count) {
+    if (client->try_count + 1 >= params.dp_count) {
         return -1;
     }
     LOG(LOG_S, "try next params: %d\n", client->try_count + 1);
