@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 
 #include <proxy.h>
 #include <params.h>
@@ -509,10 +510,6 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 int try_again(struct poolhd *pool, struct eval *val)
 {
     struct eval *client = val->pair;
-    if (client->try_count + 1 >= params.dp_count) {
-        return -1;
-    }
-    LOG(LOG_S, "try next params: %d\n", client->try_count + 1);
     
     int e = create_conn(pool, client, 
         (struct sockaddr_ina *)&val->in6);
@@ -532,6 +529,9 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     char *data;
     int len;
+    time_t t;
+    struct elem *val;
+    
     if (dst->sa.sa_family == AF_INET) {
         data = (char *)(&dst->in.sin_addr);
         len = sizeof(dst->in.sin_addr);
@@ -539,22 +539,82 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
         data = (char *)(&dst->in6.sin6_addr);
         len = sizeof(dst->in6.sin6_addr);
     }
-    struct elem *val;
-    if (m >= 0) {
-        val = mem_add(params.mempool, data, len);
+    int i = mem_index(params.mempool, data, len);
+    if (m == 0 && i >= 0) {
+        mem_delete(params.mempool, i);
+        return 0;
+    }
+    else if (m > 0) {
+        time(&t);
+        val = mem_add(params.mempool, data, len, i);
         if (!val) {
             uniperror("mem_add");
             return -1;
         }
         val->m = m;
+        val->time = t;
         return 0;
     }
-    int i = mem_index(params.mempool, data, len);
     if (i < 0) {
         return -1;
     }
     val = params.mempool->values[i];
+    time(&t);
+    if (t > val->time + params.cache_ttl) {
+        LOG(LOG_S, "cache value is too old, ignore\n");
+        return -1;
+    }
     return val->m;
+}
+
+
+int on_tunnel_check(struct poolhd *pool, struct eval *val,
+        char *buffer, size_t bfsize, int out)
+{
+    if (!out && val->flag == FLAG_CONN) {
+        int e = on_tunnel(pool, val, buffer, bfsize, out);
+        if (e) {
+            if (unie(e) != ECONNRESET) {
+                return -1;
+            }
+            if (val->pair->try_count + 1 >= params.dp_count) {
+                mode_add_get(
+                    (struct sockaddr_ina *)&val->in6, 0);
+                return -1;
+            }
+            return try_again(pool, val);;
+        }
+        struct eval *pair = val->pair;
+        val->type = EV_TUNNEL;
+        pair->type = EV_TUNNEL;
+        
+        free(pair->buff.data);
+        pair->buff.data = 0;
+        pair->buff.size = 0;
+        
+        int m = pair->try_count;
+        if (m == 0 && !val->saved_m) {
+            return 0;
+        }
+        return mode_add_get(
+            (struct sockaddr_ina *)&val->in6, m);
+    }
+    else {
+        int e = on_tunnel(pool, val, buffer, bfsize, out);
+        if (e) {
+            if (val->flag == FLAG_CONN) {
+                val = val->pair;
+            }
+            int m = val->try_count + 1;
+            if (m >= params.dp_count) {
+                m = 0;
+            }
+            mode_add_get(
+                (struct sockaddr_ina *)&val->pair->in6, m);
+            return -1;
+        }
+    }
+    return 0;
 }
 
 
@@ -564,43 +624,33 @@ int on_desync(struct poolhd *pool, struct eval *val,
     ssize_t n;
     int m;
     
-    if (val->flag == FLAG_CONN) {
-        int e = on_tunnel(pool, val, buffer, bfsize, 0);
-        if (e) {
-            if (unie(e) == ECONNRESET) {
-                return try_again(pool, val);
-            }
-            return -1;
+    if (!val->try_count) {
+        m = mode_add_get(
+            (struct sockaddr_ina *)&val->pair->in6, -1);
+        if (m >= 0) {
+            val->saved_m = m + 1;
+            val->try_count = m;
         }
-        free(val->pair->buff.data);
-        val->pair->buff.data = 0;
-        val->pair->buff.size = 0;
-        val->type = EV_TUNNEL;
-        
-        m = val->pair->try_count;
-        return mode_add_get(
-            (struct sockaddr_ina *)&val->in6, m);
     }
-    m = mode_add_get(
-        (struct sockaddr_ina *)&val->pair->in6, -1);
-    if (m < 0) {
-        m = val->try_count;
-    }
+    m = val->try_count;
+    LOG(LOG_S, "desync params index: %d\n", m);
+    
     if (!val->buff.data) {
         n = recv(val->fd, buffer, bfsize, 0);
         if (n <= 0) {
             if (n) uniperror("recv data");
             return -1;
         }
-        val->recv_count += n;
         val->buff.size = n;
+        val->recv_count += n;
         
         if (!(val->buff.data = malloc(n))) {
             uniperror("malloc");
             return -1;
         }
         memcpy(val->buff.data, buffer, n);
-    } else {
+    }
+    else {
         n = val->buff.size;
         memcpy(buffer, val->buff.data, n);
     }
@@ -608,7 +658,8 @@ int on_desync(struct poolhd *pool, struct eval *val,
             (struct sockaddr *)&val->pair->in6, m)) {
         return -1;
     }
-    val->type = EV_TUNNEL;
+    val->type = EV_PRE_TUNNEL;
+    val->pair->type = EV_PRE_TUNNEL;
     return 0;
 }
 
@@ -701,11 +752,16 @@ int event_loop(int srvfd)
                     del_event(pool, val);
                 continue;
         
+            case EV_PRE_TUNNEL:
+                if (on_tunnel_check(pool, val, 
+                        buffer, bfsize, etype & POLLOUT))
+                    del_event(pool, val);
+                continue;
+                
             case EV_TUNNEL:
                 if (on_tunnel(pool, val, 
-                        buffer, bfsize, etype & POLLOUT)) {
+                        buffer, bfsize, etype & POLLOUT))
                     del_event(pool, val);
-                }
                 continue;
         
             case EV_CONNECT:

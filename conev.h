@@ -34,6 +34,7 @@ enum eid {
     EV_CONNECT,
     EV_IGNORE,
     EV_TUNNEL,
+    EV_PRE_TUNNEL,
     EV_DESYNC
 };
 
@@ -48,6 +49,7 @@ char *eid_name[] = {
     "EV_CONNECT",
     "EV_IGNORE",
     "EV_TUNNEL",
+    "EV_PRE_TUNNEL",
     "EV_DESYNC"
 };
 #endif
@@ -71,6 +73,7 @@ struct eval {
     };
     ssize_t recv_count;
     int try_count;
+    int saved_m;
     #ifndef NOEPOLL
     uint32_t events;
     #endif

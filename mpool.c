@@ -50,7 +50,7 @@ int mem_index(struct mphdr *hdr, char *str, int len)
 }
 
 
-struct elem *mem_add(struct mphdr *hdr, char *str, int len)
+struct elem *mem_add(struct mphdr *hdr, char *str, int len, int pos)
 {
     int max = hdr->max;
     
@@ -63,7 +63,6 @@ struct elem *mem_add(struct mphdr *hdr, char *str, int len)
         hdr->max = max;
         hdr->values = new;
     }
-    int pos = mem_index(hdr, str, len);
     if (pos >= 0) {
         return hdr->values[pos];
     }
@@ -86,4 +85,31 @@ struct elem *mem_add(struct mphdr *hdr, char *str, int len)
     hdr->values[pos] = val;
     hdr->count++;
     return val;
+}
+
+
+void mem_delete(struct mphdr *hdr, int pos)
+{
+    int max = hdr->max;
+    if (!hdr->count) {
+        return;
+    }
+    if (max > hdr->inc && 
+            (max - hdr->count) > hdr->inc * 2) {
+        max -= hdr->inc;
+        struct elem **new = realloc(hdr->values, sizeof(*hdr->values) * max);
+        if (new) {
+            hdr->max = max;
+            hdr->values = new;
+        }
+        hdr->max = max;
+        hdr->values = new;
+    }
+    if (pos < hdr->count) {
+        void *p = &hdr->values[pos];
+        void *n = &hdr->values[pos + 1];
+        void *e = &hdr->values[hdr->count];
+        memmove(p, n, e - n);
+    }
+    hdr->count--;
 }

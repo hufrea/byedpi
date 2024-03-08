@@ -46,6 +46,7 @@ struct params params = {
     .custom_ttl = 0,
     .de_known = 0,
     
+    .cache_ttl = 3600,
     .ipv6 = 1,
     .resolve = 1,
     .max_open = 512,
@@ -69,6 +70,7 @@ const char help_text[] = {
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     "    -A, --auto                Try desync params after this option\n"
+    "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -101,6 +103,7 @@ const struct option options[] = {
     
     {"desync-known ", 0, 0, 'K'},
     {"auto",          0, 0, 'A'},
+    {"cache-ttl",     1, 0, 'u'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -358,6 +361,14 @@ int main(int argc, char **argv)
             if (!dp) {
                 return -1;
             }
+            break;
+            
+        case 'u':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || *end) 
+                invalid = 1;
+            else
+                params.cache_ttl = val;
             break;
             
         case 's':

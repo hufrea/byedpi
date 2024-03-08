@@ -270,7 +270,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         #ifndef _WIN32
         case DESYNC_FAKE:
             s = send_fake(sfd, 
-                buffer + lp, type, pos - lp, fa, dp.ttl);
+                buffer + lp, type, pos - lp, fa, dp.ttl ? dp.ttl : 8);
             break;
         #endif
         case DESYNC_DISORDER:

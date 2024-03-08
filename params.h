@@ -41,6 +41,7 @@ struct params {
     int def_ttl;
     char custom_ttl;
     
+    long cache_ttl;
     char ipv6;
     char resolve;
     int max_open;
