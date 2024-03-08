@@ -17,13 +17,16 @@
     #include <netdb.h>
     #include <fcntl.h>
 
+    #ifdef __linux__
     #define FAKE_SUPPORT 1
+    #endif
 #else
     #include <ws2tcpip.h>
     #define close(fd) closesocket(fd)
 #endif
 
 #define VERSION 5
+#define MPOOL_INC 16
 
 
 struct packet fake_tls = { 
@@ -37,17 +40,10 @@ oob_data = {
 };
 
 
-
 struct params params = {
-    .ttl = 8,
-    .parts_n = 0,
-    .parts = 0,
     .sfdelay = 3,
     .def_ttl = 0,
     .custom_ttl = 0,
-    .mod_http = 0,
-    .tlsrec = 0,
-    .tlsrec_n = 0,
     .de_known = 0,
     
     .ipv6 = 1,
@@ -72,6 +68,7 @@ const char help_text[] = {
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
+    "    -A, --auto                Try desync params after this option\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -103,6 +100,7 @@ const struct option options[] = {
     {"debug",         1, 0, 'x'},
     
     {"desync-known ", 0, 0, 'K'},
+    {"auto",          0, 0, 'A'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -229,6 +227,23 @@ int parse_offset(struct part *part, const char *str)
 }
 
 
+struct desync_params *add_dparams(
+        struct desync_params **root, int *n)
+{
+    struct desync_params *p = realloc(
+        *root, sizeof(struct desync_params) * (*n + 1));
+    if (!p) {
+        uniperror("realloc");
+        return 0;
+    }
+    *root = p;
+    *n = *n + 1;
+    p = &((*root)[(*n) - 1]);
+    memset(p, 0, sizeof(*p));
+    return p;
+}
+
+
 int main(int argc, char **argv) 
 {
     #ifdef _WIN32
@@ -268,6 +283,11 @@ int main(int argc, char **argv)
     char *end = 0;
     uint16_t port = htons(1080);
     
+    struct desync_params *dp = add_dparams(
+        &params.dp, &params.dp_count);
+    if (!dp) {
+        return -1;
+    }
     while (!invalid && (rez = getopt_long_only(
              argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
@@ -333,13 +353,20 @@ int main(int argc, char **argv)
             params.de_known = 1;
             break;
             
+        case 'A':
+            dp = add_dparams(&params.dp, &params.dp_count);
+            if (!dp) {
+                return -1;
+            }
+            break;
+            
         case 's':
         case 'd':
         case 'o':
         case 'f':
             ;
             struct part *part = add_part(
-                &params.parts, &params.parts_n);
+                &dp->parts, &dp->parts_n);
             if (!part) {
                 return -1;
             }
@@ -363,7 +390,7 @@ int main(int argc, char **argv)
             if (val <= 0 || val > 255 || *end) 
                 invalid = 1;
             else
-                params.ttl = val;
+                dp->ttl = val;
             break;
             
         case 'n':
@@ -403,13 +430,13 @@ int main(int argc, char **argv)
             while (end && !invalid) {
                 switch (*end) {
                     case 'r': 
-                        params.mod_http |= MH_SPACE;
+                        dp->mod_http |= MH_SPACE;
                         break;
                     case 'h': 
-                        params.mod_http |= MH_HMIX;
+                        dp->mod_http |= MH_HMIX;
                         break;
                     case 'd': 
-                        params.mod_http |= MH_DMIX;
+                        dp->mod_http |= MH_DMIX;
                         break;
                     default:
                         invalid = 1;
@@ -421,7 +448,7 @@ int main(int argc, char **argv)
             break;
             
         case 'r':
-            part = add_part(&params.tlsrec, &params.tlsrec_n);
+            part = add_part(&dp->tlsrec, &dp->tlsrec_n);
             if (!part) {
                 return -1;
             }
@@ -475,6 +502,11 @@ int main(int argc, char **argv)
         if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
+    }
+    params.mempool = mem_pool(MPOOL_INC);
+    if (!params.mempool) {
+        uniperror("mem_pool");
+        return -1;
     }
     int status = run(&s);
     #ifdef _WIN32

@@ -33,7 +33,8 @@ enum eid {
     EV_REQUEST,
     EV_CONNECT,
     EV_IGNORE,
-    EV_TUNNEL
+    EV_TUNNEL,
+    EV_DESYNC
 };
 
 #define FLAG_S4 1
@@ -46,23 +47,30 @@ char *eid_name[] = {
     "EV_REQUEST",
     "EV_CONNECT",
     "EV_IGNORE",
-    "EV_TUNNEL"
+    "EV_TUNNEL",
+    "EV_DESYNC"
 };
 #endif
+
+struct buffer {
+    ssize_t size;
+    int offset;
+    char *data;
+};
 
 struct eval {
     int fd;    
     int index;
     enum eid type;
     struct eval *pair;
-    char *tmpbuf;
-    ssize_t size;
-    int offset;
+    struct buffer buff;
     int flag;
     union {
         struct sockaddr_in in;
         struct sockaddr_in6 in6;
     };
+    ssize_t recv_count;
+    int try_count;
     #ifndef NOEPOLL
     uint32_t events;
     #endif

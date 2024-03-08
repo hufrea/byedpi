@@ -43,15 +43,11 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     if (pool->count >= pool->max)
         return 0;
     struct eval *val = pool->links[pool->count];
+    memset(val, 0, sizeof(*val));
     
     val->fd = fd;
     val->index = pool->count;
     val->type = type;
-    val->pair = 0;
-    val->tmpbuf = 0;
-    val->size = 0;
-    val->offset = 0;
-    val->flag = 0;
     
     #ifndef NOEPOLL
     struct epoll_event ev = {
@@ -79,9 +75,9 @@ void del_event(struct poolhd *pool, struct eval *val)
     if (!val->fd) {
         return;
     }
-    if (val->tmpbuf) {
-        free(val->tmpbuf);
-        val->tmpbuf = 0;
+    if (val->buff.data) {
+        free(val->buff.data);
+        val->buff.data = 0;
     }
     close(val->fd);
     val->fd = 0;
@@ -116,9 +112,9 @@ void destroy_pool(struct poolhd *pool)
             close(val->fd);
             val->fd = 0;
         }
-        if (val->tmpbuf) {
-            free(val->tmpbuf);
-            val->tmpbuf = 0;
+        if (val->buff.data) {
+            free(val->buff.data);
+            val->buff.data = 0;
         }
     }
     if (pool->items) {

@@ -81,7 +81,7 @@ static inline void delay(long ms)
 
 #ifndef _WIN32
 int send_fake(int sfd, char *buffer,
-        int cnt, long pos, int fa)
+        int cnt, long pos, int fa, int ttl)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -107,7 +107,7 @@ int send_fake(int sfd, char *buffer,
         }
         memcpy(p, pkt.data, psz < pos ? psz : pos);
         
-        if (setttl(sfd, params.ttl, fa) < 0) {
+        if (setttl(sfd, ttl, fa) < 0) {
             break;
         }
         if (_sendfile(sfd, ffd, 0, pos) < 0) {
@@ -178,8 +178,10 @@ int send_disorder(int sfd,
 
 
 int desync(int sfd, char *buffer, size_t bfsize,
-        ssize_t n, struct sockaddr *dst)
+        ssize_t n, struct sockaddr *dst, int dp_c)
 {
+    struct desync_params dp = params.dp[dp_c];
+    
     char *host = 0;
     int len = 0, type = 0;
     int fa = get_family(dst);
@@ -195,17 +197,17 @@ int desync(int sfd, char *buffer, size_t bfsize,
             len, host, host - buffer);
     }
     
-    if (type == IS_HTTP && params.mod_http) {
+    if (type == IS_HTTP && dp.mod_http) {
         LOG(LOG_S, "modify HTTP: n=%ld\n", n);
-        if (mod_http(buffer, n, params.mod_http)) {
+        if (mod_http(buffer, n, dp.mod_http)) {
             LOG(LOG_E, "mod http error\n");
             return -1;
         }
     }
-    else if (type == IS_HTTPS && params.tlsrec_n) {
+    else if (type == IS_HTTPS && dp.tlsrec_n) {
         long lp = 0;
-        for (int i = 0; i < params.tlsrec_n; i++) {
-            struct part part = params.tlsrec[i];
+        for (int i = 0; i < dp.tlsrec_n; i++) {
+            struct part part = dp.tlsrec[i];
             
             long pos = part.pos + i * 5;
             if (part.flag == OFFSET_SNI) {
@@ -238,8 +240,8 @@ int desync(int sfd, char *buffer, size_t bfsize,
     
     if (!type && params.de_known) {
     }
-    else for (int i = 0; i < params.parts_n; i++) {
-        struct part part = params.parts[i];
+    else for (int i = 0; i < dp.parts_n; i++) {
+        struct part part = dp.parts[i];
         
         long pos = part.pos;
         if (part.flag == OFFSET_SNI) {
@@ -268,7 +270,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         #ifndef _WIN32
         case DESYNC_FAKE:
             s = send_fake(sfd, 
-                buffer + lp, type, pos - lp, fa);
+                buffer + lp, type, pos - lp, fa, dp.ttl);
             break;
         #endif
         case DESYNC_DISORDER:
