@@ -25,6 +25,8 @@ struct part {
 };
 
 struct desync_params {
+    char redirect;
+    struct sockaddr_in6 ext_proxy;
     int ttl;
     int parts_n;
     struct part *parts;

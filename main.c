@@ -46,7 +46,7 @@ struct params params = {
     .custom_ttl = 0,
     .de_known = 0,
     
-    .cache_ttl = 3600,
+    .cache_ttl = 21600,
     .ipv6 = 1,
     .resolve = 1,
     .max_open = 512,
@@ -71,6 +71,7 @@ const char help_text[] = {
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     "    -A, --auto                Try desync params after this option\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
+    "    -q, --redirect <ip:port>  Redirect to external SOCKS5 proxy\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -119,7 +120,7 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
-    
+    {"redirect",      1, 0, 'q'},
     {0}
 };
     
@@ -156,15 +157,40 @@ char *ftob(char *name, ssize_t *sl)
 }
 
 
-int get_addr(const char *str, struct sockaddr_ina *addr)
+int get_addr(char *str, struct sockaddr_ina *addr)
 {
+    uint16_t port = 0;
+    char *s = str, *e = 0;
+    char *end = 0, *p = str;
+    
+    if (*str == '[') {
+        e = strchr(str, ']');
+        if (!e) return -1;
+        s++; p = e + 1;
+    }
+    p = strchr(p, ':');
+    if (p) {
+        long val = strtol(p + 1, &end, 0);
+        if (val <= 0 || val > 0xffff || *end)
+            return -1;
+        else
+            port = htons(val);
+        if (!e) e = p;
+    }
+    if ((e - s) < 7) {
+        return -1;
+    }
+    char str_ip[(e - s) + 1];
+    memcpy(str_ip, s, e - s);
+    str_ip[e - s] = 0;
+    
     struct addrinfo hints = {0}, *res = 0;
     
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST;
     
-    if (getaddrinfo(str, 0, &hints, &res) || !res) {
+    if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
         return -1;
     }
     if (res->ai_addr->sa_family == AF_INET6)
@@ -172,6 +198,10 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
     else
         addr->in = *(struct sockaddr_in *)res->ai_addr;
     freeaddrinfo(res);
+    
+    if (port) {
+        addr->in6.sin6_port = port;
+    }
     return 0;
 }
 
@@ -284,6 +314,7 @@ int main(int argc, char **argv)
     
     long val = 0;
     char *end = 0;
+    
     uint16_t port = htons(1080);
     
     struct desync_params *dp = add_dparams(
@@ -485,6 +516,13 @@ int main(int argc, char **argv)
             if (params.sfdelay < 0 || optarg == end 
                     || params.sfdelay >= 1000 || *end)
                 invalid = 1;
+            break;
+            
+        case 'q':
+            if (get_addr(optarg, (struct sockaddr_ina *)&dp->ext_proxy) < 0)
+                invalid = 1;
+            else
+                dp->redirect = 1;
             break;
             
             

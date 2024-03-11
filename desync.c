@@ -181,7 +181,9 @@ int desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst, int dp_c)
 {
     struct desync_params dp = params.dp[dp_c];
-    
+    if (dp.redirect) {
+        dst = (struct sockaddr *)&dp.ext_proxy;
+    }
     char *host = 0;
     int len = 0, type = 0;
     int fa = get_family(dst);
@@ -296,7 +298,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         lp = pos;
     }
     if (lp < n) {
-        LOG(LOG_S, "send: pos=%ld-%ld\n", lp, n);
+        LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%ld\n", lp, n);
         if (send(sfd, buffer + lp, n - lp, 0) < 0) {
             uniperror("send");
             return -1;
