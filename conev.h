@@ -35,15 +35,12 @@ enum eid {
     EV_IGNORE,
     EV_TUNNEL,
     EV_PRE_TUNNEL,
-    EV_REDIRECT,
     EV_DESYNC
 };
 
 #define FLAG_S4 1
 #define FLAG_S5 2
 #define FLAG_CONN 4
-#define FLAG_AUTH 8
-#define FLAG_ANSWER 16
 
 #ifndef CONEV_H
 char *eid_name[] = {
@@ -53,7 +50,6 @@ char *eid_name[] = {
     "EV_IGNORE",
     "EV_TUNNEL",
     "EV_PRE_TUNNEL",
-    "EV_REDIRECT",
     "EV_DESYNC"
 };
 #endif

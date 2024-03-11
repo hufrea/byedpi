@@ -507,7 +507,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         if (n) uniperror("ss recv");
         return -1;
     }
-    int e = 0, s5e = 0, m;
+    int e = 0, s5e = 0;
     
     if (*buffer == S_VER5) {
         if (val->flag != FLAG_S5) {
@@ -533,21 +533,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         return -1;
     }
     if (!e) {
-        m = mode_add_get(&dst, -1);
-        int next = EV_CONNECT;
-        
-        if (m >= 0) {
-            struct desync_params *dp = &params.dp[m];
-            if (dp->redirect) {
-                next = EV_REDIRECT;
-                e = create_conn(pool, val, 
-                    (struct sockaddr_ina *)&dp->ext_proxy, next);
-                val->pair->in6 = dst.in6;
-            }
-        }
-        if (next == EV_CONNECT) {
-            e = create_conn(pool, val, &dst, next);
-        }
+        e = create_conn(pool, val, &dst, EV_CONNECT);
     }
     if (e) {
         if (s5e) {
@@ -558,6 +544,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         return -1;
     }
+    int m = mode_add_get(&dst, -1);
     if (m >= 0) {
         val->attempt = m;
     }
@@ -570,7 +557,6 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
 int try_again(struct poolhd *pool, struct eval *val)
 {
     struct eval *client = val->pair;
-    int e = 0;
     int m = client->attempt + 1;
     
     if (m >= params.dp_count) {
@@ -578,17 +564,8 @@ int try_again(struct poolhd *pool, struct eval *val)
             (struct sockaddr_ina *)&val->in6, 0);
         return -1;
     }
-    struct desync_params *dp = &params.dp[m];
-    if (dp->redirect) {
-        e = create_conn(pool, client, 
-            (struct sockaddr_ina *)&dp->ext_proxy, EV_REDIRECT);
-        client->pair->in6 = val->in6;
-    }
-    else {
-        e = create_conn(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC);
-    }
-    if (e) {
+    if (create_conn(pool, client, 
+            (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
         return -1;
     }
     val->pair = 0;
@@ -688,16 +665,11 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
 {
     int error = 0;
     socklen_t len = sizeof(error);
-    struct eval *pair = val->pair;
     if (e) {
         if (getsockopt(val->fd, SOL_SOCKET, 
                 SO_ERROR, (char *)&error, &len)) {
             uniperror("getsockopt SO_ERROR");
             return -1;
-        }
-        if (unie(error) == ECONNREFUSED) {
-            e = try_again(pool, val);
-            if (!e) error = 0;
         }
     }
     else {
@@ -708,96 +680,12 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
         val->type = EV_TUNNEL;
         val->pair->type = EV_DESYNC;
     }
-    if (resp_error(pair->fd,
-            error, pair->flag) < 0) {
+    if (resp_error(val->pair->fd,
+            error, val->pair->flag) < 0) {
         uniperror("send");
         return -1;
     }
     return e ? -1 : 0;
-}
-
-
-static inline int on_redirect(struct poolhd *pool, struct eval *val, 
-        char *buffer, size_t bfsize)
-{
-    struct eval *pair = val->pair;
-    int e = -1;
-    
-    switch (val->flag) {
-    case FLAG_CONN:;
-        char a[3] = "\5\1\0";
-        if (send(val->fd, &a, sizeof(a), 0) < 0) {
-            uniperror("rr: send");
-            break;
-        }
-        if (mod_etype(pool, val, POLLOUT, 0)) {
-            uniperror("mod_etype");
-            break;
-        }
-        val->flag = FLAG_AUTH;
-        return 0;
-    
-    case FLAG_AUTH:;
-        ssize_t n = recv(val->fd, buffer, bfsize, 0);
-        if (n < 2) {
-            break;
-        }
-        if (!(buffer[0] == 5 && buffer[1] == 0)) {
-            LOG(LOG_E, "rr: auth error: 0x%x\n", buffer[1]);
-            break;
-        }
-        struct s5_req r = {.ver = 5, .cmd = S_CMD_CONN};
-        
-        switch (val->in.sin_family) {
-            case AF_INET:
-                r.atp = S_ATP_I4;
-                r.i4 = val->in.sin_addr;
-                r.p4 = val->in.sin_port;
-                break;
-            case AF_INET6:
-                r.atp = S_ATP_I6;
-                r.i6 = val->in6.sin6_addr;
-                r.p6 = val->in6.sin6_port;
-                break;
-            default:
-                return -1;
-        }
-        if (send(val->fd, &r, sizeof(r), 0) < 0) {
-            uniperror("rr: send");
-            break;
-        }
-        val->flag = FLAG_ANSWER;
-        return 0;
-        
-    case FLAG_ANSWER:
-        n = recv(val->fd, buffer, bfsize, 0);
-        if (n < sizeof(struct s5_rep)) {
-            uniperror("rr: recv");
-            break;
-        }
-        struct s5_rep *rr = (struct s5_rep *)buffer;
-        if (rr->ver != 5 || rr->code != 0) {
-            LOG(LOG_E, "rr: socks returned: %d\n", rr->code);
-            break;
-        }
-        val->flag = FLAG_CONN;
-        val->type = EV_TUNNEL;
-        pair->type = EV_DESYNC;
-        e = 0;
-    }
-    char is_first = (val->attempt == pair->attempt);
-    
-    if (!e && !is_first) {
-        return on_desync(pool, val->pair, buffer, bfsize);
-    }
-    else if (e) {
-        e = try_again(pool, val);
-    }
-    if (is_first && resp_error(pair->fd, 
-            e, pair->flag) < 0) {
-        return -1;
-    }
-    return e;
 }
 
 
@@ -869,11 +757,6 @@ int event_loop(int srvfd)
                 if (on_connect(pool, val, etype & POLLERR))
                     del_event(pool, val);
                 continue;
-                
-            case EV_REDIRECT:
-                if (on_redirect(pool, val, buffer, bfsize))
-                    del_event(pool, val);
-                continue; 
                 
             case EV_DESYNC:
                 if (on_desync(pool, val, buffer, bfsize))

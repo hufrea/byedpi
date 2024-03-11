@@ -71,7 +71,6 @@ const char help_text[] = {
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     "    -A, --auto                Try desync params after this option\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
-    "    -q, --redirect <ip:port>  Redirect to external SOCKS5 proxy\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -120,7 +119,6 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
-    {"redirect",      1, 0, 'q'},
     {0}
 };
     
@@ -517,15 +515,7 @@ int main(int argc, char **argv)
                     || params.sfdelay >= 1000 || *end)
                 invalid = 1;
             break;
-            
-        case 'q':
-            if (get_addr(optarg, (struct sockaddr_ina *)&dp->ext_proxy) < 0)
-                invalid = 1;
-            else
-                dp->redirect = 1;
-            break;
-            
-            
+
         case 0:
             break;
             

@@ -71,7 +71,7 @@ int setttl(int fd, int ttl, int family) {
 static inline void delay(long ms)
 {
     struct timespec time = { 
-         .tv_nsec = ms * 1000000
+         .tv_nsec = ms * 1e6
     };
     nanosleep(&time, 0);
 }
@@ -181,9 +181,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst, int dp_c)
 {
     struct desync_params dp = params.dp[dp_c];
-    if (dp.redirect) {
-        dst = (struct sockaddr *)&dp.ext_proxy;
-    }
+    
     char *host = 0;
     int len = 0, type = 0;
     int fa = get_family(dst);

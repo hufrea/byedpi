@@ -102,9 +102,9 @@ void mem_delete(struct mphdr *hdr, int pos)
             hdr->max = max;
             hdr->values = new;
         }
-        hdr->max = max;
-        hdr->values = new;
     }
+    free(hdr->values[pos]);
+    
     if (pos < hdr->count) {
         void *p = &hdr->values[pos];
         void *n = &hdr->values[pos + 1];
