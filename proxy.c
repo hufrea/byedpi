@@ -18,6 +18,9 @@
     #include <ws2tcpip.h>
     
     #define close(fd) closesocket(fd)
+    #ifndef TCP_MAXRT
+    #define TCP_MAXRT 5
+    #endif
 #else
     #include <errno.h>
     #include <unistd.h>
@@ -89,6 +92,27 @@ static inline int nb_socket(int domain, int type)
     #endif
     #endif
     return fd;
+}
+
+
+int set_timeout(int fd, unsigned int s)
+{
+    #ifdef __linux__
+    if (setsockopt(fd, IPPROTO_TCP,
+            TCP_USER_TIMEOUT, (char *)&s, sizeof(s))) {
+        uniperror("setsockopt TCP_USER_TIMEOUT");
+        return -1;
+    }
+    #else
+    #ifdef _WIN32
+    if (setsockopt(fd, IPPROTO_TCP,
+            TCP_MAXRT, (char *)&s, sizeof(s))) {
+        uniperror("setsockopt TCP_MAXRT");
+        return -1;
+    }
+    #endif
+    #endif
+    return 0;
 }
 
 
@@ -219,6 +243,10 @@ int s4_get_addr(char *buff, size_t n,
 int s5_get_addr(char *buffer, ssize_t n,
         struct sockaddr_ina *addr) 
 {
+    if (n < S_SIZE_MIN) {
+        LOG(LOG_E, "ss: request to small\n");
+        return -1;
+    }
     struct s5_req *r = (struct s5_req *)buffer;
     
     int o = (r->atp == S_ATP_I4 ? S_SIZE_I4 : 
@@ -507,8 +535,6 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         if (n) uniperror("ss recv");
         return -1;
     }
-    int e = 0, s5e = 0;
-    
     if (*buffer == S_VER5) {
         if (val->flag != FLAG_S5) {
             if (auth_socks5(val->fd, buffer, n)) {
@@ -517,31 +543,31 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             val->flag = FLAG_S5;
             return 0;
         }
-        if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request to small\n");
+        int s5e = s5_get_addr(buffer, n, &dst);
+        if (!s5e &&
+                create_conn(pool, val, &dst, EV_CONNECT)) {
+            s5e = S_ER_GEN;
+        }
+        if (s5e) {
+            resp_s5_error(val->fd, s5e);
             return -1;
         }
-        e = s5_get_addr(buffer, n, &dst);
-        s5e = e;
     }
     else if (*buffer == S_VER4) {
         val->flag = FLAG_S4;
-        e = s4_get_addr(buffer, n, &dst);
+        
+        int error = s4_get_addr(buffer, n, &dst);
+        if (!error) {
+            error = create_conn(pool, val, &dst, EV_CONNECT);
+        }
+        if (error) {
+            if (resp_error(val->fd, error, FLAG_S4) < 0)
+                uniperror("send");
+            return -1;
+        }
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
-        return -1;
-    }
-    if (!e) {
-        e = create_conn(pool, val, &dst, EV_CONNECT);
-    }
-    if (e) {
-        if (s5e) {
-            resp_s5_error(val->fd, s5e);
-        }
-        else if (resp_error(val->fd, e, val->flag) < 0) {
-            uniperror("ss: send");
-        }
         return -1;
     }
     int m = mode_add_get(&dst, -1);
@@ -587,8 +613,11 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
             return e;
         }
         if (e) {
-            if (unie(e) != ECONNRESET) {
-                return -1;
+            switch (unie(e)) {
+                case ECONNRESET:
+                case ETIMEDOUT: 
+                    break;
+                default: return -1;
             }
             return try_again(pool, val);
         }
@@ -600,6 +629,10 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
         pair->buff.data = 0;
         pair->buff.size = 0;
         
+        if (params.timeout &&
+                set_timeout(val->fd, 0)) {
+            return -1;
+        }
         int m = pair->attempt;
         
         if ((m == 0 && val->attempt < 0)
@@ -650,6 +683,10 @@ int on_desync(struct poolhd *pool, struct eval *val,
     else {
         n = val->buff.size;
         memcpy(buffer, val->buff.data, n);
+    }
+    if (params.timeout &&
+            set_timeout(val->pair->fd, params.timeout)) {
+        return -1;
     }
     if (desync(val->pair->fd, buffer, bfsize, n,
             (struct sockaddr *)&val->pair->in6, m)) {

@@ -19,13 +19,15 @@
 
     #ifdef __linux__
     #define FAKE_SUPPORT 1
+    #define TIMEOUT_SUPPORT 1
     #endif
 #else
     #include <ws2tcpip.h>
     #define close(fd) closesocket(fd)
+    #define TIMEOUT_SUPPORT 1
 #endif
 
-#define VERSION 5
+#define VERSION 6
 #define MPOOL_INC 16
 
 
@@ -46,7 +48,8 @@ struct params params = {
     .custom_ttl = 0,
     .de_known = 0,
     
-    .cache_ttl = 21600,
+    .timeout = 0,
+    .cache_ttl = 100800,
     .ipv6 = 1,
     .resolve = 1,
     .max_open = 512,
@@ -71,6 +74,9 @@ const char help_text[] = {
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     "    -A, --auto                Try desync params after this option\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
+    #ifdef TIMEOUT_SUPPORT
+    "    -T, --timeout <sec>       Timeout waiting for response\n"
+    #endif
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -104,6 +110,9 @@ const struct option options[] = {
     {"desync-known ", 0, 0, 'K'},
     {"auto",          0, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
+    #ifdef TIMEOUT_SUPPORT
+    {"timeout",       1, 0, 'T'},
+    #endif
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -157,38 +166,13 @@ char *ftob(char *name, ssize_t *sl)
 
 int get_addr(char *str, struct sockaddr_ina *addr)
 {
-    uint16_t port = 0;
-    char *s = str, *e = 0;
-    char *end = 0, *p = str;
-    
-    if (*str == '[') {
-        e = strchr(str, ']');
-        if (!e) return -1;
-        s++; p = e + 1;
-    }
-    p = strchr(p, ':');
-    if (p) {
-        long val = strtol(p + 1, &end, 0);
-        if (val <= 0 || val > 0xffff || *end)
-            return -1;
-        else
-            port = htons(val);
-        if (!e) e = p;
-    }
-    if ((e - s) < 7) {
-        return -1;
-    }
-    char str_ip[(e - s) + 1];
-    memcpy(str_ip, s, e - s);
-    str_ip[e - s] = 0;
-    
     struct addrinfo hints = {0}, *res = 0;
     
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST;
     
-    if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
+    if (getaddrinfo(str, 0, &hints, &res) || !res) {
         return -1;
     }
     if (res->ai_addr->sa_family == AF_INET6)
@@ -197,9 +181,6 @@ int get_addr(char *str, struct sockaddr_ina *addr)
         addr->in = *(struct sockaddr_in *)res->ai_addr;
     freeaddrinfo(res);
     
-    if (port) {
-        addr->in6.sin6_port = port;
-    }
     return 0;
 }
 
@@ -398,6 +379,19 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 params.cache_ttl = val;
+            break;
+        
+        case 'T':;
+            #ifdef __linux__
+            float f = strtof(optarg, &end);
+            val = (long)(f * 1000);
+            #else
+            val = strtol(optarg, &end, 0);
+            #endif
+            if (val <= 0 || val > UINT_MAX || *end)
+                invalid = 1;
+            else
+                params.timeout = val;
             break;
             
         case 's':

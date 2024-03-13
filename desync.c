@@ -8,21 +8,17 @@
     #include <sys/socket.h>
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
-    #include <sys/mman.h>
     
     #ifdef __linux__
-        #include <sys/sendfile.h>
-        #define _sendfile(outfd, infd, start, len) sendfile(outfd, infd, start, len)
-    #else
-        #include <sys/uio.h>
-        #define _sendfile(outfd, infd, start, len) sendfile(infd, outfd, start, len, 0, 0)
-    #endif
-
+    #include <sys/mman.h>
+    #include <sys/sendfile.h>
+    
     #ifdef MFD_CLOEXEC
         #include <sys/syscall.h>
         #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
     #else
         #define memfd_create(name, flags) fileno(tmpfile())
+    #endif
     #endif
 #else
     #include <winsock2.h>
@@ -79,7 +75,7 @@ static inline void delay(long ms)
 #define delay(ms) Sleep(ms)
 #endif
 
-#ifndef _WIN32
+#ifdef __linux__
 int send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, int ttl)
 {
@@ -110,7 +106,7 @@ int send_fake(int sfd, char *buffer,
         if (setttl(sfd, ttl, fa) < 0) {
             break;
         }
-        if (_sendfile(sfd, ffd, 0, pos) < 0) {
+        if (sendfile(sfd, ffd, 0, pos) < 0) {
             uniperror("sendfile");
             break;
         }
@@ -267,7 +263,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         
         int s = 0;
         switch (part.m) {
-        #ifndef _WIN32
+        #ifdef __linux__
         case DESYNC_FAKE:
             s = send_fake(sfd, 
                 buffer + lp, type, pos - lp, fa, dp.ttl ? dp.ttl : 8);
