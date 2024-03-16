@@ -75,8 +75,9 @@ const char help_text[] = {
     "    -A, --auto                Try desync params after this option\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
-    "    -T, --timeout <sec>       Timeout waiting for response\n"
+    "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -P, --tr <s:e:f|:str>     Auto trigger data in first response\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -85,13 +86,13 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-    "    -l, --fake-tls <file>\n"
-    "    -j, --fake-http <file>    Set custom fake packet\n"
+    "    -l, --fake-tls <f|:str>\n"
+    "    -j, --fake-http <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
-    "    -e, --oob-data <file>     Set custom OOB data\n"
+    "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
-    "    -r, --tlsrec <n[+s]>      Make TLS record at offset\n"
+    "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
 };
 
 
@@ -113,6 +114,7 @@ const struct option options[] = {
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
+    {"tr",            1, 0, 'P'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -132,12 +134,57 @@ const struct option options[] = {
 };
     
 
-char *ftob(char *name, ssize_t *sl)
+char *parse_cform(const char *str, ssize_t *size)
 {
+    ssize_t len = strlen(str);
+    char *d = malloc(len);
+    if (!d) {
+        return 0;
+    }
+    static char esca[] = {
+        'r','\r','n','\n','t','\t','\\','\\',
+        'f','\f','b','\b','v','\v','a','\a', 0
+    };
+    ssize_t i = 0, p = 0;
+    for (; p < len; ++p && ++i) {
+        if (str[p] != '\\') {
+            d[i] = str[p];
+            continue;
+        }
+        p++;
+        char *e = esca;
+        for (; *e; e += 2) {
+            if (*e == str[p]) {
+                d[i] = *(e + 1);
+                break;
+            }
+        }
+        if (*e) {
+            continue;
+        }
+        int n = 0;
+        if (sscanf(&str[p], "x%2hhx%n", &d[i], &n) == 1
+              || sscanf(&str[p], "%3hho%n", &d[i], &n) == 1) {
+            p += (n - 1);
+            continue;
+        }
+        i--; p--;
+    }
+    *size = i;
+    char *m = realloc(d, i);
+    return m ? m : d;
+}
+
+
+char *ftob(const char *str, ssize_t *sl)
+{
+    if (*str == ':') {
+        return parse_cform(str + 1, sl);
+    }
     char *buffer = 0;
     long size;
     
-    FILE *file = fopen(name, "rb");
+    FILE *file = fopen(str, "rb");
     if (!file)
         return 0;
     do {
@@ -164,7 +211,7 @@ char *ftob(char *name, ssize_t *sl)
 }
 
 
-int get_addr(char *str, struct sockaddr_ina *addr)
+int get_addr(const char *str, struct sockaddr_ina *addr)
 {
     struct addrinfo hints = {0}, *res = 0;
     
@@ -203,20 +250,6 @@ int get_default_ttl()
 }
 
 
-struct part *add_part(struct part **root, int *n)
-{
-    struct part *p = realloc(
-        *root, sizeof(struct part) * (*n + 1));
-    if (!p) {
-        uniperror("realloc");
-        return 0;
-    }
-    *root = p;
-    *n = *n + 1;
-    return &((*root)[(*n) - 1]);
-}
-
-
 int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
@@ -239,19 +272,17 @@ int parse_offset(struct part *part, const char *str)
 }
 
 
-struct desync_params *add_dparams(
-        struct desync_params **root, int *n)
+void *add(void **root, int *n, size_t ss)
 {
-    struct desync_params *p = realloc(
-        *root, sizeof(struct desync_params) * (*n + 1));
+    void *p = realloc(*root, ss * (*n + 1));
     if (!p) {
         uniperror("realloc");
         return 0;
     }
     *root = p;
+    p = ((*root) + ((*n) * ss));
+    memset(p, 0, ss);
     *n = *n + 1;
-    p = &((*root)[(*n) - 1]);
-    memset(p, 0, sizeof(*p));
     return p;
 }
 
@@ -296,8 +327,8 @@ int main(int argc, char **argv)
     
     uint16_t port = htons(1080);
     
-    struct desync_params *dp = add_dparams(
-        &params.dp, &params.dp_count);
+    struct desync_params *dp = add((void *)&params.dp,
+        &params.dp_count, sizeof(struct desync_params));
     if (!dp) {
         return -1;
     }
@@ -367,7 +398,8 @@ int main(int argc, char **argv)
             break;
             
         case 'A':
-            dp = add_dparams(&params.dp, &params.dp_count);
+            dp = add((void *)&params.dp, &params.dp_count,
+                sizeof(struct desync_params));
             if (!dp) {
                 return -1;
             }
@@ -394,13 +426,32 @@ int main(int argc, char **argv)
                 params.timeout = val;
             break;
             
+        case 'P':;
+            struct spos *spos = add((void *)&params.spos,
+                &params.spos_n, sizeof(struct spos));
+            if (!spos) {
+                return -1;
+            }
+            sscanf(optarg, "%zi:%zi:%zn", &spos->start, &spos->end, &val);
+            if (val == 0 || !optarg[val]) {
+                invalid = 1;
+            }
+            else {
+                spos->data = ftob(&optarg[val], &spos->size);
+                if (!spos->data) {
+                    uniperror("read/parse");
+                    return -1;
+                }
+            }
+            break;
+            
         case 's':
         case 'd':
         case 'o':
         case 'f':
             ;
-            struct part *part = add_part(
-                &dp->parts, &dp->parts_n);
+            struct part *part = add((void *)&dp->parts,
+                &dp->parts_n, sizeof(struct part));
             if (!part) {
                 return -1;
             }
@@ -438,7 +489,7 @@ int main(int argc, char **argv)
         case 'l':
             fake_tls.data = ftob(optarg, &fake_tls.size);
             if (!fake_tls.data) {
-                uniperror("read file");
+                uniperror("read/parse");
                 return -1;
             }
             break;
@@ -446,7 +497,7 @@ int main(int argc, char **argv)
         case 'j':
             fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
-                uniperror("read file");
+                uniperror("read/parse");
                 return -1;
             }
             break;
@@ -454,7 +505,7 @@ int main(int argc, char **argv)
         case 'e':
             oob_data.data = ftob(optarg, &oob_data.size);
             if (!oob_data.data) {
-                uniperror("read file");
+                uniperror("read/parse");
                 return -1;
             }
             break;
@@ -482,7 +533,8 @@ int main(int argc, char **argv)
             break;
             
         case 'r':
-            part = add_part(&dp->tlsrec, &dp->tlsrec_n);
+            part = add((void *)&dp->tlsrec,
+                &dp->tlsrec_n, sizeof(struct part));
             if (!part) {
                 return -1;
             }

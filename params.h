@@ -43,6 +43,8 @@ struct params {
     
     unsigned int timeout;
     long cache_ttl;
+    int spos_n;
+    struct spos *spos;
     char ipv6;
     char resolve;
     int max_open;
@@ -61,3 +63,8 @@ struct packet {
 extern struct packet fake_tls;
 extern struct packet fake_http;
 extern struct packet oob_data;
+
+struct spos {
+     ssize_t start, end, size;
+     char  *data;
+};

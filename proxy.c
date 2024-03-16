@@ -447,7 +447,7 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
             break;
         if (n < 1) {
             if (n) uniperror("recv");
-            return get_e();
+            return -1;
         }
         val->recv_count += n;
         
@@ -603,51 +603,82 @@ int try_again(struct poolhd *pool, struct eval *val)
 }
 
 
+char find_bad_data(char *buffer, ssize_t n)
+{
+    for (int i = 0; i < params.spos_n; i++) {
+        struct spos bad_data = params.spos[i];
+        if (bad_data.start >= n) {
+            continue;
+        }
+        ssize_t end = n;
+        if (bad_data.end && bad_data.end < n) {
+            end = bad_data.end;
+        }
+        char *found = memmem(buffer + bad_data.start,
+            end - bad_data.start, bad_data.data, bad_data.size);
+        if (found) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
 int on_tunnel_check(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int out)
 {
-    int e = on_tunnel(pool, val, buffer, bfsize, out);
-    
-    if (val->flag == FLAG_CONN) {
-        if (out) {
-            return e;
-        }
-        if (e) {
-            switch (unie(e)) {
-                case ECONNRESET:
-                case ETIMEDOUT: 
-                    break;
-                default: return -1;
-            }
-            return try_again(pool, val);
-        }
-        struct eval *pair = val->pair;
-        val->type = EV_TUNNEL;
-        pair->type = EV_TUNNEL;
-        
-        free(pair->buff.data);
-        pair->buff.data = 0;
-        pair->buff.size = 0;
-        
-        if (params.timeout &&
-                set_timeout(val->fd, 0)) {
-            return -1;
-        }
-        int m = pair->attempt;
-        
-        if ((m == 0 && val->attempt < 0)
-                || (m && m == val->attempt)) {
-            return 0;
-        }
-        if (m == 0) {
-            LOG(LOG_S, "delete ip: m=%d\n", m);
-        } else {
-            LOG(LOG_S, "save ip: m=%d\n", m);
-        }
-        return mode_add_get(
-            (struct sockaddr_ina *)&val->in6, m);
+    if (out) {
+        return on_tunnel(pool, val, buffer, bfsize, out);
     }
-    return e;
+    ssize_t n = recv(val->fd, buffer, bfsize, 0);
+    if (n < 1) {
+        uniperror("recv");
+        switch (unie(get_e())) {
+            case ECONNRESET:
+            case ETIMEDOUT: 
+                break;
+            default: return -1;
+        }
+        return try_again(pool, val);
+    }
+    //
+    char found_bd = find_bad_data(buffer, n);
+    if (found_bd &&
+            !try_again(pool, val)) {
+        return 0;
+    }
+    struct eval *pair = val->pair;
+    
+    ssize_t sn = send(pair->fd, buffer, n, 0);
+    if (n != sn) {
+        uniperror("send");
+        return -1;
+    }
+    val->type = EV_TUNNEL;
+    pair->type = EV_TUNNEL;
+    
+    free(pair->buff.data);
+    pair->buff.data = 0;
+    pair->buff.size = 0;
+    
+    if (params.timeout &&
+            set_timeout(val->fd, 0)) {
+        return -1;
+    }
+    int m = pair->attempt;
+    
+    if ((m == 0 && val->attempt < 0)
+            || (m && m == val->attempt)
+            || found_bd) {
+        return 0;
+    }
+    if (m == 0) {
+        LOG(LOG_S, "delete ip: m=%d\n", m);
+    } else {
+        LOG(LOG_S, "save ip: m=%d\n", m);
+    }
+    return mode_add_get(
+        (struct sockaddr_ina *)&val->in6, m);
 }
 
 
@@ -692,7 +723,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
             (struct sockaddr *)&val->pair->in6, m)) {
         return -1;
     }
-    val->type = EV_PRE_TUNNEL;
+    val->type = EV_TUNNEL;
     val->pair->type = EV_PRE_TUNNEL;
     return 0;
 }
