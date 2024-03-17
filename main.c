@@ -16,15 +16,9 @@
     #include <unistd.h>
     #include <netdb.h>
     #include <fcntl.h>
-
-    #ifdef __linux__
-    #define FAKE_SUPPORT 1
-    #define TIMEOUT_SUPPORT 1
-    #endif
 #else
     #include <ws2tcpip.h>
     #define close(fd) closesocket(fd)
-    #define TIMEOUT_SUPPORT 1
 #endif
 
 #define VERSION 6

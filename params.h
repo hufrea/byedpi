@@ -7,6 +7,11 @@
     #include <arpa/inet.h>
 #endif
 
+#if defined(__linux__) || defined(_WIN32)
+#define FAKE_SUPPORT 1
+#define TIMEOUT_SUPPORT 1
+#endif
+    
 #define OFFSET_SNI 1
 #define OFFSET_HOST 2
 

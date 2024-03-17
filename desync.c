@@ -24,6 +24,7 @@
     #include <winsock2.h>
     #include <windows.h>
     #include <ws2tcpip.h>
+    #include <mswsock.h>
 #endif
 
 #include <params.h>
@@ -120,6 +121,100 @@ int send_fake(int sfd, char *buffer,
     }
     if (p) munmap(p, pos);
     close(ffd);
+    return status;
+}
+#endif
+
+#ifdef _WIN32
+int send_fake(int sfd, char *buffer,
+        int cnt, long pos, int fa, int ttl)
+{
+    struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
+    size_t psz = pkt.size;
+    
+    char path[MAX_PATH + 1];
+    int ps = GetTempPath(sizeof(path), path);
+    if (!ps) {
+		uniperror("GetTempPath");
+		return -1;
+	}
+	if (!GetTempFileName(path, "t", 0, path)) {
+		uniperror("GetTempFileName");
+		return -1;
+	}
+	LOG(LOG_L, "temp file: %s\n", path);
+	
+    HANDLE hfile = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 
+        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, 
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hfile == INVALID_HANDLE_VALUE) {
+		uniperror("CreateFileA");
+        return -1;
+    }
+    
+    OVERLAPPED ov = {};
+    int status = -1;
+    
+    while (status) {
+        ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (!ov.hEvent) {
+			uniperror("CreateEvent");
+            break;
+        }
+        
+	    if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
+			uniperror("WriteFile");
+			break;
+		}
+		if (psz < pos) {
+		    if (SetFilePointer(hfile, pos, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+			    uniperror("SetFilePointer");
+	            break;
+	        }
+	        if (!SetEndOfFile(hfile)) {
+			    uniperror("SetFileEnd");
+	            break;
+	        }
+		}
+		if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+			 uniperror("SetFilePointer");
+	         break;
+	    }
+        if (setttl(sfd, ttl, fa) < 0) {
+	        break;
+	    }
+	    if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
+	            NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
+	        if ((GetLastError() != ERROR_IO_PENDING) 
+	                && (WSAGetLastError() != WSA_IO_PENDING)) {
+	            uniperror("TransmitFile");
+		 	    break;
+			}
+	    }
+	    delay(params.sfdelay);
+	    
+	    if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+			 uniperror("SetFilePointer");
+	         break;
+	    }
+	    if (!WriteFile(hfile, buffer, pos, 0, 0)) {
+			uniperror("WriteFile");
+			break;
+		}
+	    if (setttl(sfd, params.def_ttl, fa) < 0) {
+	        break;
+	    }
+	    status = 0;
+	}
+    if (!CloseHandle(hfile)) {
+		uniperror("CloseHandle hfile");
+	}
+	if (!CloseHandle(ov.hEvent)) {
+		uniperror("CloseHandle hEvent");
+	}
+    if (!DeleteFile(path)) {
+		uniperror("DeleteFile");
+	}
     return status;
 }
 #endif
@@ -263,7 +358,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         
         int s = 0;
         switch (part.m) {
-        #ifdef __linux__
+        #ifdef FAKE_SUPPORT
         case DESYNC_FAKE:
             s = send_fake(sfd, 
                 buffer + lp, type, pos - lp, fa, dp.ttl ? dp.ttl : 8);

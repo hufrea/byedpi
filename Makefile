@@ -7,7 +7,7 @@ all:
 	$(CC) $(CFLAGS) $(SOURCES) -I . -o $(TARGET)
 
 windows:
-	$(CC) $(CFLAGS) $(SOURCES) -I . -lws2_32 -o $(TARGET).exe
+	$(CC) $(CFLAGS) $(SOURCES) -I . -lws2_32 -lmswsock -o $(TARGET).exe
 
 clean:
 	rm -f $(TARGET) *.o
