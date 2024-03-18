@@ -135,20 +135,20 @@ int send_fake(int sfd, char *buffer,
     char path[MAX_PATH + 1];
     int ps = GetTempPath(sizeof(path), path);
     if (!ps) {
-		uniperror("GetTempPath");
-		return -1;
-	}
-	if (!GetTempFileName(path, "t", 0, path)) {
-		uniperror("GetTempFileName");
-		return -1;
-	}
-	LOG(LOG_L, "temp file: %s\n", path);
-	
+        uniperror("GetTempPath");
+        return -1;
+    }
+    if (!GetTempFileName(path, "t", 0, path)) {
+        uniperror("GetTempFileName");
+        return -1;
+    }
+    LOG(LOG_L, "temp file: %s\n", path);
+    
     HANDLE hfile = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 
         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, 
-            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
     if (hfile == INVALID_HANDLE_VALUE) {
-		uniperror("CreateFileA");
+        uniperror("CreateFileA");
         return -1;
     }
     
@@ -158,63 +158,60 @@ int send_fake(int sfd, char *buffer,
     while (status) {
         ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
         if (!ov.hEvent) {
-			uniperror("CreateEvent");
-            break;
+            uniperror("CreateEvent");
+             break;
         }
         
-	    if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
-			uniperror("WriteFile");
-			break;
-		}
-		if (psz < pos) {
-		    if (SetFilePointer(hfile, pos, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-			    uniperror("SetFilePointer");
-	            break;
-	        }
-	        if (!SetEndOfFile(hfile)) {
-			    uniperror("SetFileEnd");
-	            break;
-	        }
-		}
-		if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-			 uniperror("SetFilePointer");
-	         break;
-	    }
+        if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
+            uniperror("WriteFile");
+            break;
+        }
+        if (psz < pos) {
+            if (SetFilePointer(hfile, pos, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+                uniperror("SetFilePointer");
+                break;
+            }
+            if (!SetEndOfFile(hfile)) {
+                uniperror("SetFileEnd");
+                break;
+            }
+        }
+        if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+            uniperror("SetFilePointer");
+            break;
+        }
         if (setttl(sfd, ttl, fa) < 0) {
-	        break;
-	    }
-	    if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
-	            NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
-	        if ((GetLastError() != ERROR_IO_PENDING) 
-	                && (WSAGetLastError() != WSA_IO_PENDING)) {
-	            uniperror("TransmitFile");
-		 	    break;
-			}
-	    }
-	    delay(params.sfdelay);
-	    
-	    if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-			 uniperror("SetFilePointer");
-	         break;
-	    }
-	    if (!WriteFile(hfile, buffer, pos, 0, 0)) {
-			uniperror("WriteFile");
-			break;
-		}
-	    if (setttl(sfd, params.def_ttl, fa) < 0) {
-	        break;
-	    }
-	    status = 0;
-	}
+            break;
+        }
+        if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
+                NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
+            if ((GetLastError() != ERROR_IO_PENDING) 
+                        && (WSAGetLastError() != WSA_IO_PENDING)) {
+                uniperror("TransmitFile");
+                break;
+            }
+        }
+        delay(params.sfdelay);
+        
+        if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+            uniperror("SetFilePointer");
+            break;
+        }
+        if (!WriteFile(hfile, buffer, pos, 0, 0)) {
+            uniperror("WriteFile");
+            break;
+        }
+        if (setttl(sfd, params.def_ttl, fa) < 0) {
+            break;
+        }
+        status = 0;
+    }
     if (!CloseHandle(hfile)) {
-		uniperror("CloseHandle hfile");
-	}
-	if (!CloseHandle(ov.hEvent)) {
-		uniperror("CloseHandle hEvent");
-	}
-    if (!DeleteFile(path)) {
-		uniperror("DeleteFile");
-	}
+        uniperror("CloseHandle hfile");
+    }
+    if (ov.hEvent && !CloseHandle(ov.hEvent)) {
+        uniperror("CloseHandle hEvent");
+    }
     return status;
 }
 #endif
