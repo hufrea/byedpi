@@ -251,22 +251,24 @@ int send_disorder(int sfd,
         char *buffer, long pos, int fa)
 {
     int bttl = 1;
+    int status = 0;
+    
     if (setttl(sfd, bttl, fa) < 0) {
         return -1;
     }
     if (send(sfd, buffer, pos, 0) < 0) {
         uniperror("send");
-        return -1;
+        status = -1;
     }
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
-    return 0;
+    return status;
 }
 
 
 int desync(int sfd, char *buffer, size_t bfsize,
-        ssize_t n, struct sockaddr *dst, int dp_c)
+        ssize_t n, ssize_t offset, struct sockaddr *dst, int dp_c)
 {
     struct desync_params dp = params.dp[dp_c];
     
@@ -324,7 +326,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         }
     }
-    long lp = 0;
+    long lp = offset;
     
     if (!type && params.de_known) {
     }
@@ -347,7 +349,11 @@ int desync(int sfd, char *buffer, size_t bfsize,
         else if (pos < 0) {
             pos += n;
         }
-        if (pos <= 0 || pos >= n || pos <= lp) {
+        // after EAGAIN
+        if (pos <= offset) {
+            continue;
+        }
+        else if (pos <= 0 || pos >= n || pos <= lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%ld\n", lp, pos, n);
             break;
         }
@@ -373,12 +379,13 @@ int desync(int sfd, char *buffer, size_t bfsize,
             
         case DESYNC_SPLIT:
         default:
-            if (send(sfd, buffer + lp, pos - lp, 0) < 0) {
-                uniperror("send");
-                return -1;
-            }
+            s = send(sfd, buffer + lp, pos - lp, 0);
         }
-        if (s) {
+        if (s < 0) {
+            if (part.m != DESYNC_FAKE
+                    && get_e() == EAGAIN) {
+                return lp;
+            }
             return -1;
         }
         lp = pos;
@@ -386,9 +393,12 @@ int desync(int sfd, char *buffer, size_t bfsize,
     if (lp < n) {
         LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%ld\n", lp, n);
         if (send(sfd, buffer + lp, n - lp, 0) < 0) {
+            if (get_e() == EAGAIN) {
+                return lp;
+            }
             uniperror("send");
             return -1;
         }
     }
-    return 0;
+    return n;
 }

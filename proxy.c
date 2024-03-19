@@ -333,6 +333,15 @@ int create_conn(struct poolhd *pool,
         return -1;
     }
     #endif
+    #ifdef TCP_FASTOPEN_CONNECT
+    int yes = 1;
+    if (params.tfo && setsockopt(sfd, IPPROTO_TCP,
+            TCP_FASTOPEN_CONNECT, (char *)&yes, sizeof(yes))) {
+        uniperror("setsockopt TCP_FASTOPEN_CONNECT");
+        close(sfd);
+        return -1;
+    }
+    #endif
     int one = 1;
     if (setsockopt(sfd, IPPROTO_TCP,
             TCP_NODELAY, (char *)&one, sizeof(one))) {
@@ -633,7 +642,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
         uniperror("recv");
-        switch (unie(get_e())) {
+        switch (get_e()) {
             case ECONNRESET:
             case ETIMEDOUT: 
                 break;
@@ -719,9 +728,19 @@ int on_desync(struct poolhd *pool, struct eval *val,
             set_timeout(val->pair->fd, params.timeout)) {
         return -1;
     }
-    if (desync(val->pair->fd, buffer, bfsize, n,
-            (struct sockaddr *)&val->pair->in6, m)) {
+    ssize_t sn = desync(val->pair->fd, buffer, bfsize,
+        n, val->buff.offset, (struct sockaddr *)&val->pair->in6, m);
+    if (sn < 0) {
         return -1;
+    }
+    if (sn != n) {
+        val->buff.offset = sn;
+        if (mod_etype(pool, val->pair, POLLOUT, 1)) {
+            uniperror("mod_etype");
+            return -1;
+        }
+        val->pair->type = EV_DESYNC;
+        return 0;
     }
     val->type = EV_TUNNEL;
     val->pair->type = EV_PRE_TUNNEL;

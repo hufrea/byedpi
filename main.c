@@ -16,6 +16,7 @@
     #include <unistd.h>
     #include <netdb.h>
     #include <fcntl.h>
+    #include <netinet/tcp.h>
 #else
     #include <ws2tcpip.h>
     #define close(fd) closesocket(fd)
@@ -42,6 +43,7 @@ struct params params = {
     .custom_ttl = 0,
     .de_known = 0,
     
+    .tfo = 0,
     .timeout = 0,
     .cache_ttl = 100800,
     .ipv6 = 1,
@@ -66,6 +68,9 @@ const char help_text[] = {
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
+    #ifdef TCP_FASTOPEN_CONNECT
+    "    -F, --tfo                 Enable TCP Fast Open\n"
+    #endif
     "    -A, --auto                Try desync params after this option\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
@@ -103,6 +108,9 @@ const struct option options[] = {
     {"debug",         1, 0, 'x'},
     
     {"desync-known ", 0, 0, 'K'},
+    #ifdef TCP_FASTOPEN_CONNECT
+    {"tfo ",          0, 0, 'F'},
+    #endif
     {"auto",          0, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
@@ -389,6 +397,10 @@ int main(int argc, char **argv)
         
         case 'K':
             params.de_known = 1;
+            break;
+            
+        case 'F':
+            params.tfo = 1;
             break;
             
         case 'A':

@@ -46,6 +46,7 @@ struct params {
     int def_ttl;
     char custom_ttl;
     
+    char tfo;
     unsigned int timeout;
     long cache_ttl;
     int spos_n;
