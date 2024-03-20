@@ -77,8 +77,45 @@ static inline void delay(long ms)
 #endif
 
 #ifdef __linux__
+void wait_send(int sfd)
+{
+    for (int i = 0; params.wait_send; i++) {
+        struct {
+            uint8_t state;
+            uint8_t r[3];
+            uint32_t rr[35];
+            uint32_t notsent_bytes;
+        } tcpi = {};
+        socklen_t ts = sizeof(tcpi);
+        if (getsockopt(sfd, IPPROTO_TCP,
+                TCP_INFO, (char *)&tcpi, &ts) < 0) {
+            perror("getsockopt TCP_INFO");
+            break;
+        }
+        if (ts < sizeof(tcpi)) {
+            LOG(LOG_E, "tcpi_notsent_bytes not provided\n");
+            params.wait_send = 0;
+            break;
+        }
+        if (tcpi.state != 1) {
+            LOG(LOG_E, "state: %d\n", tcpi.state);
+            return;
+        }
+        if (tcpi.notsent_bytes == 0) {
+            return;
+        }
+        LOG(LOG_S, "not sent after %d ms\n", i);
+        delay(1);
+    }
+    delay(params.sfdelay);
+}
+#else
+#define wait_send(sfd) delay(params.sfdelay)
+#endif
+
+#ifdef __linux__
 int send_fake(int sfd, char *buffer,
-        int cnt, long pos, int fa, int ttl)
+        int cnt, long pos, int fa, struct desync_params *opt)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -104,17 +141,29 @@ int send_fake(int sfd, char *buffer,
         }
         memcpy(p, pkt.data, psz < pos ? psz : pos);
         
-        if (setttl(sfd, ttl, fa) < 0) {
+        if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
+            break;
+        }
+        if (opt->ip_options
+            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
+                opt->ip_options, opt->ip_options_len) < 0) {
+            perror("setsockopt IP_OPTIONS");
             break;
         }
         if (sendfile(sfd, ffd, 0, pos) < 0) {
             uniperror("sendfile");
             break;
         }
-        delay(params.sfdelay);
+        wait_send(sfd);
         memcpy(p, buffer, pos);
         
         if (setttl(sfd, params.def_ttl, fa) < 0) {
+            break;
+        }
+        if (opt->ip_options
+            && setsockopt(sfd, IPPROTO_IP,
+                IP_OPTIONS, opt->ip_options, 0) < 0) {
+            perror("setsockopt IP_OPTIONS");
             break;
         }
         status = 0;
@@ -127,7 +176,7 @@ int send_fake(int sfd, char *buffer,
 
 #ifdef _WIN32
 int send_fake(int sfd, char *buffer,
-        int cnt, long pos, int fa, int ttl)
+        int cnt, long pos, int fa, struct desync_params *opt)
 {
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
@@ -180,7 +229,13 @@ int send_fake(int sfd, char *buffer,
             uniperror("SetFilePointer");
             break;
         }
-        if (setttl(sfd, ttl, fa) < 0) {
+        if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
+            break;
+        }
+        if (opt->ip_options
+            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
+                opt->ip_options, opt->ip_options_len) < 0) {
+            perror("setsockopt IP_OPTIONS");
             break;
         }
         if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
@@ -202,6 +257,12 @@ int send_fake(int sfd, char *buffer,
             break;
         }
         if (setttl(sfd, params.def_ttl, fa) < 0) {
+            break;
+        }
+        if (opt->ip_options
+            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
+                opt->ip_options, 0) < 0) {
+            perror("setsockopt IP_OPTIONS");
             break;
         }
         status = 0;
@@ -231,17 +292,14 @@ int send_oob(int sfd, char *buffer,
         return -1;
     }
     buffer[pos] = rchar;
-    if (size) {
-        delay(params.sfdelay);
-    }
+    wait_send(sfd);
+    
     for (long i = 0; i < size; i++) {
         if (send(sfd, data + i, 1, MSG_OOB) < 0) {
             uniperror("send");
             return -1;
         }
-        if (size != 1) {
-            delay(params.sfdelay);
-        }
+        wait_send(sfd);
     }
     return 0;
 }
@@ -267,7 +325,7 @@ int send_disorder(int sfd,
 }
 
 
-int desync(int sfd, char *buffer, size_t bfsize,
+ssize_t desync(int sfd, char *buffer, size_t bfsize,
         ssize_t n, ssize_t offset, struct sockaddr *dst, int dp_c)
 {
     struct desync_params dp = params.dp[dp_c];
@@ -364,7 +422,7 @@ int desync(int sfd, char *buffer, size_t bfsize,
         #ifdef FAKE_SUPPORT
         case DESYNC_FAKE:
             s = send_fake(sfd, 
-                buffer + lp, type, pos - lp, fa, dp.ttl ? dp.ttl : 8);
+                buffer + lp, type, pos - lp, fa, &dp);
             break;
         #endif
         case DESYNC_DISORDER:

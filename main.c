@@ -39,6 +39,7 @@ oob_data = {
 
 struct params params = {
     .sfdelay = 3,
+    .wait_send = 1,
     .def_ttl = 0,
     .custom_ttl = 0,
     .de_known = 0,
@@ -85,6 +86,7 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
+    "    -k, --ip-opt <f|:str>     IP options of fake packets\n"
     "    -l, --fake-tls <f|:str>\n"
     "    -j, --fake-http <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
@@ -123,6 +125,7 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
+    {"ip-opt",        1, 0, 'k'},
     {"fake-tls",      1, 0, 'l'},
     {"fake-http",     1, 0, 'j'},
     {"tls-sni",       1, 0, 'n'},
@@ -132,6 +135,7 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
+    {"not-wait-send", 1, 0, 'W'}, //
     {0}
 };
     
@@ -484,6 +488,14 @@ int main(int argc, char **argv)
                 dp->ttl = val;
             break;
             
+        case 'k':
+            dp->ip_options = ftob(optarg, &dp->ip_options_len);
+            if (!dp->ip_options) {
+                uniperror("read/parse");
+                return -1;
+            }
+            break;
+            
         case 'n':
             if (change_tls_sni(optarg, fake_tls.data, fake_tls.size)) {
                 fprintf(stderr, "error chsni\n");
@@ -567,7 +579,11 @@ int main(int argc, char **argv)
                     || params.sfdelay >= 1000 || *end)
                 invalid = 1;
             break;
-
+        
+        case 'W':
+            params.wait_send = 0;
+            break;
+            
         case 0:
             break;
             

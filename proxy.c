@@ -350,6 +350,9 @@ int create_conn(struct poolhd *pool,
         return -1;
     }
     int status = connect(sfd, &addr.sa, sizeof(addr));
+    if (status == 0 && params.tfo) {
+        LOG(LOG_S, "TFO supported!\n");
+    }
     if (status < 0 && 
             get_e() != EINPROGRESS && get_e() != EAGAIN) {
         uniperror("connect");
@@ -733,7 +736,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
     if (sn < 0) {
         return -1;
     }
-    if (sn != n) {
+    if (sn < n) {
         val->buff.offset = sn;
         if (mod_etype(pool, val->pair, POLLOUT, 1)) {
             uniperror("mod_etype");

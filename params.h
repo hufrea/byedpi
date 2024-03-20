@@ -31,6 +31,8 @@ struct part {
 
 struct desync_params {
     int ttl;
+    char *ip_options;
+    ssize_t ip_options_len;
     int parts_n;
     struct part *parts;
     int mod_http;
@@ -43,6 +45,7 @@ struct params {
     int dp_count;
     struct desync_params *dp;
     long sfdelay;
+    char wait_send;
     int def_ttl;
     char custom_ttl;
     
