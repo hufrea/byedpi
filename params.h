@@ -23,6 +23,16 @@ enum demode {
     DESYNC_FAKE
 };
 
+#ifdef STR_MODE
+char *demode_str[] = {
+    "DESYNC_NONE",
+    "DESYNC_SPLIT",
+    "DESYNC_DISORDER",
+    "DESYNC_OOB",
+    "DESYNC_FAKE"
+};
+#endif
+
 struct part {
     int m;
     int flag;
@@ -77,3 +87,5 @@ struct spos {
      ssize_t start, end, size;
      char  *data;
 };
+
+extern char ip_option[1];

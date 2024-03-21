@@ -22,7 +22,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION 6
+#define VERSION 7
 #define MPOOL_INC 16
 
 
@@ -35,6 +35,7 @@ fake_http = {
 oob_data = { 
     1, "a"
 };
+char ip_option[1] = "\0";
 
 
 struct params params = {
@@ -65,7 +66,7 @@ const char help_text[] = {
     "    -N, --no-domain           Deny domain resolving\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
-    "    -x, --debug               Print logs, 0, 1 or 2\n"
+    "    -x, --debug <level>       Print logs, 0, 1 or 2\n"
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
@@ -86,7 +87,7 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-    "    -k, --ip-opt <f|:str>     IP options of fake packets\n"
+    "    -k, --ip-opt [f|:str]     IP options of fake packets\n"
     "    -l, --fake-tls <f|:str>\n"
     "    -j, --fake-http <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
@@ -125,7 +126,7 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
-    {"ip-opt",        1, 0, 'k'},
+    {"ip-opt",        2, 0, 'k'},
     {"fake-tls",      1, 0, 'l'},
     {"fake-http",     1, 0, 'j'},
     {"tls-sni",       1, 0, 'n'},
@@ -489,7 +490,12 @@ int main(int argc, char **argv)
             break;
             
         case 'k':
-            dp->ip_options = ftob(optarg, &dp->ip_options_len);
+            if (optarg)
+                dp->ip_options = ftob(optarg, &dp->ip_options_len);
+            else {
+                dp->ip_options = ip_option;
+                dp->ip_options_len = sizeof(ip_option);
+            }
             if (!dp->ip_options) {
                 uniperror("read/parse");
                 return -1;
@@ -573,7 +579,7 @@ int main(int argc, char **argv)
             }
             break;
             
-        case 'w': //
+        case 'V': //
             params.sfdelay = strtol(optarg, &end, 0);
             if (params.sfdelay < 0 || optarg == end 
                     || params.sfdelay >= 1000 || *end)
