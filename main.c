@@ -309,9 +309,10 @@ void clear_params(void)
     if (params.spos) {
         for (int i = 0; i < params.spos_n; i++) {
             struct spos s = params.spos[i];
-            if (!s.data) continue;
-            free(s.data);
-            s.data = 0;
+            if (s.data != 0) {
+                free(s.data);
+                s.data = 0;;
+            }
         }
         free(params.spos);
         params.spos = 0;
@@ -323,7 +324,7 @@ void clear_params(void)
                 free(s.ip_options);
                 s.ip_options = ip_option;
             }
-            if (!s.parts) {
+            if (s.parts != 0) {
                 free(s.parts);
                 s.parts = 0;
             }
