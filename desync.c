@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +14,8 @@
     #ifdef __linux__
     #include <sys/mman.h>
     #include <sys/sendfile.h>
+    #include <fcntl.h>
+
     #include <desync.h>
     
     #ifdef MFD_CLOEXEC
@@ -116,8 +120,10 @@ void wait_send(int sfd)
 
 #ifdef __linux__
 ssize_t send_fake(int sfd, char *buffer,
-        int cnt, long pos, int fa, struct desync_params *opt)
+        int cnt, long pos, struct sockaddr *dst, struct desync_params *opt)
 {
+    int fa = get_family(dst);
+    
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
     
@@ -145,12 +151,25 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
-        if (opt->ip_options
+        if (opt->md5sig) {
+            struct tcp_md5sig md5 = {
+                .tcpm_keylen = 5
+            };
+            memcpy(&md5.tcpm_addr, dst, sizeof(struct sockaddr_in6));
+            
+            if (setsockopt(sfd, IPPROTO_TCP,
+                    TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
+                perror("setsockopt TCP_MD5SIG");
+                break;
+            }
+        }
+        if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             perror("setsockopt IP_OPTIONS");
             break;
         }
+        
         len = sendfile(sfd, ffd, 0, pos);
         if (len < 0) {
             uniperror("sendfile");
@@ -162,11 +181,23 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, params.def_ttl, fa) < 0) {
             break;
         }
-        if (opt->ip_options
+        if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP,
                 IP_OPTIONS, opt->ip_options, 0) < 0) {
             perror("setsockopt IP_OPTIONS");
             break;
+        }
+        if (opt->md5sig) {
+            struct tcp_md5sig md5 = {
+                .tcpm_keylen = 0
+            };
+            memcpy(&md5.tcpm_addr, dst, sizeof(struct sockaddr_in6));
+            
+            if (setsockopt(sfd, IPPROTO_TCP,
+                    TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
+                perror("setsockopt TCP_MD5SIG");
+                break;
+            }
         }
         break;
     }
@@ -178,8 +209,10 @@ ssize_t send_fake(int sfd, char *buffer,
 
 #ifdef _WIN32
 ssize_t send_fake(int sfd, char *buffer,
-        int cnt, long pos, int fa, struct desync_params *opt)
+        int cnt, long pos, struct sockaddr *dst, struct desync_params *opt)
 {
+    int fa = get_family(dst);
+    
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
     
@@ -234,7 +267,7 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
-        if (opt->ip_options
+        if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
@@ -261,7 +294,7 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, params.def_ttl, fa) < 0) {
             break;
         }
-        if (opt->ip_options
+        if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, 0) < 0) {
             uniperror("setsockopt IP_OPTIONS");
@@ -440,7 +473,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             #ifdef FAKE_SUPPORT
             case DESYNC_FAKE:
                 s = send_fake(sfd, 
-                    buffer + lp, type, pos - lp, fa, &dp);
+                    buffer + lp, type, pos - lp, dst, &dp);
                 break;
             #endif
             case DESYNC_DISORDER:

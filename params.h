@@ -43,6 +43,7 @@ struct desync_params {
     int ttl;
     char *ip_options;
     ssize_t ip_options_len;
+    char md5sig;
     int parts_n;
     struct part *parts;
     int mod_http;

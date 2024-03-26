@@ -366,7 +366,7 @@ int create_conn(struct poolhd *pool,
     }
     val->pair = pair;
     pair->pair = val;
-    pair->in6 = dst->in6;
+    pair->in6 = addr.in6;
     pair->flag = FLAG_CONN;
     return 0;
 }

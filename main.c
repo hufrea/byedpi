@@ -82,12 +82,15 @@ const char help_text[] = {
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
-    "    -s, --disorder <n[+s]>    Split and send reverse order\n"
+    "    -d, --disorder <n[+s]>    Split and send reverse order\n"
     "    -o, --oob <n[+s]>         Split and send as OOB data\n"
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -k, --ip-opt [f|:str]     IP options of fake packets\n"
+    #ifdef __linux__
+    "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
+    #endif
     "    -l, --fake-tls <f|:str>\n"
     "    -j, --fake-http <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
@@ -127,6 +130,9 @@ const struct option options[] = {
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
     {"ip-opt",        2, 0, 'k'},
+    #ifdef __linux__
+    {"md5sig",        0, 0, 'S'},
+    #endif
     {"fake-tls",      1, 0, 'l'},
     {"fake-http",     1, 0, 'j'},
     {"tls-sni",       1, 0, 'n'},
@@ -136,7 +142,7 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
-    {"not-wait-send", 1, 0, 'W'}, //
+    {"not-wait-send", 0, 0, 'W'}, //
     {0}
 };
     
@@ -502,6 +508,10 @@ int main(int argc, char **argv)
             }
             break;
             
+        case 'S':
+            dp->md5sig = 1;
+            break;
+            
         case 'n':
             if (change_tls_sni(optarg, fake_tls.data, fake_tls.size)) {
                 fprintf(stderr, "error chsni\n");
@@ -579,7 +589,7 @@ int main(int argc, char **argv)
             }
             break;
             
-        case 'V': //
+        case 'w': //
             params.sfdelay = strtol(optarg, &end, 0);
             if (params.sfdelay < 0 || optarg == end 
                     || params.sfdelay >= 1000 || *end)
