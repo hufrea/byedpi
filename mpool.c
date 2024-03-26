@@ -113,3 +113,16 @@ void mem_delete(struct mphdr *hdr, int pos)
     }
     hdr->count--;
 }
+
+
+void mem_destroy(struct mphdr *hdr)
+{
+    for (int i = 0; i < hdr->count; i++) {
+        struct elem *e = hdr->values[i];
+        if (!e) {
+            continue;
+        }
+        free(e);
+        hdr->values[i] = 0;
+    }
+}

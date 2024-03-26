@@ -25,6 +25,9 @@
 #define VERSION 7
 #define MPOOL_INC 16
 
+char oob_char[1] = "a";
+
+char ip_option[1] = "\0";
 
 struct packet fake_tls = { 
     sizeof(tls_data), tls_data 
@@ -33,20 +36,14 @@ fake_http = {
     sizeof(http_data), http_data
 },
 oob_data = { 
-    1, "a"
+    sizeof(oob_char), oob_char
 };
-char ip_option[1] = "\0";
 
 
 struct params params = {
     .sfdelay = 3,
     .wait_send = 1,
-    .def_ttl = 0,
-    .custom_ttl = 0,
-    .de_known = 0,
     
-    .tfo = 0,
-    .timeout = 0,
     .cache_ttl = 100800,
     .ipv6 = 1,
     .resolve = 1,
@@ -300,6 +297,55 @@ void *add(void **root, int *n, size_t ss)
 }
 
 
+void clear_params(void)
+{
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
+    if (params.mempool) {
+        mem_destroy(params.mempool);
+        params.mempool = 0;
+    }
+    if (params.spos) {
+        for (int i = 0; i < params.spos_n; i++) {
+            struct spos s = params.spos[i];
+            if (!s.data) continue;
+            free(s.data);
+            s.data = 0;
+        }
+        free(params.spos);
+        params.spos = 0;
+    }
+    if (params.dp) {
+        for (int i = 0; i < params.dp_count; i++) {
+            struct desync_params s = params.dp[i];
+            if (s.ip_options != ip_option) {
+                free(s.ip_options);
+                s.ip_options = ip_option;
+            }
+            if (!s.parts) {
+                free(s.parts);
+                s.parts = 0;
+            }
+        }
+        free(params.dp);
+        params.dp = 0;
+    }
+    if (fake_tls.data != tls_data) {
+        free(fake_tls.data);
+        fake_tls.data = tls_data;
+    }
+    if (fake_http.data != http_data) {
+        free(fake_http.data);
+        fake_http.data = http_data;
+    }
+    if (oob_data.data != oob_char) {
+        free(oob_data.data);
+        oob_data.data = oob_char;
+    }
+}
+
+
 int main(int argc, char **argv) 
 {
     #ifdef _WIN32
@@ -343,6 +389,7 @@ int main(int argc, char **argv)
     struct desync_params *dp = add((void *)&params.dp,
         &params.dp_count, sizeof(struct desync_params));
     if (!dp) {
+        clear_params();
         return -1;
     }
     while (!invalid && (rez = getopt_long_only(
@@ -357,9 +404,11 @@ int main(int argc, char **argv)
             break;
         case 'h':
             printf(help_text);
+            clear_params();
             return 0;
         case 'v':
             printf("%d\n", VERSION);
+            clear_params();
             return 0;
         
         case 'i':
@@ -418,6 +467,7 @@ int main(int argc, char **argv)
             dp = add((void *)&params.dp, &params.dp_count,
                 sizeof(struct desync_params));
             if (!dp) {
+                clear_params();
                 return -1;
             }
             break;
@@ -447,6 +497,7 @@ int main(int argc, char **argv)
             struct spos *spos = add((void *)&params.spos,
                 &params.spos_n, sizeof(struct spos));
             if (!spos) {
+                clear_params();
                 return -1;
             }
             sscanf(optarg, "%zi:%zi:%zn", &spos->start, &spos->end, &val);
@@ -457,7 +508,7 @@ int main(int argc, char **argv)
                 spos->data = ftob(&optarg[val], &spos->size);
                 if (!spos->data) {
                     uniperror("read/parse");
-                    return -1;
+                    invalid = 1;
                 }
             }
             break;
@@ -470,6 +521,7 @@ int main(int argc, char **argv)
             struct part *part = add((void *)&dp->parts,
                 &dp->parts_n, sizeof(struct part));
             if (!part) {
+                clear_params();
                 return -1;
             }
             if (parse_offset(part, optarg)) {
@@ -504,7 +556,7 @@ int main(int argc, char **argv)
             }
             if (!dp->ip_options) {
                 uniperror("read/parse");
-                return -1;
+                invalid = 1;
             }
             break;
             
@@ -515,6 +567,7 @@ int main(int argc, char **argv)
         case 'n':
             if (change_tls_sni(optarg, fake_tls.data, fake_tls.size)) {
                 fprintf(stderr, "error chsni\n");
+                clear_params();
                 return -1;
             }
             printf("sni: %s\n", optarg);
@@ -524,7 +577,7 @@ int main(int argc, char **argv)
             fake_tls.data = ftob(optarg, &fake_tls.size);
             if (!fake_tls.data) {
                 uniperror("read/parse");
-                return -1;
+                invalid = 1;
             }
             break;
             
@@ -532,7 +585,7 @@ int main(int argc, char **argv)
             fake_http.data = ftob(optarg, &fake_http.size);
             if (!fake_http.data) {
                 uniperror("read/parse");
-                return -1;
+                invalid = 1;
             }
             break;
             
@@ -540,7 +593,7 @@ int main(int argc, char **argv)
             oob_data.data = ftob(optarg, &oob_data.size);
             if (!oob_data.data) {
                 uniperror("read/parse");
-                return -1;
+                invalid = 1;
             }
             break;
             
@@ -570,6 +623,7 @@ int main(int argc, char **argv)
             part = add((void *)&dp->tlsrec,
                 &dp->tlsrec_n, sizeof(struct part));
             if (!part) {
+                clear_params();
                 return -1;
             }
             if (parse_offset(part, optarg)
@@ -604,15 +658,18 @@ int main(int argc, char **argv)
             break;
             
         case '?':
+            clear_params();
             return -1;
             
         default: 
             printf("?: %c\n", rez);
+            clear_params();
             return -1;
         }
     }
     if (invalid) {
         fprintf(stderr, "invalid value: -%c %s\n", rez, optarg);
+        clear_params();
         return -1;
     }
     s.in.sin_port = port;
@@ -623,17 +680,17 @@ int main(int argc, char **argv)
     }
     if (!params.def_ttl) {
         if ((params.def_ttl = get_default_ttl()) < 1) {
+            clear_params();
             return -1;
         }
     }
     params.mempool = mem_pool(MPOOL_INC);
     if (!params.mempool) {
         uniperror("mem_pool");
+        clear_params();
         return -1;
     }
     int status = run(&s);
-    #ifdef _WIN32
-    WSACleanup();
-    #endif
+    clear_params();
     return status;
 }
