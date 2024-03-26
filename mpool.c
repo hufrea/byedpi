@@ -125,6 +125,7 @@ void mem_destroy(struct mphdr *hdr)
         free(e);
         hdr->values[i] = 0;
     }
+    free(hdr->values);
     memset(hdr, 0, sizeof(*hdr));
     free(hdr);
 }
