@@ -582,7 +582,8 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
         return -1;
     }
-    int m = mode_add_get(&dst, -1);
+    int m = mode_add_get(
+        (struct sockaddr_ina *)&val->pair->in6, -1);
     if (m >= 0) {
         val->attempt = m;
     }
@@ -592,11 +593,15 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
 }
 
 
-int try_again(struct poolhd *pool, struct eval *val)
+int try_again(struct poolhd *pool, struct eval *val, char data)
 {
     struct eval *client = val->pair;
     int m = client->attempt + 1;
     
+    if (!data) for (; m < params.dp_count; m++) {
+        struct desync_params dp = params.dp[m];
+        if (!dp.spos_n) break;
+    }
     if (m >= params.dp_count) {
         mode_add_get(
             (struct sockaddr_ina *)&val->in6, 0);
@@ -615,21 +620,25 @@ int try_again(struct poolhd *pool, struct eval *val)
 }
 
 
-char find_bad_data(char *buffer, ssize_t n)
+int find_bad_data(char *buffer, ssize_t n, int m)
 {
-    for (int i = 0; i < params.spos_n; i++) {
-        struct spos bad_data = params.spos[i];
-        if (bad_data.start >= n) {
-            continue;
-        }
-        ssize_t end = n;
-        if (bad_data.end && bad_data.end < n) {
-            end = bad_data.end;
-        }
-        char *found = memmem(buffer + bad_data.start,
-            end - bad_data.start, bad_data.data, bad_data.size);
-        if (found) {
-            return 1;
+    for (; m < params.dp_count; m++) {
+        struct desync_params dp = params.dp[m];
+        
+        for (int i = 0; i < dp.spos_n; i++) {
+            struct spos bad_data = dp.spos[i];
+            if (bad_data.start >= n) {
+                continue;
+            }
+            ssize_t end = n;
+            if (bad_data.end && bad_data.end < n) {
+                end = bad_data.end;
+            }
+            char *found = memmem(buffer + bad_data.start,
+                end - bad_data.start, bad_data.data, bad_data.size);
+            if (found) {
+                return m;
+            }
         }
     }
     return 0;
@@ -651,13 +660,13 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
                 break;
             default: return -1;
         }
-        return try_again(pool, val);
+        return try_again(pool, val, 0);
     }
     //
-    char found_bd = find_bad_data(buffer, n);
-    if (found_bd &&
-            !try_again(pool, val)) {
-        return 0;
+    int d = find_bad_data(buffer, n, val->pair->attempt + 1);
+    if (d) {
+        val->pair->attempt = d - 1;
+        return try_again(pool, val, 1);
     }
     struct eval *pair = val->pair;
     
@@ -680,8 +689,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     int m = pair->attempt;
     
     if ((m == 0 && val->attempt < 0)
-            || (m && m == val->attempt)
-            || found_bd) {
+            || (m && m == val->attempt)) {
         return 0;
     }
     if (m == 0) {

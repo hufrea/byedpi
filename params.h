@@ -49,6 +49,8 @@ struct desync_params {
     int mod_http;
     int tlsrec_n;
     struct part *tlsrec;
+    int spos_n;
+    struct spos *spos;
 };
 
 struct params {
@@ -63,8 +65,6 @@ struct params {
     char tfo;
     unsigned int timeout;
     long cache_ttl;
-    int spos_n;
-    struct spos *spos;
     char ipv6;
     char resolve;
     int max_open;

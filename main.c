@@ -306,17 +306,6 @@ void clear_params(void)
         mem_destroy(params.mempool);
         params.mempool = 0;
     }
-    if (params.spos) {
-        for (int i = 0; i < params.spos_n; i++) {
-            struct spos s = params.spos[i];
-            if (s.data != 0) {
-                free(s.data);
-                s.data = 0;;
-            }
-        }
-        free(params.spos);
-        params.spos = 0;
-    }
     if (params.dp) {
         for (int i = 0; i < params.dp_count; i++) {
             struct desync_params s = params.dp[i];
@@ -327,6 +316,17 @@ void clear_params(void)
             if (s.parts != 0) {
                 free(s.parts);
                 s.parts = 0;
+            }
+            if (s.spos) {
+                for (int x = 0; x < s.spos_n; x++) {
+                    struct spos p = s.spos[x];
+                    if (p.data != 0) {
+                        free(p.data);
+                        p.data = 0;;
+                    }
+                }
+                free(s.spos);
+                s.spos = 0;
             }
         }
         free(params.dp);
@@ -495,8 +495,8 @@ int main(int argc, char **argv)
             break;
             
         case 'P':;
-            struct spos *spos = add((void *)&params.spos,
-                &params.spos_n, sizeof(struct spos));
+            struct spos *spos = add((void *)&dp->spos,
+                &dp->spos_n, sizeof(struct spos));
             if (!spos) {
                 clear_params();
                 return -1;
