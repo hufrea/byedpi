@@ -372,7 +372,7 @@ int create_conn(struct poolhd *pool,
     }
     val->pair = pair;
     pair->pair = val;
-    pair->in6 = addr.in6;
+    pair->in6 = dst->in6;
     pair->flag = FLAG_CONN;
     return 0;
 }
@@ -506,18 +506,14 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
     int len;
     time_t t;
     struct elem *val;    
-    struct sockaddr_ina val_addr = *dst;
     
-    if (val_addr.sa.sa_family == AF_INET6) {
-        map_fix(&val_addr, 0);
-    }
-    if (val_addr.sa.sa_family == AF_INET) {
-        data = (char *)(&val_addr.in.sin_addr);
-        len = sizeof(val_addr.in.sin_addr);
+    if (dst->sa.sa_family == AF_INET) {
+        data = (char *)(&dst->in.sin_addr);
+        len = sizeof(dst->in.sin_addr);
     }
     else {
-        data = (char *)(&val_addr.in6.sin6_addr);
-        len = sizeof(val_addr.in6.sin6_addr);
+        data = (char *)(&dst->in6.sin6_addr);
+        len = sizeof(dst->in6.sin6_addr);
     }
     int i = mem_index(params.mempool, data, len);
     if (m == 0 && i >= 0) {
@@ -579,11 +575,9 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         return -1;
     }
     if (error) {
-        if (val->flag == FLAG_S4
-                && resp_error(val->fd, error, FLAG_S4) < 0) {
-            uniperror("send");
-        }
-        else if (resp_s5_error(val->fd, error) < 0) {
+        if ((val->flag == FLAG_S4
+                && resp_error(val->fd, error, FLAG_S4) < 0)
+                || (resp_s5_error(val->fd, error) < 0)) {
             uniperror("send");
         }
         return -1;
@@ -593,7 +587,8 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
     
     error = create_conn(pool, val, &dst, EV_CONNECT, dp.mss);
     if (error) {
-        if (resp_error(val->fd, error, val->flag) < 0)
+        int en = get_e();
+        if (resp_error(val->fd, en ? en : error, val->flag) < 0)
             uniperror("send");
         return -1;
     }

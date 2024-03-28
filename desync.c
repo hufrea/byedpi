@@ -120,10 +120,17 @@ void wait_send(int sfd)
 
 #ifdef __linux__
 ssize_t send_fake(int sfd, char *buffer,
-        int cnt, long pos, struct sockaddr *dst, struct desync_params *opt)
+        int cnt, long pos, int fa, struct desync_params *opt)
 {
-    int fa = get_family(dst);
-    
+    struct sockaddr_in6 addr = {};
+    socklen_t addr_size = sizeof(addr);
+    if (opt->md5sig) {
+        if (getpeername(sfd, 
+                (struct sockaddr *)&addr, &addr_size) < 0) {
+            uniperror("getpeername");
+            return -1;
+        }
+    }
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
     
@@ -155,7 +162,7 @@ ssize_t send_fake(int sfd, char *buffer,
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
             };
-            memcpy(&md5.tcpm_addr, dst, sizeof(struct sockaddr_in6));
+            memcpy(&md5.tcpm_addr, &addr, addr_size);
             
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
@@ -191,7 +198,7 @@ ssize_t send_fake(int sfd, char *buffer,
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
             };
-            memcpy(&md5.tcpm_addr, dst, sizeof(struct sockaddr_in6));
+            memcpy(&md5.tcpm_addr, &addr, addr_size);
             
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
@@ -209,10 +216,8 @@ ssize_t send_fake(int sfd, char *buffer,
 
 #ifdef _WIN32
 ssize_t send_fake(int sfd, char *buffer,
-        int cnt, long pos, struct sockaddr *dst, struct desync_params *opt)
+        int cnt, long pos, int fa, struct desync_params *opt)
 {
-    int fa = get_family(dst);
-    
     struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     size_t psz = pkt.size;
     
@@ -473,7 +478,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             #ifdef FAKE_SUPPORT
             case DESYNC_FAKE:
                 s = send_fake(sfd, 
-                    buffer + lp, type, pos - lp, dst, &dp);
+                    buffer + lp, type, pos - lp, fa, &dp);
                 break;
             #endif
             case DESYNC_DISORDER:
