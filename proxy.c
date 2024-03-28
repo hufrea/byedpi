@@ -291,7 +291,7 @@ int s5_get_addr(char *buffer, ssize_t n,
 
 
 int create_conn(struct poolhd *pool,
-        struct eval *val, struct sockaddr_ina *dst, int next)
+        struct eval *val, struct sockaddr_ina *dst, int next, int mss)
 {
     struct sockaddr_ina addr = *dst;
     
@@ -332,7 +332,12 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
-    #endif
+    if (mss && setsockopt(sfd, IPPROTO_TCP,
+            TCP_MAXSEG, (char *)&mss, sizeof(mss))) {
+        uniperror("setsockopt TCP_MAXSEG");
+        close(sfd);
+        return -1;
+    }
     #ifdef TCP_FASTOPEN_CONNECT
     int yes = 1;
     if (params.tfo && setsockopt(sfd, IPPROTO_TCP,
@@ -341,6 +346,7 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
+    #endif
     #endif
     int one = 1;
     if (setsockopt(sfd, IPPROTO_TCP,
@@ -499,14 +505,19 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
     char *data;
     int len;
     time_t t;
-    struct elem *val;
+    struct elem *val;    
+    struct sockaddr_ina val_addr = *dst;
     
-    if (dst->sa.sa_family == AF_INET) {
-        data = (char *)(&dst->in.sin_addr);
-        len = sizeof(dst->in.sin_addr);
-    } else {
-        data = (char *)(&dst->in6.sin6_addr);
-        len = sizeof(dst->in6.sin6_addr);
+    if (val_addr.sa.sa_family == AF_INET6) {
+        map_fix(&val_addr, 0);
+    }
+    if (val_addr.sa.sa_family == AF_INET) {
+        data = (char *)(&val_addr.in.sin_addr);
+        len = sizeof(val_addr.in.sin_addr);
+    }
+    else {
+        data = (char *)(&val_addr.in6.sin6_addr);
+        len = sizeof(val_addr.in6.sin6_addr);
     }
     int i = mem_index(params.mempool, data, len);
     if (m == 0 && i >= 0) {
@@ -547,6 +558,8 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         if (n) uniperror("ss recv");
         return -1;
     }
+    int error = 0;
+    
     if (*buffer == S_VER5) {
         if (val->flag != FLAG_S5) {
             if (auth_socks5(val->fd, buffer, n)) {
@@ -555,35 +568,35 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             val->flag = FLAG_S5;
             return 0;
         }
-        int s5e = s5_get_addr(buffer, n, &dst);
-        if (!s5e &&
-                create_conn(pool, val, &dst, EV_CONNECT)) {
-            s5e = S_ER_GEN;
-        }
-        if (s5e) {
-            resp_s5_error(val->fd, s5e);
-            return -1;
-        }
+        error = s5_get_addr(buffer, n, &dst);
     }
     else if (*buffer == S_VER4) {
         val->flag = FLAG_S4;
-        
-        int error = s4_get_addr(buffer, n, &dst);
-        if (!error) {
-            error = create_conn(pool, val, &dst, EV_CONNECT);
-        }
-        if (error) {
-            if (resp_error(val->fd, error, FLAG_S4) < 0)
-                uniperror("send");
-            return -1;
-        }
+        error = s4_get_addr(buffer, n, &dst);
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
         return -1;
     }
-    int m = mode_add_get(
-        (struct sockaddr_ina *)&val->pair->in6, -1);
+    if (error) {
+        if (val->flag == FLAG_S4
+                && resp_error(val->fd, error, FLAG_S4) < 0) {
+            uniperror("send");
+        }
+        else if (resp_s5_error(val->fd, error) < 0) {
+            uniperror("send");
+        }
+        return -1;
+    }
+    int m = mode_add_get(&dst, -1);
+    struct desync_params dp = params.dp[m < 0 ? 0 : m];
+    
+    error = create_conn(pool, val, &dst, EV_CONNECT, dp.mss);
+    if (error) {
+        if (resp_error(val->fd, error, val->flag) < 0)
+            uniperror("send");
+        return -1;
+    }
     if (m >= 0) {
         val->attempt = m;
     }
@@ -607,8 +620,10 @@ int try_again(struct poolhd *pool, struct eval *val, char data)
             (struct sockaddr_ina *)&val->in6, 0);
         return -1;
     }
+    struct desync_params dp = params.dp[m];
+    
     if (create_conn(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
+            (struct sockaddr_ina *)&val->in6, EV_DESYNC, dp.mss)) {
         return -1;
     }
     val->pair = 0;
