@@ -95,9 +95,6 @@ const char help_text[] = {
     "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
-    #ifdef __linux__
-    "    -m, --mss <size>          Set MSS for outgoing connections\n"
-    #endif
 };
 
 
@@ -141,9 +138,6 @@ const struct option options[] = {
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
     {"def-ttl",       1, 0, 'g'},
-    #ifdef __linux__
-    {"mss",           1, 0, 'm'},
-    #endif
     {"delay",         1, 0, 'w'}, //
     {"not-wait-send", 0, 0, 'W'}, //
     {0}
@@ -637,15 +631,6 @@ int main(int argc, char **argv)
                    || part->pos > 0xffff) {
                 invalid = 1;
                 break;
-            }
-            break;
-            
-        case 'm':
-            val = strtol(optarg, &end, 0);
-            if (val < 88 || val > 32767 || *end)
-                invalid = 1;
-            else {
-                dp->mss = val;
             }
             break;
             

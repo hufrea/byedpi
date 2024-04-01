@@ -291,7 +291,7 @@ int s5_get_addr(char *buffer, ssize_t n,
 
 
 int create_conn(struct poolhd *pool,
-        struct eval *val, struct sockaddr_ina *dst, int next, int mss)
+        struct eval *val, struct sockaddr_ina *dst, int next)
 {
     struct sockaddr_ina addr = *dst;
     
@@ -329,12 +329,6 @@ int create_conn(struct poolhd *pool,
     if (setsockopt(sfd, IPPROTO_TCP,
             TCP_SYNCNT, (char *)&syn_count, sizeof(syn_count))) {
         uniperror("setsockopt TCP_SYNCNT");
-        close(sfd);
-        return -1;
-    }
-    if (mss && setsockopt(sfd, IPPROTO_TCP,
-            TCP_MAXSEG, (char *)&mss, sizeof(mss))) {
-        uniperror("setsockopt TCP_MAXSEG");
         close(sfd);
         return -1;
     }
@@ -582,16 +576,14 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         return -1;
     }
-    int m = mode_add_get(&dst, -1);
-    struct desync_params dp = params.dp[m < 0 ? 0 : m];
-    
-    error = create_conn(pool, val, &dst, EV_CONNECT, dp.mss);
+    error = create_conn(pool, val, &dst, EV_CONNECT);
     if (error) {
         int en = get_e();
         if (resp_error(val->fd, en ? en : error, val->flag) < 0)
             uniperror("send");
         return -1;
     }
+    int m = mode_add_get(&dst, -1);
     if (m >= 0) {
         val->attempt = m;
     }
@@ -615,10 +607,9 @@ int try_again(struct poolhd *pool, struct eval *val, char data)
             (struct sockaddr_ina *)&val->in6, 0);
         return -1;
     }
-    struct desync_params dp = params.dp[m];
     
     if (create_conn(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC, dp.mss)) {
+            (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
         return -1;
     }
     val->pair = 0;

@@ -49,7 +49,6 @@ struct desync_params {
     int mod_http;
     int tlsrec_n;
     struct part *tlsrec;
-    int mss;
     int spos_n;
     struct spos *spos;
 };
