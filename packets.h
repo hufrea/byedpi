@@ -21,4 +21,12 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port);
 
 int mod_http(char *buffer, size_t bsize, int m);
 
+int get_http_code(char *b, ssize_t n);
+
+int is_http_redirect(char *req, ssize_t qn, char *resp, ssize_t sn);
+
+int neq_tls_sid(char *req, ssize_t qn, char *resp, ssize_t sn);
+
+int is_tls_alert(char *resp, ssize_t sn);
+
 int part_tls(char *buffer, size_t bsize, ssize_t n, int pos);

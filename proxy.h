@@ -94,25 +94,6 @@ enum s4_rep {
 #define S_SIZE_I6 22
 #define S_SIZE_ID 7
 
-#ifndef __linux__
-inline char *memmem(char *a, ssize_t as, char *b, ssize_t bs)
-{
-    for (char *p = a; ; p++) {
-        p = memchr(p, *b, as - (p - a));
-        if (!p) {
-            return 0;
-        }
-        if ((p + bs) > (a + as)) {
-            return 0;
-        }
-        if (!memcmp(p, b, bs)) {
-            return p;
-        }
-    }
-    return 0;
-}
-#endif
-
 int listen_socket(struct sockaddr_ina *srv);
 int event_loop(int srvfd);
 int run(struct sockaddr_ina *srv);

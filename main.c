@@ -22,7 +22,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION 7
+#define VERSION 8
 #define MPOOL_INC 16
 
 char oob_char[1] = "a";
@@ -75,7 +75,7 @@ const char help_text[] = {
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
-    "    -P, --tr <s:e:f|:str>     Auto trigger data in first response\n"
+    "    -D, --detect <r,c,s,a>    Detect: redirect,cl_err,sid_inv,alert\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -119,7 +119,7 @@ const struct option options[] = {
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
-    {"tr",            1, 0, 'P'},
+    {"detect",        1, 0, 'D'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -317,17 +317,6 @@ void clear_params(void)
                 free(s.parts);
                 s.parts = 0;
             }
-            if (s.spos) {
-                for (int x = 0; x < s.spos_n; x++) {
-                    struct spos p = s.spos[x];
-                    if (p.data != 0) {
-                        free(p.data);
-                        p.data = 0;;
-                    }
-                }
-                free(s.spos);
-                s.spos = 0;
-            }
         }
         free(params.dp);
         params.dp = 0;
@@ -494,23 +483,28 @@ int main(int argc, char **argv)
                 params.timeout = val;
             break;
             
-        case 'P':;
-            struct spos *spos = add((void *)&dp->spos,
-                &dp->spos_n, sizeof(struct spos));
-            if (!spos) {
-                clear_params();
-                return -1;
-            }
-            sscanf(optarg, "%zi:%zi:%zn", &spos->start, &spos->end, &val);
-            if (val == 0 || !optarg[val]) {
-                invalid = 1;
-            }
-            else {
-                spos->data = ftob(&optarg[val], &spos->size);
-                if (!spos->data) {
-                    uniperror("read/parse");
-                    invalid = 1;
+        case 'D':;
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case 'r': 
+                        dp->detect |= DETECT_HTTP_LOCAT;
+                        break;
+                    case 'c': 
+                        dp->detect |= DETECT_HTTP_CLERR;
+                        break;
+                    case 's': 
+                        dp->detect |= DETECT_TLS_INVSID;
+                        break;
+                    case 'a': 
+                        dp->detect |= DETECT_TLS_ALERT;
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
                 }
+                end = strchr(end, ',');
+                if (end) end++;
             }
             break;
             

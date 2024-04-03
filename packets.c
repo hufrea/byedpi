@@ -53,6 +53,24 @@ char http_data[43] = {
 };
 
 
+char *strncasestr(char *a, ssize_t as, char *b, ssize_t bs)
+{
+    for (char *p = a; ; p++) {
+        p = memchr(p, *b, as - (p - a));
+        if (!p) {
+            return 0;
+        }
+        if ((p + bs) > (a + as)) {
+            return 0;
+        }
+        if (!strncasecmp(p, b, bs)) {
+            return p;
+        }
+    }
+    return 0;
+}
+
+
 int find_tls_ext_offset(uint16_t type, char *data, size_t size) 
 {
     if (size < 44) {
@@ -145,26 +163,18 @@ int parse_tls(char *buffer, size_t bsize, char **hs)
 int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
 {
     char *host = buffer, *h_end;
-    size_t osz = bsize;
+    char *buff_end = buffer + bsize;
     
     if (bsize < 16 || *buffer > 'T' || *buffer < 'C') {
         return 0;
     }
-    while (1) {
-        host = memchr(host, '\n', osz);
-        if (!host)
-            return 0;
-        host++;
-        osz = bsize - (host - buffer);
-        if (osz < 6)
-            return 0;
-        if (!strncasecmp(host, "Host:", 5))
-            break;
-    }
-    host += 5; osz -= 5;
-    for (; osz && isblank(*host); host++, osz--) {}
+    host = strncasestr(buffer, bsize, "\nHost:", 6);
+    host += 6;
     
-    char *l_end = memchr(host, '\n', osz);
+    while ((buff_end - host) > 0 && isblank(*host)) {
+        host++;
+    }
+    char *l_end = memchr(host, '\n', buff_end - host);
     if (!l_end) {
         return 0;
     }
@@ -197,6 +207,104 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
     }
     *hs = host;
     return h_end - host;
+}
+
+
+int get_http_code(char *b, ssize_t n)
+{
+    if (n < 13) return 0;
+    if (strncmp(b, "HTTP/1.", 7)) {
+        return 0;
+    }
+    if (!memchr(b + 13, '\n', n)) {
+        return 0;
+    }
+    char *e;
+    long num = strtol(b + 9, &e, 10);
+    if (num < 100 || num > 511 || !isspace(*e)) {
+        return 0;
+    }
+    return (int )num;
+}
+
+
+int is_http_redirect(char *req, ssize_t qn, char *resp, ssize_t sn)
+{
+    char *host = 0;
+    int len = parse_http(req, qn, &host, 0);
+    
+    if (len <= 0 || sn < 29) {
+        return 0;
+    }
+    int code = get_http_code(resp, sn);
+    if (code > 308 || code < 300) {
+        return 0;
+    }
+    char *location = strncasestr(resp, sn, "\nLocation:", 10);
+    if (!location) {
+        return 0;
+    }
+    location += 11;
+    
+    if ((location + 8) >= (resp + sn)) {
+        return 0;
+    }
+    char *l_end = memchr(location, '\n', sn - (location - resp));
+    if (!l_end) {
+        return 0;
+    }
+    for (; isspace(*(l_end - 1)); l_end--) {}
+    
+    if ((l_end - location) > 7) {
+        if (!strncmp(location, "http://", 7)) {
+            location += 7;
+        }
+        else if (!strncmp(location, "https://", 8)) {
+            location += 8;
+        }
+    }
+    char *e = memchr(location, '/', l_end - location);
+    if (!e) e = l_end;
+    
+    for (; (e - location) > len; location++) {
+        location = memchr(location, '.', e - location);
+        if (!location) {
+            return 1;
+        }
+    }
+    for (; len > (e - location); host++) {
+        char *p = memchr(host, '.', len);
+        if (!p) {
+            return 1;
+        }
+        len -= (host - p) + 1;
+        host = p;
+    }
+    return (((e - location) != len) 
+        || strncmp(host, location, len));
+}
+
+
+int neq_tls_sid(char *req, ssize_t qn, char *resp, ssize_t sn)
+{
+    if (qn < 75 || sn < 75) {
+        return 0;
+    }
+    if (ANTOHS(req, 0) != 0x1603
+            || ANTOHS(resp, 0) != 0x1603) {
+        return 0;
+    }
+    if (req[43] != resp[43]) {
+        return 1;
+    }
+    uint8_t sid_len = req[43];
+    return memcmp(req + 44, resp + 44, sid_len);
+}
+
+
+int is_tls_alert(char *resp, ssize_t sn) {
+    return (sn >= 7 
+        && !memcmp(resp, "\x15\x03\x01\x00\x02\x02", 6));
 }
 
 

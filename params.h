@@ -15,6 +15,11 @@
 #define OFFSET_SNI 1
 #define OFFSET_HOST 2
 
+#define DETECT_HTTP_LOCAT 1
+#define DETECT_HTTP_CLERR 2
+#define DETECT_TLS_INVSID 4
+#define DETECT_TLS_ALERT 8
+
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
@@ -49,8 +54,7 @@ struct desync_params {
     int mod_http;
     int tlsrec_n;
     struct part *tlsrec;
-    int spos_n;
-    struct spos *spos;
+    int detect;
 };
 
 struct params {
@@ -83,10 +87,5 @@ struct packet {
 extern struct packet fake_tls;
 extern struct packet fake_http;
 extern struct packet oob_data;
-
-struct spos {
-     ssize_t start, end, size;
-     char  *data;
-};
 
 extern char ip_option[1];

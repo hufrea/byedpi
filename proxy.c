@@ -11,6 +11,7 @@
 #include <params.h>
 #include <conev.h>
 #include <desync.h>
+#include <packets.h>
 #include <error.h>
 
 #ifdef _WIN32
@@ -600,7 +601,7 @@ int try_again(struct poolhd *pool, struct eval *val, char data)
     
     if (!data) for (; m < params.dp_count; m++) {
         struct desync_params dp = params.dp[m];
-        if (!dp.spos_n) break;
+        if (dp.detect == 0) break;
     }
     if (m >= params.dp_count) {
         mode_add_get(
@@ -621,23 +622,27 @@ int try_again(struct poolhd *pool, struct eval *val, char data)
 }
 
 
-int find_bad_data(char *buffer, ssize_t n, int m)
+int find_bad_data(char *req, ssize_t qn, 
+        char *resp, ssize_t sn, int m)
 {
     for (; m < params.dp_count; m++) {
         struct desync_params dp = params.dp[m];
         
-        for (int i = 0; i < dp.spos_n; i++) {
-            struct spos bad_data = dp.spos[i];
-            if (bad_data.start >= n) {
-                continue;
-            }
-            ssize_t end = n;
-            if (bad_data.end && bad_data.end < n) {
-                end = bad_data.end;
-            }
-            char *found = memmem(buffer + bad_data.start,
-                end - bad_data.start, bad_data.data, bad_data.size);
-            if (found) {
+        if ((dp.detect & DETECT_HTTP_LOCAT)
+                && is_http_redirect(req, qn, resp, sn)) {
+            return m;
+        }
+        if ((dp.detect & DETECT_TLS_INVSID)
+                && neq_tls_sid(req, qn, resp, sn)) {
+            return m;
+        }
+        if ((dp.detect & DETECT_TLS_ALERT)
+                && is_tls_alert(resp, sn)) {
+            return m;
+        }
+        if (dp.detect & DETECT_HTTP_CLERR) {
+            int code = get_http_code(resp, sn);
+            if (code > 400 && code < 451 && code != 429) {
                 return m;
             }
         }
@@ -664,12 +669,14 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
         return try_again(pool, val, 0);
     }
     //
-    int d = find_bad_data(buffer, n, val->pair->attempt + 1);
+    struct eval *pair = val->pair;
+    
+    int d = find_bad_data(pair->buff.data, pair->buff.size, 
+        buffer, n, pair->attempt + 1);
     if (d) {
         val->pair->attempt = d - 1;
         return try_again(pool, val, 1);
     }
-    struct eval *pair = val->pair;
     
     ssize_t sn = send(pair->fd, buffer, n, 0);
     if (n != sn) {
