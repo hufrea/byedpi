@@ -594,20 +594,9 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
 }
 
 
-int try_again(struct poolhd *pool, struct eval *val, char data)
+int reconnect(struct poolhd *pool, struct eval *val, int m)
 {
     struct eval *client = val->pair;
-    int m = client->attempt + 1;
-    
-    if (!data) for (; m < params.dp_count; m++) {
-        struct desync_params dp = params.dp[m];
-        if (dp.detect == 0) break;
-    }
-    if (m >= params.dp_count) {
-        mode_add_get(
-            (struct sockaddr_ina *)&val->in6, 0);
-        return -1;
-    }
     
     if (create_conn(pool, client, 
             (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
@@ -617,37 +606,64 @@ int try_again(struct poolhd *pool, struct eval *val, char data)
     del_event(pool, val);
     
     client->type = EV_IGNORE;
-    client->attempt++;
+    client->attempt = m;
     return 0;
 }
 
 
-int find_bad_data(char *req, ssize_t qn, 
-        char *resp, ssize_t sn, int m)
+int on_torst(struct poolhd *pool, struct eval *val)
 {
+    int m = val->pair->attempt + 1;
+    
+    for (; m < params.dp_count; m++) {
+        struct desync_params dp = params.dp[m];
+        if (dp.detect == 0 
+                || (dp.detect & DETECT_TORST)) 
+            break;
+    }
+    if (m >= params.dp_count) {
+        mode_add_get(
+            (struct sockaddr_ina *)&val->in6, 0);
+        return -1;
+    }
+    return reconnect(pool, val, m);
+}
+
+
+int on_response(struct poolhd *pool, struct eval *val, 
+        char *resp, ssize_t sn)
+{
+    int m = val->pair->attempt + 1;
+    
+    char *req = val->pair->buff.data;
+    ssize_t qn = val->pair->buff.size;
+    
     for (; m < params.dp_count; m++) {
         struct desync_params dp = params.dp[m];
         
         if ((dp.detect & DETECT_HTTP_LOCAT)
                 && is_http_redirect(req, qn, resp, sn)) {
-            return m;
+            break;
         }
         if ((dp.detect & DETECT_TLS_INVSID)
                 && neq_tls_sid(req, qn, resp, sn)) {
-            return m;
+            break;
         }
         if ((dp.detect & DETECT_TLS_ALERT)
                 && is_tls_alert(resp, sn)) {
-            return m;
+            break;
         }
         if (dp.detect & DETECT_HTTP_CLERR) {
             int code = get_http_code(resp, sn);
             if (code > 400 && code < 451 && code != 429) {
-                return m;
+                break;
             }
         }
     }
-    return 0;
+    if (m < params.dp_count) {
+        return reconnect(pool, val, m);
+    }
+    return -1;
 }
 
 
@@ -666,17 +682,13 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
                 break;
             default: return -1;
         }
-        return try_again(pool, val, 0);
+        return on_torst(pool, val);
     }
     //
-    struct eval *pair = val->pair;
-    
-    int d = find_bad_data(pair->buff.data, pair->buff.size, 
-        buffer, n, pair->attempt + 1);
-    if (d) {
-        val->pair->attempt = d - 1;
-        return try_again(pool, val, 1);
+    if (on_response(pool, val, buffer, n) == 0) {
+        return 0;
     }
+    struct eval *pair = val->pair;
     
     ssize_t sn = send(pair->fd, buffer, n, 0);
     if (n != sn) {

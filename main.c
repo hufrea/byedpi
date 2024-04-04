@@ -70,12 +70,12 @@ const char help_text[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
-    "    -A, --auto                Try desync params after this option\n"
+    "    -A, --auto[=t,r,c,s,a]    Try desync params after this option\n"
+    "                              Detect: torst,redirect,cl_err,sid_inv,alert\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
-    "    -D, --detect <r,c,s,a>    Detect: redirect,cl_err,sid_inv,alert\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -114,12 +114,11 @@ const struct option options[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo ",          0, 0, 'F'},
     #endif
-    {"auto",          0, 0, 'A'},
+    {"auto",          2, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
-    {"detect",        1, 0, 'D'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -460,6 +459,35 @@ int main(int argc, char **argv)
                 clear_params();
                 return -1;
             }
+            if (!optarg) {
+                dp->detect |= DETECT_TORST;
+                break;
+            }
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case 't': 
+                        dp->detect |= DETECT_TORST;
+                        break;
+                    case 'r': 
+                        dp->detect |= DETECT_HTTP_LOCAT;
+                        break;
+                    case 'c': 
+                        dp->detect |= DETECT_HTTP_CLERR;
+                        break;
+                    case 's': 
+                        dp->detect |= DETECT_TLS_INVSID;
+                        break;
+                    case 'a': 
+                        dp->detect |= DETECT_TLS_ALERT;
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
+                }
+                end = strchr(end, ',');
+                if (end) end++;
+            }
             break;
             
         case 'u':
@@ -481,31 +509,6 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 params.timeout = val;
-            break;
-            
-        case 'D':;
-            end = optarg;
-            while (end && !invalid) {
-                switch (*end) {
-                    case 'r': 
-                        dp->detect |= DETECT_HTTP_LOCAT;
-                        break;
-                    case 'c': 
-                        dp->detect |= DETECT_HTTP_CLERR;
-                        break;
-                    case 's': 
-                        dp->detect |= DETECT_TLS_INVSID;
-                        break;
-                    case 'a': 
-                        dp->detect |= DETECT_TLS_ALERT;
-                        break;
-                    default:
-                        invalid = 1;
-                        continue;
-                }
-                end = strchr(end, ',');
-                if (end) end++;
-            }
             break;
             
         case 's':
