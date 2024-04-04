@@ -54,7 +54,7 @@ $ ./ciadpi --disorder 3 -A --tlsrec 1+s
     Можно указывать несколько групп опций, раделяя их данным параметром
     Если соединение успешно прошло, то параметры для данного IP будут закешированны
     Параметры, которые можно вынести в отдельную группу: 
-    detect, split, disorder, oob, fake, ttl, ip-opt, md5sig, mod-http, tlsrec
+    split, disorder, oob, fake, ttl, ip-opt, md5sig, mod-http, tlsrec
     Пример: 
     --auto=redirect --split=1+h --auto=torst --fake -1 --auto=sid_inv,alert --tlsrec 1+s
     
@@ -65,15 +65,6 @@ $ ./ciadpi --disorder 3 -A --tlsrec 1+s
     Таймаут ожидания первого ответа от сервера в секундах
     В Linux переводится в миллисекунды, поэтому можно указать дробное число
     Истечение таймаута будет обработано --auto
-    
--D, --detect <r,c,s,a>
-    Обнаружить некорректный ответ от сервера:
-        redirect: HTTP Redirect с Location, домен которого не совпадает и исходящим
-        cl_err  : HTTP ответ, код которого равен 40x, но не 429
-        sid_inv : session_id в TLS ServerHello и ClientHello не совпадают
-        alert   : TLS Error Alert в ответе
-    Является триггером для --auto в указанной группе, пример:
-    --auto --detect redirect --split 1+h --auto --split 2+s
     
 -s, --split <n[+s]>
     Разбить запрос по указанному смещению
