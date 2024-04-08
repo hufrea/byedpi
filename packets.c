@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 #ifdef _WIN32
@@ -53,7 +54,7 @@ char http_data[43] = {
 };
 
 
-char *strncasestr(char *a, ssize_t as, char *b, ssize_t bs)
+char *strncasestr(char *a, size_t as, char *b, size_t bs)
 {
     for (char *p = a; ; p++) {
         p = memchr(p, *b, as - (p - a));
@@ -71,7 +72,7 @@ char *strncasestr(char *a, ssize_t as, char *b, ssize_t bs)
 }
 
 
-int find_tls_ext_offset(uint16_t type, char *data, size_t size) 
+size_t find_tls_ext_offset(uint16_t type, char *data, size_t size) 
 {
     if (size < 44) {
         return 0;
@@ -105,7 +106,7 @@ int find_tls_ext_offset(uint16_t type, char *data, size_t size)
 
 int change_tls_sni(const char *host, char *buffer, size_t bsize)
 {
-    int sni_offs, pad_offs;
+    size_t sni_offs, pad_offs;
     
     if (!(sni_offs = find_tls_ext_offset(0x00, buffer, bsize))) {
         return -1;
@@ -145,7 +146,7 @@ int parse_tls(char *buffer, size_t bsize, char **hs)
     if (ANTOHS(buffer, 0) != 0x1603) {
         return 0;
     }
-    int sni_offs = find_tls_ext_offset(0x00, buffer, bsize);
+    size_t sni_offs = find_tls_ext_offset(0x00, buffer, bsize);
     
     if (!sni_offs || (sni_offs + 12) >= bsize) {
         return 0;
@@ -160,15 +161,36 @@ int parse_tls(char *buffer, size_t bsize, char **hs)
 }
 
 
+bool is_http(char *buffer, size_t bsize)
+{
+    if (bsize < 16 || *buffer > 'T' || *buffer < 'C') {
+        return 0;
+    }
+    const char *methods[] = {
+        "HEAD", "GET", "POST", "PUT", "DELETE",
+        "OPTIONS", "CONNECT", "TRACE", "PATCH", 0
+    };
+    for (const char **m = methods; *m; m++) {
+        if (strncmp(buffer, *m, strlen(*m)) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+    
 int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
 {
     char *host = buffer, *h_end;
     char *buff_end = buffer + bsize;
     
-    if (bsize < 16 || *buffer > 'T' || *buffer < 'C') {
+    if (!is_http(buffer, bsize)) {
         return 0;
     }
     host = strncasestr(buffer, bsize, "\nHost:", 6);
+    if (!host) {
+        return 0;
+    }
     host += 6;
     
     while ((buff_end - host) > 0 && isblank(*host)) {
@@ -210,7 +232,7 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
 }
 
 
-int get_http_code(char *b, ssize_t n)
+int get_http_code(char *b, size_t n)
 {
     if (n < 13) return 0;
     if (strncmp(b, "HTTP/1.", 7)) {
@@ -228,7 +250,7 @@ int get_http_code(char *b, ssize_t n)
 }
 
 
-int is_http_redirect(char *req, ssize_t qn, char *resp, ssize_t sn)
+bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn)
 {
     char *host = 0;
     int len = parse_http(req, qn, &host, 0);
@@ -285,7 +307,7 @@ int is_http_redirect(char *req, ssize_t qn, char *resp, ssize_t sn)
 }
 
 
-int neq_tls_sid(char *req, ssize_t qn, char *resp, ssize_t sn)
+bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
 {
     if (qn < 75 || sn < 75) {
         return 0;
@@ -302,7 +324,7 @@ int neq_tls_sid(char *req, ssize_t qn, char *resp, ssize_t sn)
 }
 
 
-int is_tls_alert(char *resp, ssize_t sn) {
+bool is_tls_alert(char *resp, size_t sn) {
     return (sn >= 7 
         && !memcmp(resp, "\x15\x03\x01\x00\x02\x02", 6));
 }
@@ -336,7 +358,7 @@ int mod_http(char *buffer, size_t bsize, int m)
 }
 
 
-int part_tls(char *buffer, size_t bsize, ssize_t n, int pos)
+int part_tls(char *buffer, size_t bsize, ssize_t n, long pos)
 {
     if ((n < 3) || (bsize - n < 5) || 
             (pos < 0) || (pos + 5 > n)) {

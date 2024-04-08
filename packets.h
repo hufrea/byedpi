@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/types.h>
 
 #define IS_UNKNOWN 0
@@ -21,12 +22,12 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port);
 
 int mod_http(char *buffer, size_t bsize, int m);
 
-int get_http_code(char *b, ssize_t n);
+int get_http_code(char *b, size_t n);
 
-int is_http_redirect(char *req, ssize_t qn, char *resp, ssize_t sn);
+bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn);
 
-int neq_tls_sid(char *req, ssize_t qn, char *resp, ssize_t sn);
+bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn);
 
-int is_tls_alert(char *resp, ssize_t sn);
+bool is_tls_alert(char *resp, size_t sn);
 
-int part_tls(char *buffer, size_t bsize, ssize_t n, int pos);
+int part_tls(char *buffer, size_t bsize, ssize_t n, long pos);
