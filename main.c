@@ -22,7 +22,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "0.8.1"
+#define VERSION "8.1"
 
 #define MPOOL_INC 16
 
