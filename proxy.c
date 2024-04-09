@@ -497,27 +497,34 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
-    char *data;
     int len;
     time_t t;
-    struct elem *val;    
+    struct elem *val;
+    
+    struct {
+        uint16_t port;
+        union {
+            struct in_addr  ip4;
+            struct in6_addr ip6;
+        };
+    } str = { .port = dst->in.sin_port };
     
     if (dst->sa.sa_family == AF_INET) {
-        data = (char *)(&dst->in.sin_addr);
-        len = sizeof(dst->in.sin_addr);
+        str.ip4 = dst->in.sin_addr;
+        len = sizeof(str.port) + sizeof(str.ip4);
     }
     else {
-        data = (char *)(&dst->in6.sin6_addr);
-        len = sizeof(dst->in6.sin6_addr);
+        str.ip6 = dst->in6.sin6_addr;
+        len = sizeof(str);
     }
-    int i = mem_index(params.mempool, data, len);
+    int i = mem_index(params.mempool, (char *)&str, len);
     if (m == 0 && i >= 0) {
         mem_delete(params.mempool, i);
         return 0;
     }
     else if (m > 0) {
         time(&t);
-        val = mem_add(params.mempool, data, len, i);
+        val = mem_add(params.mempool, (char *)&str, len, i);
         if (!val) {
             uniperror("mem_add");
             return -1;

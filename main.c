@@ -22,7 +22,8 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION 8
+#define VERSION "0.8.1"
+
 #define MPOOL_INC 16
 
 char oob_char[1] = "a";
@@ -396,7 +397,7 @@ int main(int argc, char **argv)
             clear_params();
             return 0;
         case 'v':
-            printf("%d\n", VERSION);
+            printf("%s\n", VERSION);
             clear_params();
             return 0;
         
