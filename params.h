@@ -56,6 +56,10 @@ struct desync_params {
     int tlsrec_n;
     struct part *tlsrec;
     int detect;
+    struct mphdr *hosts;
+    
+    char to_ip;
+    struct sockaddr_in6 addr;
 };
 
 struct params {
@@ -67,6 +71,7 @@ struct params {
     int def_ttl;
     char custom_ttl;
     
+    char late_conn;
     char tfo;
     unsigned int timeout;
     long cache_ttl;

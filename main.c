@@ -17,12 +17,13 @@
     #include <netdb.h>
     #include <fcntl.h>
     #include <netinet/tcp.h>
+    #include <sys/mman.h>
 #else
     #include <ws2tcpip.h>
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "8.1"
+#define VERSION "10"
 
 #define MPOOL_INC 16
 
@@ -71,12 +72,15 @@ const char help_text[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
-    "    -A, --auto[=t,r,c,s,a]    Try desync params after this option\n"
-    "                              Detect: torst,redirect,cl_err,sid_inv,alert\n"
+    "    -L, --late-conn           Waiting for request before connecting\n"
+    "    -A, --auto[=t,r,c,s,a,n]  Try desync params after this option\n"
+    "                              Detect: torst,redirect,cl_err,sid_inv,alert,nop\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -H, --hosts <file|:str>   Hosts whitelist\n"
+    "    -D, --dst <addr>          Custom destination IP\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -115,11 +119,14 @@ const struct option options[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo ",          0, 0, 'F'},
     #endif
+    {"late-conn",     0, 0, 'L'},
     {"auto",          2, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
+    {"hosts",         1, 0, 'H'},
+    {"dst",           1, 0, 'D'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -195,16 +202,27 @@ char *ftob(const char *str, ssize_t *sl)
     long size;
     
     FILE *file = fopen(str, "rb");
-    if (!file)
+    if (!file) {
         return 0;
+    }
     do {
         if (fseek(file, 0, SEEK_END)) {
             break;
         }
         size = ftell(file);
-        if (!size || fseek(file, 0, SEEK_SET)) {
+        if (size <= 0) {
             break;
         }
+        if (fseek(file, 0, SEEK_SET)) {
+            break;
+        }
+        #ifndef _WIN32
+        buffer = mmap(0, size, PROT_READ, MAP_PRIVATE, fileno(file), 0);
+        if (buffer == MAP_FAILED) {
+            buffer = 0;
+            break;
+        }
+        #else
         if (!(buffer = malloc(size))) {
             break;
         }
@@ -212,12 +230,40 @@ char *ftob(const char *str, ssize_t *sl)
             free(buffer);
             buffer = 0;
         }
+        #endif
     } while (0);
     if (buffer) {
         *sl = size;
     }
     fclose(file);
     return buffer;
+}
+
+
+struct mphdr *parse_hosts(char *buffer, size_t size)
+{
+    struct mphdr *hdr = mem_pool(1);
+    if (!hdr) {
+        return 0;
+    }
+    char *end = buffer + size;
+    char *e = buffer, *s = buffer;
+    
+    for (; e <= end; e++) {
+        if (*e != ' ' && *e != '\n' && e != end) {
+            continue;
+        }
+        if (s == e) {
+            s++;
+            continue;
+        }
+        if (mem_add(hdr, s, e - s) == 0) {
+            free(hdr);
+            return 0;
+        }
+        s = e + 1;
+    }
+    return hdr;
 }
 
 
@@ -284,18 +330,23 @@ int parse_offset(struct part *part, const char *str)
 
 void *add(void **root, int *n, size_t ss)
 {
-    void *p = realloc(*root, ss * (*n + 1));
+    char *p = realloc(*root, ss * (*n + 1));
     if (!p) {
         uniperror("realloc");
         return 0;
     }
     *root = p;
-    p = ((*root) + ((*n) * ss));
+    p = (p + ((*n) * ss));
     memset(p, 0, ss);
     *n = *n + 1;
     return p;
 }
 
+#ifndef _WIN32
+#define FREE(p, s) munmap(p, s)
+#else
+#define FREE(p, s) free(p)
+#endif
 
 void clear_params(void)
 {
@@ -322,15 +373,15 @@ void clear_params(void)
         params.dp = 0;
     }
     if (fake_tls.data != tls_data) {
-        free(fake_tls.data);
+        FREE(fake_tls.data, fake_tls.size);
         fake_tls.data = tls_data;
     }
     if (fake_http.data != http_data) {
-        free(fake_http.data);
+        FREE(fake_http.data, fake_http.size);
         fake_http.data = http_data;
     }
     if (oob_data.data != oob_char) {
-        free(oob_data.data);
+        FREE(oob_data.data, oob_data.size);
         oob_data.data = oob_char;
     }
 }
@@ -382,6 +433,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
+    
     while (!invalid && (rez = getopt_long_only(
              argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
@@ -445,6 +497,10 @@ int main(int argc, char **argv)
             
         // desync options
         
+        case 'L':
+            params.late_conn = 1;
+            break;
+            
         case 'K':
             params.de_known = 1;
             break;
@@ -482,6 +538,8 @@ int main(int argc, char **argv)
                     case 'a': 
                         dp->detect |= DETECT_TLS_ALERT;
                         break;
+                    case 'n': 
+                        break;
                     default:
                         invalid = 1;
                         continue;
@@ -510,6 +568,27 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 params.timeout = val;
+            break;
+            
+        case 'H':;
+            char *data = ftob(optarg, &val);
+            if (!data) {
+                uniperror("read/parse");
+                invalid = 1;
+            }
+            dp->hosts = parse_hosts(data, val);
+            if (!dp->hosts) {
+                perror("parse_hosts");
+                clear_params();
+                return -1;
+            }
+            break;
+            
+        case 'D':
+            if (get_addr(optarg, (struct sockaddr_ina *)&dp->addr) < 0)
+                invalid = 1;
+            else
+                dp->to_ip = 2;
             break;
             
         case 's':
@@ -671,6 +750,14 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
+    if (dp->hosts) {
+        dp = add((void *)&params.dp,
+            &params.dp_count, sizeof(struct desync_params));
+        if (!dp) {
+            clear_params();
+            return -1;
+        }
+    }
     s.in.sin_port = port;
     b.in.sin_port = 0;
     
@@ -683,7 +770,7 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    params.mempool = mem_pool(MPOOL_INC);
+    params.mempool = mem_pool(0);
     if (!params.mempool) {
         uniperror("mem_pool");
         clear_params();

@@ -73,6 +73,7 @@ struct eval {
     };
     ssize_t recv_count;
     int attempt;
+    char cache;
     #ifndef NOEPOLL
     uint32_t events;
     #endif

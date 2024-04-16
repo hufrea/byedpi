@@ -1,19 +1,26 @@
+#include <stdbool.h>
 #include <time.h>
+#include "kavl.h"
 
 struct elem {
+    int len;
+    char *data;
     int m;
     time_t time;
-    int len;
-    char data[];
+    KAVL_HEAD(struct elem) head;
 };
+
 struct mphdr {
-    int max;
-    int inc;
-    int count;
-    struct elem **values;
+    bool stat;
+    struct elem *root;
 };
-struct mphdr *mem_pool(int count);
-int mem_index(struct mphdr *hdr, char *str, int len);
-struct elem *mem_add(struct mphdr *hdr, char *str, int len, int pos);
-void mem_delete(struct mphdr *hdr, int pos);
+
+struct mphdr *mem_pool(bool cst);
+
+struct elem *mem_get(struct mphdr *hdr, char *str, int len);
+
+struct elem *mem_add(struct mphdr *hdr, char *str, int len);
+
+void mem_delete(struct mphdr *hdr, char *str, int len);
+
 void mem_destroy(struct mphdr *hdr);

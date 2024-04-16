@@ -497,34 +497,26 @@ static inline int on_tunnel(struct poolhd *pool, struct eval *val,
 int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
-    int len;
     time_t t;
     struct elem *val;
-    
-    struct {
-        uint16_t port;
-        union {
-            struct in_addr  ip4;
-            struct in6_addr ip6;
-        };
-    } str = { .port = dst->in.sin_port };
+    char *str = (char *)&dst->in;
+    int len = sizeof(dst->sa.sa_family);
     
     if (dst->sa.sa_family == AF_INET) {
-        str.ip4 = dst->in.sin_addr;
-        len = sizeof(str.port) + sizeof(str.ip4);
+        len = sizeof(dst->in);
     }
     else {
-        str.ip6 = dst->in6.sin6_addr;
-        len = sizeof(str);
+        len = sizeof(dst->in6) - sizeof(dst->in6.sin6_scope_id);
     }
-    int i = mem_index(params.mempool, (char *)&str, len);
-    if (m == 0 && i >= 0) {
-        mem_delete(params.mempool, i);
+    len -= sizeof(dst->sa.sa_family);
+    
+    if (m == 0) {
+        mem_delete(params.mempool, str, len);
         return 0;
     }
     else if (m > 0) {
         time(&t);
-        val = mem_add(params.mempool, (char *)&str, len, i);
+        val = mem_add(params.mempool, str, len);
         if (!val) {
             uniperror("mem_add");
             return -1;
@@ -533,16 +525,29 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
         val->time = t;
         return 0;
     }
-    if (i < 0) {
+    val = mem_get(params.mempool, str, len);
+    if (!val) {
         return -1;
     }
-    val = params.mempool->values[i];
     time(&t);
     if (t > val->time + params.cache_ttl) {
         LOG(LOG_S, "time=%ld, now=%ld, ignore\n", val->time, t);
         return 0;
     }
     return val->m;
+}
+
+
+int ext_connect(struct poolhd *pool, struct eval *val, 
+        struct sockaddr_ina *dst, int next, int m)
+{
+    struct desync_params *dp = &params.dp[m];
+    if (dp->to_ip == 2) {
+        struct sockaddr_ina addr = { .in6 = dp->addr };
+        addr.in.sin_port = dst->in.sin_port;
+        return create_conn(pool, val, &addr, next);
+    }
+    return create_conn(pool, val, dst, next);
 }
 
 
@@ -584,18 +589,26 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         }
         return -1;
     }
-    error = create_conn(pool, val, &dst, EV_CONNECT);
+    if (params.late_conn) {
+        val->type = EV_DESYNC;
+        if (resp_error(val->fd, 0, val->flag) < 0) {
+            perror("send");
+            return -1;
+         }
+         val->in6 = dst.in6;
+         return 0;
+    }
+    int m = mode_add_get(&dst, -1);
+    val->cache = (m == 0);
+    val->attempt = m < 0 ? 0 : m;
+    
+    error = ext_connect(pool, val, &dst, EV_CONNECT, m);
     if (error) {
         int en = get_e();
         if (resp_error(val->fd, en ? en : error, val->flag) < 0)
             uniperror("send");
         return -1;
     }
-    int m = mode_add_get(&dst, -1);
-    if (m >= 0) {
-        val->attempt = m;
-    }
-    val->pair->attempt = m;
     val->type = EV_IGNORE;
     return 0;
 }
@@ -605,8 +618,8 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
 {
     struct eval *client = val->pair;
     
-    if (create_conn(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
+    if (ext_connect(pool, client, 
+            (struct sockaddr_ina *)&val->in6, EV_DESYNC, m)) {
         return -1;
     }
     val->pair = 0;
@@ -614,7 +627,19 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
     
     client->type = EV_IGNORE;
     client->attempt = m;
+    client->cache = 1;
     return 0;
+}
+
+
+bool check_host(struct mphdr *hosts, struct eval *val)
+{
+    char *host;
+    int len;
+    if (!(len = parse_tls(val->buff.data, val->buff.size, &host))) {
+        len = parse_http(val->buff.data, val->buff.size, &host, 0);
+    }
+    return mem_get(hosts, host, len) != 0;
 }
 
 
@@ -623,10 +648,13 @@ int on_torst(struct poolhd *pool, struct eval *val)
     int m = val->pair->attempt + 1;
     
     for (; m < params.dp_count; m++) {
-        struct desync_params dp = params.dp[m];
-        if (dp.detect == 0 
-                || (dp.detect & DETECT_TORST)) 
+        struct desync_params *dp = &params.dp[m];
+        if (!(dp->detect & DETECT_TORST)) {
+            continue;
+        }
+        if (!dp->hosts || check_host(dp->hosts, val->pair)) {
             break;
+        }
     }
     if (m >= params.dp_count) {
         mode_add_get(
@@ -646,25 +674,34 @@ int on_response(struct poolhd *pool, struct eval *val,
     ssize_t qn = val->pair->buff.size;
     
     for (; m < params.dp_count; m++) {
-        struct desync_params dp = params.dp[m];
+        struct desync_params *dp = &params.dp[m];
         
-        if ((dp.detect & DETECT_HTTP_LOCAT)
-                && is_http_redirect(req, qn, resp, sn)) {
-            break;
-        }
-        if ((dp.detect & DETECT_TLS_INVSID)
-                && neq_tls_sid(req, qn, resp, sn)) {
-            break;
-        }
-        if ((dp.detect & DETECT_TLS_ALERT)
-                && is_tls_alert(resp, sn)) {
-            break;
-        }
-        if (dp.detect & DETECT_HTTP_CLERR) {
-            int code = get_http_code(resp, sn);
-            if (code > 400 && code < 451 && code != 429) {
+        switch (0) {
+        default:
+            if ((dp->detect & DETECT_HTTP_LOCAT)
+                    && is_http_redirect(req, qn, resp, sn)) {
                 break;
             }
+            else if ((dp->detect & DETECT_TLS_INVSID)
+                    && neq_tls_sid(req, qn, resp, sn)
+                    && !neq_tls_sid(
+                        fake_tls.data, fake_tls.size, resp, sn)) {
+                break;
+            }
+            else if ((dp->detect & DETECT_TLS_ALERT)
+                    && is_tls_alert(resp, sn)) {
+                break;
+            }
+            else if (dp->detect & DETECT_HTTP_CLERR) {
+                int code = get_http_code(resp, sn);
+                if (code > 400 && code < 451 && code != 429) {
+                    break;
+                }
+            }
+            continue;
+        }
+        if (!dp->hosts || check_host(dp->hosts, val->pair)) {
+            break;
         }
     }
     if (m < params.dp_count) {
@@ -715,8 +752,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     }
     int m = pair->attempt;
     
-    if ((m == 0 && val->attempt < 0)
-            || (m && m == val->attempt)) {
+    if (!pair->cache) {
         return 0;
     }
     if (m == 0) {
@@ -757,6 +793,21 @@ int on_desync(struct poolhd *pool, struct eval *val,
             return -1;
         }
         memcpy(val->buff.data, buffer, n);
+        
+        if (!m) for (; m < params.dp_count; m++) {
+            struct desync_params *dp = &params.dp[m];
+            if (!dp->detect &&
+                    (!dp->hosts || check_host(dp->hosts, val))) {
+                break;
+            }
+        }
+        if (m >= params.dp_count) return -1;
+        val->attempt = m;
+        
+        if (params.late_conn) {
+            return ext_connect(pool, val, 
+                (struct sockaddr_ina *)&val->in6, EV_DESYNC, m);
+        }
     }
     else {
         n = val->buff.size;
