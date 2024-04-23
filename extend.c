@@ -217,9 +217,7 @@ int on_response(struct poolhd *pool, struct eval *val,
                 break;
             }
             else if ((dp->detect & DETECT_TLS_INVSID)
-                    && neq_tls_sid(req, qn, resp, sn)
-                    && !neq_tls_sid(
-                        fake_tls.data, fake_tls.size, resp, sn)) {
+                    && neq_tls_sid(req, qn, resp, sn)) {
                 break;
             }
             else if ((dp->detect & DETECT_TLS_ALERT)

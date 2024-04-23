@@ -292,8 +292,8 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
 int get_addr_with_port(const char *str, struct sockaddr_ina *addr)
 {
     uint16_t port = 0;
-    char *s = (char *)str, *e = 0;
-    char *end = 0, *p = s;
+    const char *s = str, *p = str, *e = 0;
+    char *end = 0;
 
     if (*str == '[') {
         e = strchr(str, ']');
