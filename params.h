@@ -45,16 +45,26 @@ struct part {
     long pos;
 };
 
+struct packet {
+     ssize_t size;
+     char  *data;
+};
+
 struct desync_params {
     int ttl;
     char *ip_options;
     ssize_t ip_options_len;
     char md5sig;
+    struct packet fake_data;
+    
     int parts_n;
     struct part *parts;
+    
     int mod_http;
     int tlsrec_n;
     struct part *tlsrec;
+    
+    int proto;
     int detect;
     struct mphdr *hosts;
     
@@ -63,7 +73,6 @@ struct desync_params {
 };
 
 struct params {
-    char de_known;
     int dp_count;
     struct desync_params *dp;
     long sfdelay;
@@ -77,6 +86,7 @@ struct params {
     long cache_ttl;
     char ipv6;
     char resolve;
+    char udp;
     int max_open;
     int debug;
     size_t bfsize;
@@ -86,10 +96,6 @@ struct params {
 
 extern struct params params;
 
-struct packet {
-     ssize_t size;
-     char  *data;
-};
 extern struct packet fake_tls;
 extern struct packet fake_http;
 extern struct packet oob_data;

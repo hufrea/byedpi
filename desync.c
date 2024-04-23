@@ -131,7 +131,13 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
-    struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
+    struct packet pkt;
+    if (opt->fake_data.data) {
+        pkt = opt->fake_data;
+    }
+    else {
+        pkt = cnt != IS_HTTP ? fake_tls : fake_http;
+    }
     size_t psz = pkt.size;
     
     int ffd = memfd_create("name", O_RDWR);
@@ -218,7 +224,13 @@ ssize_t send_fake(int sfd, char *buffer,
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
-    struct packet pkt = cnt != IS_HTTP ? fake_tls : fake_http;
+    struct packet pkt;
+    if (opt->fake_data.data) {
+        pkt = opt->fake_data;
+    }
+    else {
+        pkt = cnt != IS_HTTP ? fake_tls : fake_http;
+    }
     size_t psz = pkt.size;
     
     char path[MAX_PATH + 1];
@@ -439,10 +451,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     // desync
     long lp = offset;
     
-    if (!type && params.de_known) {
-        // cancel
-    }
-    else for (int i = 0; i < dp.parts_n; i++) {
+    for (int i = 0; i < dp.parts_n; i++) {
         struct part part = dp.parts[i];
         
         // change pos

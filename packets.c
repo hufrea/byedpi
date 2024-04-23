@@ -141,9 +141,17 @@ int change_tls_sni(const char *host, char *buffer, size_t bsize)
 }
 
 
+bool is_tls_chello(char *buffer, size_t bsize)
+{
+    return (bsize > 5 &&
+        ANTOHS(buffer, 0) == 0x1603 &&
+        buffer[5] == 0x01);
+}
+
+
 int parse_tls(char *buffer, size_t bsize, char **hs)
 {
-    if (ANTOHS(buffer, 0) != 0x1603) {
+    if (!is_tls_chello(buffer, bsize)) {
         return 0;
     }
     size_t sni_offs = find_tls_ext_offset(0x00, buffer, bsize);
@@ -312,7 +320,7 @@ bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
     if (qn < 75 || sn < 75) {
         return 0;
     }
-    if (ANTOHS(req, 0) != 0x1603
+    if (!is_tls_chello(req, qn)
             || ANTOHS(resp, 0) != 0x1603) {
         return 0;
     }
@@ -327,6 +335,21 @@ bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
 bool is_tls_alert(char *resp, size_t sn) {
     return (sn >= 7 
         && !memcmp(resp, "\x15\x03\x01\x00\x02\x02", 6));
+}
+
+
+bool is_dns_req(char *buffer, size_t n)
+{
+    if (n < 12) {
+        return 0;
+    }
+    return !memcmp(buffer + 2, "\1\0\0\1\0\0\0\0\0\0", 10);
+}
+
+
+bool is_quic_inital(char *buffer, size_t bsize)
+{
+    return (bsize > 64 && (buffer[0] & 0xc0) == 0xc0);
 }
 
 

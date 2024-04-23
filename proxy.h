@@ -6,6 +6,8 @@
     #include <arpa/inet.h>
 #endif
 
+#include <conev.h>
+
 struct sockaddr_ina {
     union {
         struct sockaddr sa;
@@ -94,6 +96,18 @@ enum s4_rep {
 #define S_SIZE_I6 22
 #define S_SIZE_ID 7
 
+void map_fix(struct sockaddr_ina *addr, char f6);
+
+int resp_error(int fd, int e, int flag);
+
+int create_conn(struct poolhd *pool,
+        struct eval *val, struct sockaddr_ina *dst, int next);
+
+int on_tunnel(struct poolhd *pool, struct eval *val, 
+        char *buffer, size_t bfsize, int out);
+        
 int listen_socket(struct sockaddr_ina *srv);
+
 int event_loop(int srvfd);
+
 int run(struct sockaddr_ina *srv);

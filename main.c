@@ -49,6 +49,7 @@ struct params params = {
     .cache_ttl = 100800,
     .ipv6 = 1,
     .resolve = 1,
+    .udp = 1,
     .max_open = 512,
     .bfsize = 16384,
     .baddr = {
@@ -63,24 +64,25 @@ const char help_text[] = {
     "    -p, --port <num>          Listening port, default 1080\n"
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
+    "    -U, --no-udp              Deny UDP association\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
     "    -x, --debug <level>       Print logs, 0, 1 or 2\n"
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
-    "    -K, --desync-known        Desync only HTTP and TLS with SNI\n"
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
     "    -L, --late-conn           Waiting for request before connecting\n"
     "    -A, --auto[=t,r,c,s,a,n]  Try desync params after this option\n"
-    "                              Detect: torst,redirect,cl_err,sid_inv,alert,nop\n"
+    "                              Detect: torst,redirect,cl_err,sid_inv,alert,none\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -K, --proto[=t,h,d,q]     Protocol whitelist: tls,http,dns,quic\n"
     "    -H, --hosts <file|:str>   Hosts whitelist\n"
-    "    -D, --dst <addr>          Custom destination IP\n"
+    "    -D, --dst <ip[:port]>     Custom destination IP\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -93,8 +95,7 @@ const char help_text[] = {
     #ifdef __linux__
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
-    "    -l, --fake-tls <f|:str>\n"
-    "    -j, --fake-http <f|:str>  Set custom fake packet\n"
+    "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
     "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
@@ -106,6 +107,7 @@ const char help_text[] = {
 const struct option options[] = {
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
+    {"no-udp",        0, 0, 'U'},
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
@@ -115,7 +117,6 @@ const struct option options[] = {
     {"max-conn",      1, 0, 'c'},
     {"debug",         1, 0, 'x'},
     
-    {"desync-known ", 0, 0, 'K'},
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo ",          0, 0, 'F'},
     #endif
@@ -125,6 +126,7 @@ const struct option options[] = {
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
+    {"proto",         2, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"dst",           1, 0, 'D'},
     {"split",         1, 0, 's'},
@@ -137,8 +139,7 @@ const struct option options[] = {
     #ifdef __linux__
     {"md5sig",        0, 0, 'S'},
     #endif
-    {"fake-tls",      1, 0, 'l'},
-    {"fake-http",     1, 0, 'j'},
+    {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
     #endif
     {"oob-data",      1, 0, 'e'},
@@ -250,7 +251,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
     char *e = buffer, *s = buffer;
     
     for (; e <= end; e++) {
-        if (*e != ' ' && *e != '\n' && e != end) {
+        if (*e != ' ' && *e != '\n' && *e != '\r' && e != end) {
             continue;
         }
         if (s == e) {
@@ -284,6 +285,46 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
         addr->in = *(struct sockaddr_in *)res->ai_addr;
     freeaddrinfo(res);
     
+    return 0;
+}
+
+
+int get_addr_with_port(const char *str, struct sockaddr_ina *addr)
+{
+    uint16_t port = 0;
+    char *s = (char *)str, *e = 0;
+    char *end = 0, *p = s;
+
+    if (*str == '[') {
+        e = strchr(str, ']');
+        if (!e) return -1;
+        s++; p = e + 1;
+    }
+    p = strchr(p, ':');
+    if (p) {
+        long val = strtol(p + 1, &end, 0);
+        if (val <= 0 || val > 0xffff || *end)
+            return -1;
+        else
+            port = htons(val);
+        if (!e) e = p;
+    }
+    if (!e) {
+        e = strchr(s, 0);
+    }
+    if ((e - s) < 7) {
+        return -1;
+    }
+    char str_ip[(e - s) + 1];
+    memcpy(str_ip, s, e - s);
+    str_ip[e - s] = 0;
+    
+    if (get_addr(str_ip, addr) < 0) {
+        return -1;
+    }
+    if (port) {
+        addr->in6.sin6_port = port;
+    }
     return 0;
 }
 
@@ -368,17 +409,13 @@ void clear_params(void)
                 free(s.parts);
                 s.parts = 0;
             }
+            if (s.fake_data.data) {
+                FREE(s.fake_data.data, s.fake_data.size);
+                s.fake_data.data = 0;
+            }
         }
         free(params.dp);
         params.dp = 0;
-    }
-    if (fake_tls.data != tls_data) {
-        FREE(fake_tls.data, fake_tls.size);
-        fake_tls.data = tls_data;
-    }
-    if (fake_http.data != http_data) {
-        FREE(fake_http.data, fake_http.size);
-        fake_http.data = http_data;
     }
     if (oob_data.data != oob_char) {
         FREE(oob_data.data, oob_data.size);
@@ -444,6 +481,10 @@ int main(int argc, char **argv)
         case 'X':
             params.ipv6 = 0;
             break;
+        case 'U':
+            params.udp = 0;
+            break;
+            
         case 'h':
             printf(help_text);
             clear_params();
@@ -499,10 +540,6 @@ int main(int argc, char **argv)
         
         case 'L':
             params.late_conn = 1;
-            break;
-            
-        case 'K':
-            params.de_known = 1;
             break;
             
         case 'F':
@@ -570,6 +607,35 @@ int main(int argc, char **argv)
                 params.timeout = val;
             break;
             
+        case 'K':
+            if (!optarg) {
+                dp->proto |= 0xffffffff;
+                break;
+            }
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case 't': 
+                        dp->proto |= IS_HTTPS;
+                        break;
+                    case 'h': 
+                        dp->proto |= IS_HTTP;
+                        break;
+                    case 'd': 
+                        dp->proto |= IS_DNS;
+                        break;
+                    case 'q': 
+                        dp->proto |= IS_QUIC;
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
+                }
+                end = strchr(end, ',');
+                if (end) end++;
+            }
+            break;
+            
         case 'H':;
             char *data = ftob(optarg, &val);
             if (!data) {
@@ -585,7 +651,7 @@ int main(int argc, char **argv)
             break;
             
         case 'D':
-            if (get_addr(optarg, (struct sockaddr_ina *)&dp->addr) < 0)
+            if (get_addr_with_port(optarg, (struct sockaddr_ina *)&dp->addr) < 0)
                 invalid = 1;
             else
                 dp->to_ip = 2;
@@ -652,16 +718,8 @@ int main(int argc, char **argv)
             break;
             
         case 'l':
-            fake_tls.data = ftob(optarg, &fake_tls.size);
-            if (!fake_tls.data) {
-                uniperror("read/parse");
-                invalid = 1;
-            }
-            break;
-            
-        case 'j':
-            fake_http.data = ftob(optarg, &fake_http.size);
-            if (!fake_http.data) {
+            dp->fake_data.data = ftob(optarg, &dp->fake_data.size);
+            if (!dp->fake_data.data) {
                 uniperror("read/parse");
                 invalid = 1;
             }
@@ -750,7 +808,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-    if (dp->hosts) {
+    if (dp->hosts || dp->proto) {
         dp = add((void *)&params.dp,
             &params.dp_count, sizeof(struct desync_params));
         if (!dp) {
