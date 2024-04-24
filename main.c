@@ -140,9 +140,6 @@ const struct option options[] = {
     #ifdef __linux__
     {"md5sig",        0, 0, 'S'},
     #endif
-    #ifdef _WIN32
-    {"service",       0, 0, 'B'},
-    #endif
     {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
     #endif
@@ -437,8 +434,9 @@ int main(int argc, char **argv)
         uniperror("WSAStartup");
         return -1;
     }
-
-    int as_winsvc = 0;
+    if (register_winsvc(argc, argv)) {
+        return 0;
+    }
     #endif
     struct sockaddr_ina s = {
         .in = {
@@ -465,7 +463,7 @@ int main(int argc, char **argv)
     int rez;
     int invalid = 0;
     
-    ssize_t val = 0;
+    long val = 0;
     char *end = 0;
     
     uint16_t port = htons(1080);
@@ -480,12 +478,6 @@ int main(int argc, char **argv)
     while (!invalid && (rez = getopt_long_only(
              argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
-        
-        #ifdef _WIN32
-        case 'B':
-            as_winsvc = 1;
-            break;
-        #endif
         
         case 'N':
             params.resolve = 0;
@@ -649,12 +641,13 @@ int main(int argc, char **argv)
             break;
             
         case 'H':;
-            char *data = ftob(optarg, &val);
+            ssize_t size;
+            char *data = ftob(optarg, &size);
             if (!data) {
                 uniperror("read/parse");
                 invalid = 1;
             }
-            dp->hosts = parse_hosts(data, val);
+            dp->hosts = parse_hosts(data, size);
             if (!dp->hosts) {
                 perror("parse_hosts");
                 clear_params();
@@ -815,12 +808,6 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    
-    #ifdef _WIN32
-    if (as_winsvc && register_winsvc(argc, argv))
-        return 0;
-    #endif
-
     if (invalid) {
         fprintf(stderr, "invalid value: -%c %s\n", rez, optarg);
         clear_params();

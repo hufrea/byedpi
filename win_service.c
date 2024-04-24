@@ -6,6 +6,7 @@
 
 static SERVICE_STATUS ServiceStatus;
 static SERVICE_STATUS_HANDLE hStatus;
+
 static int svc_argc = 0;
 static char **svc_argv = NULL;
 
@@ -60,20 +61,11 @@ int register_winsvc(int argc, char *argv[])
     };
 
     // Save args passed to the program to use instead of the service args.
-    if (!svc_argc && !svc_argv) {
-        svc_argc = argc;
-        svc_argv = calloc((size_t)(argc + 1), sizeof(void*));
-        for (int i = 0; i < argc; i++)
-            svc_argv[i] = strdup(argv[i]);
+    if (svc_argv) {
+        return 0;
     }
-
-    int result = StartServiceCtrlDispatcher(ServiceTable);
-    
-    if (svc_argc && svc_argv) {
-        for (int i = 0; i < svc_argc; i++)
-            free(svc_argv[i]);
-        free(svc_argv);
-    }
-
-    return result;
+    svc_argc = argc;
+    svc_argv = argv;
+        
+    return StartServiceCtrlDispatcher(ServiceTable);
 }
