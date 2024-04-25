@@ -815,7 +815,7 @@ int main(int argc, char **argv)
         }
     }
     
-    if (params.laddr.sin6_family != AF_INET6) {
+    if (params.baddr.sin6_family != AF_INET6) {
         params.ipv6 = 0;
     }
     if (!params.def_ttl) {
