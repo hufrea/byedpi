@@ -6,8 +6,8 @@
 #define IS_UNKNOWN 0
 #define IS_HTTP 1
 #define IS_HTTPS 2
-#define IS_QUIC 4
-#define IS_DNS 8
+//#define IS_QUIC 4
+//#define IS_DNS 8
 
 #define MH_HMIX 1
 #define MH_SPACE 2
@@ -38,6 +38,6 @@ bool is_tls_alert(char *resp, size_t sn);
 
 int part_tls(char *buffer, size_t bsize, ssize_t n, long pos);
 
-bool is_dns_req(char *buffer, size_t n);
+//bool is_dns_req(char *buffer, size_t n);
 
-bool is_quic_inital(char *buffer, size_t bsize);
+//bool is_quic_inital(char *buffer, size_t bsize);

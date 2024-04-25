@@ -64,9 +64,6 @@ void map_fix(struct sockaddr_ina *addr, char f6)
 static inline char addr_equ(
         struct sockaddr_ina *a, struct sockaddr_ina *b)
 {
-    if (a->in.sin_port != b->in.sin_port) {
-        return 0;
-    }
     if (a->sa.sa_family == AF_INET) {
         return 
             *((uint32_t *)(&a->in.sin_addr)) ==
@@ -398,7 +395,8 @@ int create_conn(struct poolhd *pool,
 int udp_associate(struct poolhd *pool, 
         struct eval *val, struct sockaddr_ina *dst)
 {
-    struct sockaddr_ina addr = {};
+    struct sockaddr_ina addr = { .in6 = params.laddr };
+    addr.in.sin_port = 0;
     
     int ufd = nb_socket(params.baddr.sin6_family, SOCK_DGRAM);
     if (ufd < 0) {
@@ -420,21 +418,44 @@ int udp_associate(struct poolhd *pool,
         close(ufd);
         return -1;
     }
-    socklen_t sz = sizeof(addr);
-    if (getsockname(ufd, &addr.sa, &sz)) {
-        perror("getsockname");
-        close(ufd);
-        return -1;
-    }
     struct eval *pair = add_event(pool, EV_UDP_TUNNEL, ufd, POLLIN);
     if (!pair) {
         close(ufd);
         return -1;
     }
-    val->pair = pair;
-    pair->pair = val;
-    pair->in6.sin6_port = 0;
     
+    int cfd = nb_socket(addr.sa.sa_family, SOCK_DGRAM);
+    if (cfd < 0) {
+        perror("socket");
+        del_event(pool, pair);
+        return -1;
+    }
+    if (bind(cfd, &addr.sa, sizeof(addr)) < 0) {
+        uniperror("bind");
+        del_event(pool, pair);
+        close(cfd);
+        return -1;
+    }
+    struct eval *client = add_event(pool, EV_UDP_TUNNEL, cfd, POLLIN);
+    if (!pair) {
+        del_event(pool, pair);
+        close(cfd);
+        return -1;
+    }
+    val->type = EV_IGNORE;
+    val->pair = client;
+    client->pair = pair;
+    pair->pair = val;
+    
+    client->flag = FLAG_CONN;
+    client->in6 = val->in6;
+    client->in6.sin6_port = 0;
+    
+    socklen_t sz = sizeof(addr);
+    if (getsockname(cfd, &addr.sa, &sz)) {
+        perror("getsockname");
+        return -1;
+    }
     struct s5_req s5r = { 
         .ver = 0x05 
     };
@@ -573,55 +594,61 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
 
 int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 {
-    char *data = buffer + S_SIZE_I6;
-    size_t data_len = bfsize - S_SIZE_I6;
+    char *data = buffer;
+    size_t data_len = bfsize;
+    
+    if (val->flag != FLAG_CONN) {
+        data += S_SIZE_I6;
+        data_len -= S_SIZE_I6;
+    }
+    struct sockaddr_ina addr = {0};
+    
     do {
-        struct sockaddr_ina addr = {0};
-        struct sockaddr_ina *src = (struct sockaddr_ina *)&val->in6;
         socklen_t asz = sizeof(addr);
         
-        ssize_t n = recvfrom(val->fd, data, data_len, 0, &addr.sa, &asz);  
+        ssize_t n = recvfrom(val->fd, data, data_len, 0, &addr.sa, &asz);
         if (n < 1) {
             if (n && errno == EAGAIN)
                 break;
             perror("recv udp");
             return -1;
         }
-        if (!src->in.sin_port) {
-            src->in6 = addr.in6;
-        }
-        ssize_t ns = 0;
+        ssize_t ns;
         
-        if (addr_equ(src, &addr)) {
+        if (val->flag == FLAG_CONN) {
+            if (!val->in6.sin6_port) {
+                if (connect(val->fd, &addr.sa, sizeof(addr)) < 0) {
+                    uniperror("connect");
+                    return -1;
+                }
+                val->in6 = addr.in6;
+            }
             if (*(data + 2) != 0) { // frag
                 continue;
             }
             int offs = s5_get_addr(data, n, &addr, SOCK_DGRAM);
             if (offs < 0) {
+                LOG(LOG_E, "udp parse error\n");
                 return -1;
             }
-            val->pair->in6 = addr.in6;
-            
-            if (src->sa.sa_family == AF_INET6) {
+            if (params.baddr.sin6_family == AF_INET6) {
                 map_fix(&addr, 6);
             }
-            if (src->sa.sa_family != addr.sa.sa_family) {
+            if (params.baddr.sin6_family != addr.sa.sa_family) {
                 return -1;
             }
-            ns = udp_hook(val,
-                data + offs, n - offs, &addr);
+            ns = sendto(val->pair->fd, 
+                data + offs, n - offs, 0, &addr.sa, sizeof(addr));
         }
         else {
-            //map_fix(&addr, 0);
+            map_fix(&addr, 0);
             memset(buffer, 0, S_SIZE_I6);
             
-            int offs = s5_set_addr(data, S_SIZE_I6, 
-                (struct sockaddr_ina *)&val->pair->in6, 1);
+            int offs = s5_set_addr(data, S_SIZE_I6, &addr, 1);
             if (offs < 0 || offs > S_SIZE_I6) {
                 return -1;
             }
-            ns = sendto(val->fd, data - offs, offs + n, 0,
-                (struct sockaddr *)&val->in6, sizeof(val->in6));
+            ns = send(val->pair->pair->fd, data - offs, offs + n, 0);
         }
         if (ns < 0) {
             perror("sendto");

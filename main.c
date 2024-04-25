@@ -56,6 +56,9 @@ struct params params = {
     .baddr = {
         .sin6_family = AF_INET6
     },
+    .laddr = {
+        .sin6_family = AF_INET
+    },
     .debug = 0
 };
 
@@ -81,7 +84,7 @@ const char help_text[] = {
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
-    "    -K, --proto[=t,h,d,q]     Protocol whitelist: tls,http,dns,quic\n"
+    "    -K, --proto[=t,h]         Protocol whitelist: tls,http\n"
     "    -H, --hosts <file|:str>   Hosts whitelist\n"
     "    -D, --dst <ip[:port]>     Custom destination IP\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
@@ -280,10 +283,13 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
     if (getaddrinfo(str, 0, &hints, &res) || !res) {
         return -1;
     }
+    
     if (res->ai_addr->sa_family == AF_INET6)
-        addr->in6 = *(struct sockaddr_in6 *)res->ai_addr;
+        addr->in6.sin6_addr = (
+            (struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
     else
-        addr->in = *(struct sockaddr_in *)res->ai_addr;
+        addr->in.sin_addr = (
+            (struct sockaddr_in *)res->ai_addr)->sin_addr;
     freeaddrinfo(res);
     
     return 0;
@@ -438,13 +444,6 @@ int main(int argc, char **argv)
         return 0;
     }
     #endif
-    struct sockaddr_ina s = {
-        .in = {
-            .sin_family = AF_INET,
-            .sin_port = htons(1080)
-    }},
-    b = { .in6 = params.baddr };
-    
     int optc = sizeof(options)/sizeof(*options);
     for (int i = 0, e = optc; i < e; i++)
         optc += options[i].has_arg;
@@ -459,14 +458,14 @@ int main(int argc, char **argv)
             opt[o] = ':';
         }
     }
+
+    params.laddr.sin6_port = htons(1080);
     
     int rez;
     int invalid = 0;
     
     long val = 0;
     char *end = 0;
-    
-    uint16_t port = htons(1080);
     
     struct desync_params *dp = add((void *)&params.dp,
         &params.dp_count, sizeof(struct desync_params));
@@ -499,7 +498,8 @@ int main(int argc, char **argv)
             return 0;
         
         case 'i':
-            if (get_addr(optarg, &s) < 0)
+            if (get_addr(optarg, 
+                    (struct sockaddr_ina *)&params.laddr) < 0)
                 invalid = 1;
             break;
             
@@ -508,14 +508,13 @@ int main(int argc, char **argv)
             if (val <= 0 || val > 0xffff || *end)
                 invalid = 1;
             else
-                port = htons(val);
+                params.laddr.sin6_port = htons(val);
             break;
             
         case 'I':
-            if (get_addr(optarg, &b) < 0)
+            if (get_addr(optarg, 
+                    (struct sockaddr_ina *)&params.baddr) < 0)
                 invalid = 1;
-            else
-                params.baddr = b.in6;
             break;
             
         case 'b':
@@ -624,12 +623,6 @@ int main(int argc, char **argv)
                         break;
                     case 'h': 
                         dp->proto |= IS_HTTP;
-                        break;
-                    case 'd': 
-                        dp->proto |= IS_DNS;
-                        break;
-                    case 'q': 
-                        dp->proto |= IS_QUIC;
                         break;
                     default:
                         invalid = 1;
@@ -821,10 +814,8 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    s.in.sin_port = port;
-    b.in.sin_port = 0;
     
-    if (b.sa.sa_family != AF_INET6) {
+    if (params.laddr.sin6_family != AF_INET6) {
         params.ipv6 = 0;
     }
     if (!params.def_ttl) {
@@ -839,7 +830,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-    int status = run(&s);
+    int status = run((struct sockaddr_ina *)&params.laddr);
     clear_params();
     return status;
 }

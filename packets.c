@@ -350,7 +350,7 @@ bool is_tls_alert(char *resp, size_t sn) {
         && !memcmp(resp, "\x15\x03\x01\x00\x02\x02", 6));
 }
 
-
+/*
 bool is_dns_req(char *buffer, size_t n)
 {
     if (n < 12) {
@@ -364,7 +364,7 @@ bool is_quic_inital(char *buffer, size_t bsize)
 {
     return (bsize > 64 && (buffer[0] & 0xc0) == 0xc0);
 }
-
+*/
 
 int mod_http(char *buffer, size_t bsize, int m)
 {

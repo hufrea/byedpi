@@ -162,20 +162,6 @@ bool check_proto_tcp(int proto, struct eval *val)
 }
 
 
-bool check_proto_udp(int proto, char *buffer, size_t n)
-{
-    if ((proto & IS_QUIC) && 
-            is_quic_inital(buffer, n)) {
-        return 1;
-    }
-    if ((proto & IS_DNS) && 
-            is_dns_req(buffer, n)) {
-        return 1;
-    }
-    return 0;
-}
-
-
 int on_torst(struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
@@ -370,42 +356,4 @@ int on_desync(struct poolhd *pool, struct eval *val,
     val->type = EV_TUNNEL;
     val->pair->type = EV_PRE_TUNNEL;
     return 0;
-}
-
-
-ssize_t udp_hook(struct eval *val, 
-    char *buffer, size_t n, struct sockaddr_ina *dst)
-{
-    int m = val->attempt;
-    struct desync_params *dp = &params.dp[m];
-    
-    if (val->flag != FLAG_CONN) {
-        if (!m) for (; m < params.dp_count; m++) {
-            dp = &params.dp[m];
-            if ((!dp->proto || check_proto_udp(dp->proto, buffer, n))) {
-                break;
-            }
-        }
-        if (m >= params.dp_count) {
-            return -1;
-        }
-        val->attempt = m;
-        val->flag = FLAG_CONN;
-    }
-    
-    struct sockaddr_ina addr;
-    if (dp->to_ip) {
-        addr.in6 = dp->addr;
-        if (dst->sa.sa_family == AF_INET6) {
-            map_fix(&addr, 6);
-        }
-        else {
-            map_fix(&addr, 0);
-        }
-        if (!addr.in.sin_port) {
-            addr.in.sin_port = dst->in.sin_port;
-        }
-        dst = &addr;
-    }
-    return sendto(val->fd, buffer, n, 0, &dst->sa, sizeof(*dst));
 }

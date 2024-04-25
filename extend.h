@@ -6,6 +6,3 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
 
 int on_desync(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize);
-        
-ssize_t udp_hook(struct eval *val, 
-    char *buffer, size_t n, struct sockaddr_ina *dst);

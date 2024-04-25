@@ -91,6 +91,7 @@ struct params {
     int debug;
     size_t bfsize;
     struct sockaddr_in6 baddr;
+    struct sockaddr_in6 laddr;
     struct mphdr *mempool;
 };
 
