@@ -68,6 +68,9 @@ struct desync_params {
     int detect;
     struct mphdr *hosts;
     
+    char *file_ptr;
+    ssize_t file_size;
+    
     char to_ip;
     struct sockaddr_in6 addr;
 };
@@ -93,6 +96,8 @@ struct params {
     struct sockaddr_in6 baddr;
     struct sockaddr_in6 laddr;
     struct mphdr *mempool;
+    
+    char *protect_path;
 };
 
 extern struct params params;
