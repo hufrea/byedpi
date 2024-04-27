@@ -26,10 +26,7 @@
 
 #define VERSION "10"
 
-#define MPOOL_INC 16
-
 char oob_char[1] = "a";
-
 char ip_option[1] = "\0";
 
 struct packet fake_tls = { 
@@ -152,6 +149,9 @@ const struct option options[] = {
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
     {"not-wait-send", 0, 0, 'W'}, //
+    #ifdef __linux__
+    {"protect-path",  1, 0, 'P'}, //
+    #endif
     {0}
 };
     
@@ -391,9 +391,9 @@ void *add(void **root, int *n, size_t ss)
 }
 
 #ifndef _WIN32
-#define FREE(p, s) munmap(p, s)
+#define FREE_MAP(p, s) munmap(p, s)
 #else
-#define FREE(p, s) free(p)
+#define FREE_MAP(p, s) free(p)
 #endif
 
 void clear_params(void)
@@ -417,15 +417,19 @@ void clear_params(void)
                 s.parts = 0;
             }
             if (s.fake_data.data) {
-                FREE(s.fake_data.data, s.fake_data.size);
+                FREE_MAP(s.fake_data.data, s.fake_data.size);
                 s.fake_data.data = 0;
+            }
+            if (s.file_ptr) {
+                FREE_MAP(s.file_ptr, s.file_size);
+                s.file_ptr = 0;
             }
         }
         free(params.dp);
         params.dp = 0;
     }
     if (oob_data.data != oob_char) {
-        FREE(oob_data.data, oob_data.size);
+        FREE_MAP(oob_data.data, oob_data.size);
         oob_data.data = oob_char;
     }
 }
@@ -634,13 +638,15 @@ int main(int argc, char **argv)
             break;
             
         case 'H':;
-            ssize_t size;
-            char *data = ftob(optarg, &size);
-            if (!data) {
+            if (dp->file_ptr) {
+                continue;
+            }
+            dp->file_ptr = ftob(optarg, &dp->file_size);
+            if (!dp->file_ptr) {
                 uniperror("read/parse");
                 invalid = 1;
             }
-            dp->hosts = parse_hosts(data, size);
+            dp->hosts = parse_hosts(dp->file_ptr, dp->file_size);
             if (!dp->hosts) {
                 perror("parse_hosts");
                 clear_params();
@@ -690,6 +696,9 @@ int main(int argc, char **argv)
             break;
             
         case 'k':
+            if (dp->ip_options != ip_option) {
+                continue;
+            }
             if (optarg)
                 dp->ip_options = ftob(optarg, &dp->ip_options_len);
             else {
@@ -716,6 +725,9 @@ int main(int argc, char **argv)
             break;
             
         case 'l':
+            if (dp->fake_data.data) {
+                continue;
+            }
             dp->fake_data.data = ftob(optarg, &dp->fake_data.size);
             if (!dp->fake_data.data) {
                 uniperror("read/parse");
@@ -724,6 +736,9 @@ int main(int argc, char **argv)
             break;
             
         case 'e':
+            if (oob_data.data != oob_char) {
+                continue;
+            }
             oob_data.data = ftob(optarg, &oob_data.size);
             if (!oob_data.data) {
                 uniperror("read/parse");
@@ -787,7 +802,11 @@ int main(int argc, char **argv)
         case 'W':
             params.wait_send = 0;
             break;
-            
+        #ifdef __linux__
+        case 'P':
+            params.protect_path = optarg;
+            break;
+        #endif
         case 0:
             break;
             

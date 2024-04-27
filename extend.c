@@ -7,6 +7,8 @@
 #else
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
+    #include <sys/un.h>
+    #include <sys/time.h>
 #endif
 
 #include <string.h>
@@ -357,3 +359,56 @@ int on_desync(struct poolhd *pool, struct eval *val,
     val->pair->type = EV_PRE_TUNNEL;
     return 0;
 }
+
+#ifdef __linux__
+int protect(int conn_fd, const char *path)
+{
+    struct sockaddr_un sa;
+    sa.sun_family = AF_UNIX;
+    strcpy(sa.sun_path, path);
+    
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        uniperror("socket");  
+        return -1;
+    }
+    struct timeval tv = { .tv_sec = 1 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    
+    int err = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+    if (err) {
+        uniperror("connect");
+        close(fd);
+        return -1;
+    }
+    char buf[CMSG_SPACE(sizeof(fd))] = {};
+    struct iovec io = { .iov_base = "1", .iov_len = 1 };
+    struct msghdr msg = { .msg_iov = &io };
+    
+    msg.msg_iovlen = 1;
+    msg.msg_control = buf;
+    msg.msg_controllen = sizeof(buf);
+
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(conn_fd));
+
+    *((int *)CMSG_DATA(cmsg)) = conn_fd;
+    msg.msg_controllen = CMSG_SPACE(sizeof(conn_fd));
+
+    if (sendmsg(fd, &msg, 0) < 0) {
+        uniperror("sendmsg");
+        close(fd);
+        return -1;
+    }
+    if (recv(fd, buf, 1, 0) < 1) {
+        uniperror("recv");
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 0;
+}
+#endif

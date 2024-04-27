@@ -328,6 +328,10 @@ int create_conn(struct poolhd *pool,
         uniperror("socket");  
         return -1;
     }
+    if (params.protect_path 
+            && protect(sfd, params.protect_path) < 0) {
+        return -1;
+    }
     if (addr.sa.sa_family == AF_INET6) {
         int no = 0;
         if (setsockopt(sfd, IPPROTO_IPV6,
@@ -401,6 +405,10 @@ int udp_associate(struct poolhd *pool,
     int ufd = nb_socket(params.baddr.sin6_family, SOCK_DGRAM);
     if (ufd < 0) {
         perror("socket");  
+        return -1;
+    }
+    if (params.protect_path 
+            && protect(ufd, params.protect_path) < 0) {
         return -1;
     }
     if (params.baddr.sin6_family == AF_INET6) {
