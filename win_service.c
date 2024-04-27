@@ -1,6 +1,5 @@
 #include "win_service.h"
-#include <minwindef.h>
-#include <winsvc.h>
+#include <windows.h>
 
 #define SERVICE_NAME "ByeDPI"
 
@@ -29,6 +28,15 @@ void service_ctrl_handler(DWORD request)
 
 void service_main(int argc __attribute__((unused)), char *argv[] __attribute__((unused)))
 {
+    // Current working directory for services is %WinDir%\System32, this breaks 
+    // relative paths. Set working directory to the directory of the executable file.
+    char file_name[_MAX_PATH];
+    GetModuleFileNameA(NULL, file_name, sizeof(file_name));
+    char working_dir[_MAX_PATH], _tmp[_MAX_DIR];
+    _splitpath_s(file_name, working_dir, _MAX_DRIVE, _tmp, _MAX_DIR, NULL, 0, NULL, 0);
+    strcat_s(working_dir, sizeof(working_dir), _tmp);
+    SetCurrentDirectoryA(working_dir);
+
     ServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS; 
     ServiceStatus.dwCurrentState = SERVICE_RUNNING;
     ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
