@@ -330,6 +330,7 @@ int create_conn(struct poolhd *pool,
     }
     if (params.protect_path 
             && protect(sfd, params.protect_path) < 0) {
+        close(sfd);
         return -1;
     }
     if (addr.sa.sa_family == AF_INET6) {
@@ -409,6 +410,7 @@ int udp_associate(struct poolhd *pool,
     }
     if (params.protect_path 
             && protect(ufd, params.protect_path) < 0) {
+        close(ufd);
         return -1;
     }
     if (params.baddr.sin6_family == AF_INET6) {
