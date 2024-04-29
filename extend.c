@@ -141,12 +141,12 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
 
 bool check_host(struct mphdr *hosts, struct eval *val)
 {
-    char *host;
+    char *host = 0;
     int len;
     if (!(len = parse_tls(val->buff.data, val->buff.size, &host))) {
         len = parse_http(val->buff.data, val->buff.size, &host, 0);
     }
-    return mem_get(hosts, host, len) != 0;
+    return (len > 0) && mem_get(hosts, host, len) != 0;
 }
 
 

@@ -645,6 +645,7 @@ int main(int argc, char **argv)
             if (!dp->file_ptr) {
                 uniperror("read/parse");
                 invalid = 1;
+                continue;
             }
             dp->hosts = parse_hosts(dp->file_ptr, dp->file_size);
             if (!dp->hosts) {
