@@ -7,11 +7,11 @@
 #include <string.h>
 #include <signal.h>
 
-#include <proxy.h>
-#include <params.h>
-#include <conev.h>
-#include <extend.h>
-#include <error.h>
+#include "proxy.h"
+#include "params.h"
+#include "conev.h"
+#include "extend.h"
+#include "error.h"
 
 #ifdef _WIN32
     #include <winsock2.h>

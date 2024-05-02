@@ -30,7 +30,7 @@
     #endif
 #endif
 
-inline const int unie(int e)
+static inline const int unie(int e)
 {
     #ifdef _WIN32
     switch (e) {

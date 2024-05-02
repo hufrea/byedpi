@@ -33,9 +33,9 @@
 #endif
 #define STR_MODE
 
-#include <params.h>
-#include <packets.h>
-#include <error.h>
+#include "params.h"
+#include "packets.h"
+#include "error.h"
 
 
 static inline int get_family(struct sockaddr *dst)

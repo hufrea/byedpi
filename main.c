@@ -6,10 +6,10 @@
 #include <getopt.h>
 #include <limits.h>
 
-#include <params.h>
-#include <proxy.h>
-#include <packets.h>
-#include <error.h>
+#include "params.h"
+#include "proxy.h"
+#include "packets.h"
+#include "error.h"
 
 #ifndef _WIN32
     #include <arpa/inet.h>
