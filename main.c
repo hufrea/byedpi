@@ -416,6 +416,10 @@ void clear_params(void)
                 free(s.parts);
                 s.parts = 0;
             }
+            if (s.tlsrec != 0) {
+                free(s.tlsrec);
+                s.tlsrec = 0;
+            }
             if (s.fake_data.data) {
                 FREE_MAP(s.fake_data.data, s.fake_data.size);
                 s.fake_data.data = 0;
@@ -659,7 +663,7 @@ int main(int argc, char **argv)
             if (get_addr_with_port(optarg, (struct sockaddr_ina *)&dp->addr) < 0)
                 invalid = 1;
             else
-                dp->to_ip = 2;
+                dp->to_ip = 1;
             break;
             
         case 's':

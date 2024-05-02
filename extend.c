@@ -17,8 +17,8 @@
 #include "error.h"
 #include "params.h"
 
-#include <desync.h>
-#include <packets.h>
+#include "desync.h"
+#include "packets.h"
 
 
 int set_timeout(int fd, unsigned int s)
@@ -90,7 +90,7 @@ int ext_connect(struct poolhd *pool, struct eval *val,
         struct sockaddr_ina *dst, int next, int m)
 {
     struct desync_params *dp = &params.dp[m];
-    if (dp->to_ip == 2) {
+    if (dp->to_ip) {
         struct sockaddr_ina addr = { .in6 = dp->addr };
         if (!addr.in.sin_port) {
             addr.in.sin_port = dst->in.sin_port;
@@ -106,7 +106,8 @@ int connect_hook(struct poolhd *pool, struct eval *val,
 {
     int m = mode_add_get(dst, -1);
     val->cache = (m == 0);
-    val->attempt = m < 0 ? 0 : m;
+    m = m < 0 ? 0 : m;
+    val->attempt = m;
     
     if (params.late_conn) {
         val->type = EV_DESYNC;
