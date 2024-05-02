@@ -13,9 +13,9 @@
 
 #include <string.h>
 
-#include <proxy.h>
-#include <error.h>
-#include <params.h>
+#include "proxy.h"
+#include "error.h"
+#include "params.h"
 
 #include <desync.h>
 #include <packets.h>

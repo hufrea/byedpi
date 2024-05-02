@@ -6,7 +6,7 @@
     #include <arpa/inet.h>
 #endif
 
-#include <conev.h>
+#include "conev.h"
 
 struct sockaddr_ina {
     union {
