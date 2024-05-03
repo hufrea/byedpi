@@ -233,13 +233,13 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     size_t psz = pkt.size;
     
-    char path[MAX_PATH + 1];
-    int ps = GetTempPath(sizeof(path), path);
+    char path[MAX_PATH], temp[MAX_PATH];
+    int ps = GetTempPath(sizeof(temp), temp);
     if (!ps) {
         uniperror("GetTempPath");
         return -1;
     }
-    if (!GetTempFileName(path, "t", 0, path)) {
+    if (!GetTempFileName(temp, "t", 0, path)) {
         uniperror("GetTempFileName");
         return -1;
     }
