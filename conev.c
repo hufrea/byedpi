@@ -14,6 +14,7 @@ struct poolhd *init_pool(int count)
     }
     pool->max = count;
     pool->count = 0;
+    pool->init_count = 0;
     pool->iters = 0;
     
     #ifndef NOEPOLL
@@ -51,12 +52,17 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
             return 0;
         }
         val = pool->links[c];
-    } while (c && val->del_iter == pool->iters);
+    } while (c < pool->init_count && val->del_iter == pool->iters);
     
+    if (c != pool->count) {
+        struct eval *t = pool->links[c];
+        pool->links[c] = pool->links[pool->count];
+        pool->links[pool->count] = t;
+    }
     memset(val, 0, sizeof(*val));
     
     val->fd = fd;
-    val->index = c;
+    val->index = pool->count;
     val->type = type;
     
     #ifndef NOEPOLL
@@ -68,7 +74,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     }
     val->events = ev.events;
     #else
-    struct pollfd *pfd = &(pool->pevents[c]);
+    struct pollfd *pfd = &(pool->pevents[pool->count]);
     
     pfd->fd = fd;
     pfd->events = POLLIN | e;
@@ -76,6 +82,9 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     #endif
     
     pool->count++;
+    if (pool->count > pool->init_count) {
+        pool->init_count = pool->count;
+    }
     return val;
 }
 

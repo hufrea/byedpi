@@ -85,6 +85,7 @@ struct eval {
 
 struct poolhd {
     int max;
+    int init_count;
     int count;
     int efd;
     struct eval **links;
