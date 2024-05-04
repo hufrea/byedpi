@@ -55,18 +55,15 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     val->type = type;
     
     #ifndef NOEPOLL
-    struct epoll_event ev = {
-        EPOLLIN | EPOLLERR | EPOLLRDHUP | e, {val}
-    };
+    struct epoll_event ev = { .events = e, .data = {val} };
     if (epoll_ctl(pool->efd, EPOLL_CTL_ADD, fd, &ev)) {
         return 0;
     }
-    val->events = ev.events;
     #else
     struct pollfd *pfd = &(pool->pevents[pool->count]);
     
     pfd->fd = fd;
-    pfd->events = POLLIN | e;
+    pfd->events = e;
     pfd->revents = 0;
     #endif
     
@@ -123,15 +120,9 @@ void destroy_pool(struct poolhd *pool)
             val->buff.data = 0;
         }
     }
-    if (pool->items) {
-        free(pool->items);
-    }
-    if (pool->links) {
-        free(pool->links);
-    }
-    if (pool->pevents) {
-        free(pool->pevents);
-    }
+    free(pool->items);
+    free(pool->links);
+    free(pool->pevents);
     #ifndef NOEPOLL
     if (pool->efd)
         close(pool->efd);
@@ -167,16 +158,11 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
 }
 
 
-int mod_etype(struct poolhd *pool, struct eval *val, int type, char add)
+int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
     struct epoll_event ev = {
-        .events = val->events, .data = {val}
+        .events = type, .data = {val}
     };
-    if (add)
-       ev.events |= type;
-    else
-       ev.events &= ~type;
-    val->events = ev.events;
     return epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
 }
 
@@ -210,13 +196,9 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
 }
 
 
-int mod_etype(struct poolhd *pool, struct eval *val, int type, char add)
+int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
-   int index = val->index;
-   if (add)
-       pool->pevents[index].events |= type;
-   else
-       pool->pevents[index].events &= ~type;
+   pool->pevents[val->index].events = type;
    return 0;
 }
 #endif

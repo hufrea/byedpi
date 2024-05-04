@@ -520,7 +520,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             close(c);
             continue;
         }
-        if (!(rval = add_event(pool, EV_REQUEST, c, 0))) {
+        if (!(rval = add_event(pool, EV_REQUEST, c, POLLIN))) {
             close(c);
             continue;
         }
@@ -556,8 +556,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         val->buff.data = 0;
         val->buff.size = 0;
         
-        if (mod_etype(pool, val, POLLIN, 1) ||
-                mod_etype(pool, pair, POLLOUT, 0)) {
+        if (mod_etype(pool, val, POLLIN) ||
+                mod_etype(pool, pair, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
@@ -590,8 +590,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
             }
             memcpy(val->buff.data, buffer + sn, val->buff.size);
             
-            if (mod_etype(pool, val, POLLIN, 0) ||
-                    mod_etype(pool, pair, POLLOUT, 1)) {
+            if (mod_etype(pool, val, 0) ||
+                    mod_etype(pool, pair, POLLOUT)) {
                 uniperror("mod_etype");
                 return -1;
             }
@@ -757,7 +757,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
         }
     }
     else {
-        if (mod_etype(pool, val, POLLOUT, 0)) {
+        if (mod_etype(pool, val, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
@@ -783,7 +783,7 @@ int event_loop(int srvfd)
         close(srvfd);
         return -1;
     }
-    if (!add_event(pool, EV_ACCEPT, srvfd, 0)) {
+    if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
         uniperror("add event");
         destroy_pool(pool);
         close(srvfd);

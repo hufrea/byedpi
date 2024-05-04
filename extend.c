@@ -244,6 +244,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
         uniperror("recv");
         switch (get_e()) {
             case ECONNRESET:
+            case ECONNREFUSED:
             case ETIMEDOUT: 
                 break;
             default: return -1;
@@ -291,7 +292,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize)
 {
     if (val->flag == FLAG_CONN) {
-        if (mod_etype(pool, val, POLLOUT, 0)) {
+        if (mod_etype(pool, val, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
@@ -349,7 +350,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
     }
     if (sn < n) {
         val->buff.offset = sn;
-        if (mod_etype(pool, val->pair, POLLOUT, 1)) {
+        if (mod_etype(pool, val->pair, POLLOUT)) {
             uniperror("mod_etype");
             return -1;
         }
