@@ -8,12 +8,13 @@
 
 struct poolhd *init_pool(int count)
 {
-    struct poolhd *pool = malloc(sizeof(struct poolhd));
+    struct poolhd *pool = calloc(sizeof(struct poolhd), 0);
     if (!pool) {
         return 0;
     }
     pool->max = count;
     pool->count = 0;
+    pool->iters = 0;
     
     #ifndef NOEPOLL
     int efd = epoll_create(count);
