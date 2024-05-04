@@ -807,11 +807,8 @@ int event_loop(int srvfd)
             uniperror("(e)poll");
             break;
         }
-        LOG(LOG_L, "new event: fd: %d, evt: %s, del_iter: %d\n", val->fd, eid_name[val->type], val->del_iter);
-            
-        if (val->del_iter) {
-            continue;
-        }
+        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", val->fd, eid_name[val->type], val->mod_iter);
+        
         switch (val->type) {
             case EV_ACCEPT:
                 if ((etype & POLLHUP) ||

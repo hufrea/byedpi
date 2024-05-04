@@ -80,12 +80,11 @@ struct eval {
     #ifndef NOEPOLL
     uint32_t events;
     #endif
-    unsigned int del_iter;
+    unsigned int mod_iter;
 };
 
 struct poolhd {
     int max;
-    int init_count;
     int count;
     int efd;
     struct eval **links;
