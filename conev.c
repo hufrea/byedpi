@@ -8,7 +8,7 @@
 
 struct poolhd *init_pool(int count)
 {
-    struct poolhd *pool = calloc(sizeof(struct poolhd), 0);
+    struct poolhd *pool = calloc(sizeof(struct poolhd), 1);
     if (!pool) {
         return 0;
     }
@@ -43,14 +43,16 @@ struct poolhd *init_pool(int count)
 struct eval *add_event(struct poolhd *pool, enum eid type,
         int fd, int e)
 {
-    if (pool->count >= pool->max) {
-        return 0;
-    }
-    struct eval *val = pool->links[pool->count];
-    if (pool->iters &&
-            val->del_iter == pool->iters) {
-        return 0;
-    }
+    int c = pool->count - 1;
+    struct eval *val;
+    do {
+        c++;
+        if (c >= pool->max) {
+            return 0;
+        }
+        val = pool->links[c];
+    } while (c && val->del_iter == pool->iters);
+    
     memset(val, 0, sizeof(*val));
     
     val->fd = fd;
@@ -66,7 +68,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     }
     val->events = ev.events;
     #else
-    struct pollfd *pfd = &(pool->pevents[pool->count]);
+    struct pollfd *pfd = &(pool->pevents[c]);
     
     pfd->fd = fd;
     pfd->events = POLLIN | e;
@@ -153,14 +155,14 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
         if (i < 0) {
             return 0;
         }
+        if (pool->iters == UINT_MAX) {
+            pool->iters = 0;
+        }
+        pool->iters++;
     }
     *offs = i - 1;
     *type = pool->pevents[i].events;
     
-    if (pool->iters == UINT_MAX) {
-        pool->iters = 0;
-    }
-    pool->iters++;
     return pool->pevents[i].data.ptr;
 }
 
@@ -187,6 +189,10 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
                 return 0;
             }
             i = pool->count - 1;
+            if (pool->iters == UINT_MAX) {
+                pool->iters = 0;
+            }
+            pool->iters++;
         }
         short type = pool->pevents[i].revents;
         if (!type)
@@ -196,10 +202,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
         *offs = i - 1;
         *typel = type;
         
-        if (pool->iters == UINT_MAX) {
-            pool->iters = 0;
-        }
-        pool->iters++;
         return pool->links[i];
     }
 }
