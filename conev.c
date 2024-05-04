@@ -161,7 +161,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
 int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
     struct epoll_event ev = {
-        .events = type, .data = {val}
+        .events = EPOLLRDHUP | type, .data = {val}
     };
     return epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
 }
