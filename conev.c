@@ -56,7 +56,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     memset(val, 0, sizeof(*val));
     
     val->fd = fd;
-    val->index = pool->count;
+    val->index = c;
     val->type = type;
     
     #ifndef NOEPOLL
