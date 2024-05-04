@@ -55,7 +55,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     val->type = type;
     
     #ifndef NOEPOLL
-    struct epoll_event ev = { .events = e, .data = {val} };
+    struct epoll_event ev = { .events = EPOLLRDHUP | e, .data = {val} };
     if (epoll_ctl(pool->efd, EPOLL_CTL_ADD, fd, &ev)) {
         return 0;
     }
