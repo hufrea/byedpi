@@ -221,13 +221,6 @@ char *ftob(const char *str, ssize_t *sl)
         if (fseek(file, 0, SEEK_SET)) {
             break;
         }
-        #ifndef _WIN32
-        buffer = mmap(0, size, PROT_READ, MAP_PRIVATE, fileno(file), 0);
-        if (buffer == MAP_FAILED) {
-            buffer = 0;
-            break;
-        }
-        #else
         if (!(buffer = malloc(size))) {
             break;
         }
@@ -235,7 +228,6 @@ char *ftob(const char *str, ssize_t *sl)
             free(buffer);
             buffer = 0;
         }
-        #endif
     } while (0);
     if (buffer) {
         *sl = size;
@@ -390,11 +382,6 @@ void *add(void **root, int *n, size_t ss)
     return p;
 }
 
-#ifndef _WIN32
-#define FREE_MAP(p, s) munmap(p, s)
-#else
-#define FREE_MAP(p, s) free(p)
-#endif
 
 void clear_params(void)
 {
@@ -420,12 +407,12 @@ void clear_params(void)
                 free(s.tlsrec);
                 s.tlsrec = 0;
             }
-            if (s.fake_data.data) {
-                FREE_MAP(s.fake_data.data, s.fake_data.size);
+            if (s.fake_data.data != 0) {
+                free(s.fake_data.data);
                 s.fake_data.data = 0;
             }
-            if (s.file_ptr) {
-                FREE_MAP(s.file_ptr, s.file_size);
+            if (s.file_ptr != 0) {
+                free(s.file_ptr);
                 s.file_ptr = 0;
             }
         }
@@ -433,7 +420,7 @@ void clear_params(void)
         params.dp = 0;
     }
     if (oob_data.data != oob_char) {
-        FREE_MAP(oob_data.data, oob_data.size);
+        free(oob_data.data);
         oob_data.data = oob_char;
     }
 }

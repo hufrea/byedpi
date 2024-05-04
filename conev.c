@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 
 struct poolhd *init_pool(int count)
@@ -33,6 +34,7 @@ struct poolhd *init_pool(int count)
     for (int i = 0; i < count; i++) {
         pool->links[i] = &(pool->items[i]);
     }
+    memset(pool->items, 0, sizeof(*pool->items));
     return pool;
 }
 
@@ -40,9 +42,14 @@ struct poolhd *init_pool(int count)
 struct eval *add_event(struct poolhd *pool, enum eid type,
         int fd, int e)
 {
-    if (pool->count >= pool->max)
+    if (pool->count >= pool->max) {
         return 0;
+    }
     struct eval *val = pool->links[pool->count];
+    if (pool->iters &&
+            val->del_iter == pool->iters) {
+        return 0;
+    }
     memset(val, 0, sizeof(*val));
     
     val->fd = fd;
@@ -72,7 +79,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
 
 void del_event(struct poolhd *pool, struct eval *val) 
 {
-    if (!val->fd) {
+    if (val->del_iter) {
         return;
     }
     if (val->buff.data) {
@@ -81,6 +88,7 @@ void del_event(struct poolhd *pool, struct eval *val)
     }
     close(val->fd);
     val->fd = 0;
+    val->del_iter = pool->iters;
     pool->count--;
     
     struct eval *ev = pool->links[pool->count];
@@ -147,6 +155,11 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
     }
     *offs = i - 1;
     *type = pool->pevents[i].events;
+    
+    if (pool->iters == UINT_MAX) {
+        pool->iters = 0;
+    }
+    pool->iters++;
     return pool->pevents[i].data.ptr;
 }
 
@@ -181,6 +194,11 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
         pool->pevents[i].revents = 0;
         *offs = i - 1;
         *typel = type;
+        
+        if (pool->iters == UINT_MAX) {
+            pool->iters = 0;
+        }
+        pool->iters++;
         return pool->links[i];
     }
 }

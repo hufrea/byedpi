@@ -80,6 +80,7 @@ struct eval {
     #ifndef NOEPOLL
     uint32_t events;
     #endif
+    unsigned int del_iter;
 };
 
 struct poolhd {
@@ -93,6 +94,7 @@ struct poolhd {
 #else
     struct pollfd *pevents;
 #endif
+    unsigned int iters;
 };
 
 struct poolhd *init_pool(int count);

@@ -809,7 +809,7 @@ int event_loop(int srvfd)
         }
         LOG(LOG_L, "new event: fd: %d, evt: %s\n", val->fd, eid_name[val->type]);
             
-        if (!val->fd) {
+        if (val->del_iter) {
             continue;
         }
         switch (val->type) {
