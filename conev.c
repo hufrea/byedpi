@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <assert.h>
 
 
 struct poolhd *init_pool(int count)
@@ -43,6 +44,7 @@ struct poolhd *init_pool(int count)
 struct eval *add_event(struct poolhd *pool, enum eid type,
         int fd, int e)
 {
+    assert(fd > 0);
     if (pool->count >= pool->max) {
         return 0;
     }
@@ -74,15 +76,19 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
 
 void del_event(struct poolhd *pool, struct eval *val) 
 {
-    if (!val->fd) {
+    assert(val && ((val->fd > 0 && val->mod_iter < pool->iters) ||
+        val->mod_iter == pool->iters));
+    if (val->fd == -1) {
         return;
     }
+    
     if (val->buff.data) {
+        assert(val->buff.size);
         free(val->buff.data);
         val->buff.data = 0;
     }
     close(val->fd);
-    val->fd = 0;
+    val->fd = -1;
     val->mod_iter = pool->iters;
     pool->count--;
     
@@ -98,12 +104,14 @@ void del_event(struct poolhd *pool, struct eval *val)
         ev->index = index;
     }
     if (val->pair) {
-        if (val->pair == val) {
+        if (val->pair->pair == val) {
             val->pair->pair = 0;
         }
-        del_event(pool, val->pair);
+        struct eval *e = val->pair;
         val->pair = 0;
+        del_event(pool, e);
     }
+    assert(pool->count > 0);
 }
 
 
@@ -137,6 +145,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
 {
     while (1) {
         int i = *offs;
+        assert(i >= -1 && i < pool->count);
         if (i < 0) {
             i = (epoll_wait(pool->efd, pool->pevents, pool->max, -1) - 1);
             if (i < 0) {
@@ -160,6 +169,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
+    assert(val->fd > 0);
     struct epoll_event ev = {
         .events = EPOLLRDHUP | type, .data = {val}
     };
@@ -170,6 +180,7 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type)
 struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
 {
     for (int i = *offs; ; i--) {
+        assert(i >= -1 && i < pool->max);
         if (i < 0) {
             if (poll(pool->pevents, pool->count, -1) <= 0) {
                 return 0;
@@ -185,6 +196,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
             continue;
         }
         struct eval *val = pool->links[i];
+        assert((i < pool->count) || (val->mod_iter == pool->iters));
         if (val->mod_iter == pool->iters) {
             continue;
         }
@@ -198,6 +210,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
+   assert(val->index >= 0 && val->index < pool->count);
    pool->pevents[val->index].events = type;
    return 0;
 }

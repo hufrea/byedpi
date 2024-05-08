@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+
 #include "mpool.h"
 
 
@@ -37,7 +38,7 @@ struct elem *mem_get(struct mphdr *hdr, char *str, int len)
 
 struct elem *mem_add(struct mphdr *hdr, char *str, int len)
 {
-    struct elem *v, *e = malloc(sizeof(struct elem));
+    struct elem *v, *e = calloc(sizeof(struct elem), 1);
     if (!e) {
         return 0;
     }

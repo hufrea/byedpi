@@ -12,6 +12,7 @@
 #endif
 
 #include <string.h>
+#include <assert.h>
 
 #include "proxy.h"
 #include "error.h"
@@ -45,10 +46,12 @@ int set_timeout(int fd, unsigned int s)
 int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
-    time_t t;
-    struct elem *val;
+    assert(m >= -1 && m < params.dp_count);
+    
+    time_t t = 0;
+    struct elem *val = 0;
     char *str = (char *)&dst->in;
-    int len = sizeof(dst->sa.sa_family);
+    int len = 0;
     
     if (dst->sa.sa_family == AF_INET) {
         len = sizeof(dst->in);
@@ -57,6 +60,7 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
         len = sizeof(dst->in6) - sizeof(dst->in6.sin6_scope_id);
     }
     len -= sizeof(dst->sa.sa_family);
+    assert(len > 0);
     
     if (m == 0) {
         mem_delete(params.mempool, str, len);
@@ -89,6 +93,8 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 int ext_connect(struct poolhd *pool, struct eval *val, 
         struct sockaddr_ina *dst, int next, int m)
 {
+    assert(m >= 0 && m < params.dp_count && dst && val);
+    
     struct desync_params *dp = &params.dp[m];
     if (dp->to_ip) {
         struct sockaddr_ina addr = { .in6 = dp->addr };
@@ -147,6 +153,7 @@ bool check_host(struct mphdr *hosts, struct eval *val)
     if (!(len = parse_tls(val->buff.data, val->buff.size, &host))) {
         len = parse_http(val->buff.data, val->buff.size, &host, 0);
     }
+    assert(len == 0 || host != 0);
     return (len > 0) && mem_get(hosts, host, len) != 0;
 }
 
@@ -241,7 +248,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     }
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
-        uniperror("recv");
+        if (n) uniperror("recv");
         switch (get_e()) {
             case ECONNRESET:
             case ECONNREFUSED:
@@ -255,6 +262,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     if (on_response(pool, val, buffer, n) == 0) {
         return 0;
     }
+    val->recv_count += n;
     struct eval *pair = val->pair;
     
     ssize_t sn = send(pair->fd, buffer, n, 0);
@@ -265,6 +273,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     val->type = EV_TUNNEL;
     pair->type = EV_TUNNEL;
     
+    assert(pair->buff.data);
     free(pair->buff.data);
     pair->buff.data = 0;
     pair->buff.size = 0;
@@ -298,7 +307,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
         }
         val = val->pair;
     }
-    ssize_t n;
+    ssize_t n = 0;
     int m = val->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
     
@@ -310,6 +319,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
         }
         val->buff.size = n;
         val->recv_count += n;
+        assert(val->buff.offset == 0);
         
         if (!(val->buff.data = malloc(n))) {
             uniperror("malloc");
@@ -337,6 +347,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
     }
     else {
         n = val->buff.size;
+        assert(n > 0 && n <= params.bfsize);
         memcpy(buffer, val->buff.data, n);
     }
     if (params.timeout &&
