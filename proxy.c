@@ -540,7 +540,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
     ssize_t n = 0;
     struct eval *pair = val->pair;
     
-    if (pair->buff.size && out) {
+    if (pair->buff.data && out) {
         pair = val;
         val = val->pair;
         

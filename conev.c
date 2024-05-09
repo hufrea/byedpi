@@ -65,7 +65,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     struct pollfd *pfd = &(pool->pevents[pool->count]);
     
     pfd->fd = fd;
-    pfd->events = e;
+    pfd->events = POLLRDHUP | e;
     pfd->revents = 0;
     #endif
     
@@ -76,12 +76,13 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
 
 void del_event(struct poolhd *pool, struct eval *val) 
 {
-    assert(val && ((val->fd > 0 && val->mod_iter < pool->iters) ||
-        val->mod_iter == pool->iters));
+    assert(val->fd >= -1 && val->mod_iter <= pool->iters);
     if (val->fd == -1) {
         return;
     }
-    
+    #ifdef NOEPOLL
+    assert(val->fd == pool->pevents[val->index].fd);
+    #endif
     if (val->buff.data) {
         assert(val->buff.size);
         free(val->buff.data);
@@ -211,7 +212,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
 int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
    assert(val->index >= 0 && val->index < pool->count);
-   pool->pevents[val->index].events = type;
+   pool->pevents[val->index].events = POLLRDHUP | type;
    return 0;
 }
 #endif
