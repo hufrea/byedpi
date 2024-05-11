@@ -849,7 +849,8 @@ int event_loop(int srvfd)
                 continue;
                 
             case EV_DESYNC:
-                if (on_desync(pool, val, buffer, bfsize))
+                if (on_desync(pool, val, 
+                        buffer, bfsize, etype & POLLOUT))
                     del_event(pool, val);
                 continue;
                     

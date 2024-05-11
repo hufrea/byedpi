@@ -26,7 +26,7 @@
 #endif
 
 #ifndef POLLRDHUP
-    #define POLLRDHUP POLLHUP
+    #define POLLRDHUP 0
 #endif
 
 enum eid {
