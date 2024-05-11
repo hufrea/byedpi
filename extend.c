@@ -366,7 +366,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
         uniperror("realloc");
         return -1;
     }
-    memcpy(val->buff.data + val->buff.offset, buffer, n);
+    memcpy(val->buff.data + val->buff.size - n, buffer, n);
     
     int m = val->attempt;
     if (!m) for (; m < params.dp_count; m++) {
