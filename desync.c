@@ -485,6 +485,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
                 break;
                 
             case DESYNC_SPLIT:
+            case DESYNC_NONE:
                 s = send(sfd, buffer + lp, pos - lp, 0);
                 wait_send_if_support(sfd);
                 
