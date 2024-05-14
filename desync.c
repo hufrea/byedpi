@@ -233,7 +233,7 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     size_t psz = pkt.size;
     
-    char path[MAX_PATH], temp[MAX_PATH];
+    char path[MAX_PATH], temp[MAX_PATH + 1];
     int ps = GetTempPath(sizeof(temp), temp);
     if (!ps) {
         uniperror("GetTempPath");
@@ -246,13 +246,12 @@ ssize_t send_fake(int sfd, char *buffer,
     LOG(LOG_L, "temp file: %s\n", path);
     
     HANDLE hfile = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 
-        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, 
-            CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, 
+        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
     if (hfile == INVALID_HANDLE_VALUE) {
         uniperror("CreateFileA");
         return -1;
     }
-    
     OVERLAPPED ov = {};
     ssize_t len = -1;
     
@@ -262,7 +261,6 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("CreateEvent");
              break;
         }
-        
         if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
             uniperror("WriteFile");
             break;
@@ -282,12 +280,6 @@ ssize_t send_fake(int sfd, char *buffer,
             break;
         }
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
-            break;
-        }
-        if (opt->ip_options && fa == AF_INET
-            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
-                opt->ip_options, opt->ip_options_len) < 0) {
-            uniperror("setsockopt IP_OPTIONS");
             break;
         }
         if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
@@ -311,20 +303,13 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, params.def_ttl, fa) < 0) {
             break;
         }
-        if (opt->ip_options && fa == AF_INET
-            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
-                opt->ip_options, 0) < 0) {
-            uniperror("setsockopt IP_OPTIONS");
-            break;
-        }
         len = pos;
         break;
     }
-    if (!CloseHandle(hfile)) {
-        uniperror("CloseHandle hfile");
-    }
-    if (ov.hEvent && !CloseHandle(ov.hEvent)) {
-        uniperror("CloseHandle hEvent");
+    if (!CloseHandle(hfile)
+            || (ov.hEvent && !CloseHandle(ov.hEvent))) {
+        uniperror("CloseHandle");
+        return -1;
     }
     return len;
 }
@@ -480,8 +465,6 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             break;
         }
         // send part
-        LOG(LOG_S, "split: pos=%ld-%ld, m: %s\n", lp, pos, demode_str[part.m]);
-        
         ssize_t s = 0;
         switch (part.m) {
             #ifdef FAKE_SUPPORT
@@ -502,10 +485,14 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
                 break;
                 
             case DESYNC_SPLIT:
-            default:
                 s = send(sfd, buffer + lp, pos - lp, 0);
                 wait_send_if_support(sfd);
+                
+            default:
+                return -1;
         }
+        LOG(LOG_S, "split: pos=%ld-%ld (%ld), m: %s\n", lp, pos, s, demode_str[part.m]);
+        
         if (s < 0) {
             if (get_e() == EAGAIN) {
                 return lp;

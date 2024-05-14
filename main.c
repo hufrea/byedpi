@@ -92,8 +92,8 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-    "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     #ifdef __linux__
+    "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
@@ -136,8 +136,8 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
-    {"ip-opt",        2, 0, 'k'},
     #ifdef __linux__
+    {"ip-opt",        2, 0, 'k'},
     {"md5sig",        0, 0, 'S'},
     #endif
     {"fake-data",     1, 0, 'l'},

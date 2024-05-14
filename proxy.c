@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <assert.h>
 
 #include "proxy.h"
 #include "params.h"
@@ -559,6 +560,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         free(val->buff.data);
         val->buff.data = 0;
         val->buff.size = 0;
+        val->buff.offset = 0;
         
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, pair, POLLIN)) {
@@ -586,6 +588,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
                 sn = 0;
             }
             LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
+            assert(!(val->buff.data || val->buff.offset));
             
             val->buff.size = n - sn;
             if (!(val->buff.data = malloc(val->buff.size))) {
@@ -811,6 +814,8 @@ int event_loop(int srvfd)
             uniperror("(e)poll");
             break;
         }
+        assert(val->type >= 0
+            && val->type < sizeof(eid_name)/sizeof(*eid_name));
         LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", val->fd, eid_name[val->type], val->mod_iter);
         
         switch (val->type) {
