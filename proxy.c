@@ -536,16 +536,22 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
 
 
 int on_tunnel(struct poolhd *pool, struct eval *val, 
-        char *buffer, size_t bfsize, int out)
+        char *buffer, size_t bfsize, int etype)
 {
     ssize_t n = 0;
     struct eval *pair = val->pair;
     
-    if (pair->buff.data && out) {
-        pair = val;
-        val = val->pair;
-        
+    if (etype & POLLOUT) {
+        LOG(LOG_S, "pollout (fd=%d)\n", val->fd);
+        val = pair;
+        pair = val->pair;
+    }
+    if (val->buff.data) {
+        if (etype & POLLHUP) {
+            return -1;
+        }
         n = val->buff.size - val->buff.offset;
+        
         ssize_t sn = send(pair->fd, 
             val->buff.data + val->buff.offset, n, 0);
         if (sn != n) {
@@ -570,8 +576,9 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
     }
     do {
         n = recv(val->fd, buffer, bfsize, 0);
-        if (n < 0 && get_e() == EAGAIN)
+        if (n < 0 && get_e() == EAGAIN) {
             break;
+        }
         if (n < 1) {
             if (n) uniperror("recv");
             return -1;
@@ -587,15 +594,15 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
                 }
                 sn = 0;
             }
-            LOG(LOG_S, "EAGAIN, set POLLOUT (fd: %d)\n", pair->fd);
-            assert(!(val->buff.data || val->buff.offset));
+            LOG(LOG_S, "send: %ld != %ld (fd: %d)\n", sn, n, pair->fd);
+            assert(!(val->buff.size || val->buff.offset));
             
             val->buff.size = n - sn;
-            if (!(val->buff.data = malloc(val->buff.size))) {
+            if (!(val->buff.data = malloc(n - sn))) {
                 uniperror("malloc");
                 return -1;
             }
-            memcpy(val->buff.data, buffer + sn, val->buff.size);
+            memcpy(val->buff.data, buffer + sn, n - sn);
             
             if (mod_etype(pool, val, 0) ||
                     mod_etype(pool, pair, POLLOUT)) {
@@ -838,8 +845,7 @@ int event_loop(int srvfd)
                 continue;
                 
             case EV_TUNNEL:
-                if (on_tunnel(pool, val, 
-                        buffer, bfsize, etype & POLLOUT))
+                if (on_tunnel(pool, val, buffer, bfsize, etype))
                     del_event(pool, val);
                 continue;
         
