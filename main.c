@@ -284,46 +284,6 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
 }
 
 
-int get_addr_with_port(const char *str, struct sockaddr_ina *addr)
-{
-    uint16_t port = 0;
-    const char *s = str, *p = str, *e = 0;
-    char *end = 0;
-
-    if (*str == '[') {
-        e = strchr(str, ']');
-        if (!e) return -1;
-        s++; p = e + 1;
-    }
-    p = strchr(p, ':');
-    if (p) {
-        long val = strtol(p + 1, &end, 0);
-        if (val <= 0 || val > 0xffff || *end)
-            return -1;
-        else
-            port = htons(val);
-        if (!e) e = p;
-    }
-    if (!e) {
-        e = strchr(s, 0);
-    }
-    if ((e - s) < 7) {
-        return -1;
-    }
-    char str_ip[(e - s) + 1];
-    memcpy(str_ip, s, e - s);
-    str_ip[e - s] = 0;
-    
-    if (get_addr(str_ip, addr) < 0) {
-        return -1;
-    }
-    if (port) {
-        addr->in6.sin6_port = port;
-    }
-    return 0;
-}
-
-
 int get_default_ttl()
 {
     int orig_ttl = -1, fd;
