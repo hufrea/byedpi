@@ -1,10 +1,15 @@
+Implementation of some DPI bypass methods.
+The program is a local SOCKS proxy server.
+--------------
+Usage example:
+$ ciadpi --disorder 3 --auto=torst --tlsrec 1+s
+$ ciadpi --fake -1 --ttl 8
+
+--------------------
 Реализация некоторых способов запутывания DPI.
 Программа представляет собой локальный SOCKS прокси сервер.
 
---------------
-Использование:
-$ ./ciadpi --disorder 3 -A --tlsrec 1+s
-
+--------------------
 Описание аргументов:
 -i, --ip <ip>
     Прослушиваемый IP, по умолчанию 0.0.0.0
