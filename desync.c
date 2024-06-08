@@ -85,7 +85,7 @@ static inline void delay(long ms)
 #ifdef __linux__
 void wait_send(int sfd)
 {
-    for (int i = 0; params.wait_send; i++) {
+    for (int i = 0; params.wait_send && i < 500; i++) {
         struct tcpi tcpi = {};
         socklen_t ts = sizeof(tcpi);
         
