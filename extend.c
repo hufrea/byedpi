@@ -90,41 +90,14 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 }
 
 
-int ext_connect(struct poolhd *pool, struct eval *val, 
-        struct sockaddr_ina *dst, int next, int m)
-{
-    assert(m >= 0 && m < params.dp_count && dst && val);
-    
-    struct desync_params *dp = &params.dp[m];
-    if (dp->to_ip) {
-        struct sockaddr_ina addr = { .in6 = dp->addr };
-        if (!addr.in.sin_port) {
-            addr.in.sin_port = dst->in.sin_port;
-        }
-        return create_conn(pool, val, &addr, next);
-    }
-    return create_conn(pool, val, dst, next);
-}
-
-
 int connect_hook(struct poolhd *pool, struct eval *val, 
         struct sockaddr_ina *dst, int next)
 {
     int m = mode_add_get(dst, -1);
     val->cache = (m == 0);
-    m = m < 0 ? 0 : m;
-    val->attempt = m;
+    val->attempt = m < 0 ? 0 : m;
     
-    if (params.late_conn) {
-        val->type = EV_DESYNC;
-        if (resp_error(val->fd, 0, val->flag) < 0) {
-            perror("send");
-            return -1;
-         }
-         val->in6 = dst->in6;
-         return 0;
-    }
-    return ext_connect(pool, val, dst, next, m);
+    return create_conn(pool, val, dst, next);
 }
 
 
@@ -132,8 +105,8 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
 {
     struct eval *client = val->pair;
     
-    if (ext_connect(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC, m)) {
+    if (create_conn(pool, client, 
+            (struct sockaddr_ina *)&val->in6, EV_DESYNC)) {
         return -1;
     }
     val->pair = 0;
@@ -179,11 +152,10 @@ int on_torst(struct poolhd *pool, struct eval *val)
     
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
-        if (!(dp->detect & DETECT_TORST)) {
-            continue;
+        if (!dp->detect) {
+            return -1;
         }
-        if ((!dp->hosts || check_host(dp->hosts, val->pair)) &&
-                (!dp->proto || check_proto_tcp(dp->proto, val))) {
+        if (dp->detect & DETECT_TORST) {
             break;
         }
     }
@@ -206,32 +178,26 @@ int on_response(struct poolhd *pool, struct eval *val,
     
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
-        
-        switch (0) {
-        default:
-            if ((dp->detect & DETECT_HTTP_LOCAT)
-                    && is_http_redirect(req, qn, resp, sn)) {
-                break;
-            }
-            else if ((dp->detect & DETECT_TLS_INVSID)
-                    && neq_tls_sid(req, qn, resp, sn)) {
-                break;
-            }
-            else if ((dp->detect & DETECT_TLS_ALERT)
-                    && is_tls_alert(resp, sn)) {
-                break;
-            }
-            else if (dp->detect & DETECT_HTTP_CLERR) {
-                int code = get_http_code(resp, sn);
-                if (code > 400 && code < 451 && code != 429) {
-                    break;
-                }
-            }
-            continue;
+        if (!dp->detect) {
+            return -1;
         }
-        if ((!dp->hosts || check_host(dp->hosts, val->pair)) &&
-                (!dp->proto || check_proto_tcp(dp->proto, val))) {
+        if ((dp->detect & DETECT_HTTP_LOCAT)
+                && is_http_redirect(req, qn, resp, sn)) {
             break;
+        }
+        else if ((dp->detect & DETECT_TLS_INVSID)
+                && neq_tls_sid(req, qn, resp, sn)) {
+            break;
+        }
+        else if ((dp->detect & DETECT_TLS_ALERT)
+                && is_tls_alert(resp, sn)) {
+            break;
+        }
+        else if (dp->detect & DETECT_HTTP_CLERR) {
+            int code = get_http_code(resp, sn);
+            if (code > 400 && code < 451 && code != 429) {
+                break;
+            }
         }
     }
     if (m < params.dp_count) {
@@ -382,10 +348,6 @@ int on_desync(struct poolhd *pool, struct eval *val,
     }
     val->attempt = m;
     
-    if (params.late_conn && val->recv_count == n) {
-        return ext_connect(pool, val, 
-            (struct sockaddr_ina *)&val->in6, EV_DESYNC, m);
-    }
     return on_desync_again(pool, val, buffer, bfsize);
 }
 

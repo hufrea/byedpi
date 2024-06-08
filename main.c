@@ -74,7 +74,6 @@ const char help_text[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
-    "    -L, --late-conn           Waiting for request before connecting\n"
     "    -A, --auto[=t,r,c,s,a,n]  Try desync params after this option\n"
     "                              Detect: torst,redirect,cl_err,sid_inv,alert,none\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
@@ -83,7 +82,6 @@ const char help_text[] = {
     #endif
     "    -K, --proto[=t,h]         Protocol whitelist: tls,http\n"
     "    -H, --hosts <file|:str>   Hosts whitelist\n"
-    "    -D, --dst <ip[:port]>     Custom destination IP\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -121,7 +119,6 @@ const struct option options[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo ",          0, 0, 'F'},
     #endif
-    {"late-conn",     0, 0, 'L'},
     {"auto",          2, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
@@ -129,7 +126,6 @@ const struct option options[] = {
     #endif
     {"proto",         2, 0, 'K'},
     {"hosts",         1, 0, 'H'},
-    {"dst",           1, 0, 'D'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -536,10 +532,6 @@ int main(int argc, char **argv)
             
         // desync options
         
-        case 'L':
-            params.late_conn = 1;
-            break;
-            
         case 'F':
             params.tfo = 1;
             break;
@@ -644,13 +636,6 @@ int main(int argc, char **argv)
                 clear_params();
                 return -1;
             }
-            break;
-            
-        case 'D':
-            if (get_addr_with_port(optarg, (struct sockaddr_ina *)&dp->addr) < 0)
-                invalid = 1;
-            else
-                dp->to_ip = 1;
             break;
             
         case 's':

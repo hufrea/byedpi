@@ -346,8 +346,9 @@ bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
 
 
 bool is_tls_alert(char *resp, size_t sn) {
-    return (sn >= 7 
-        && !memcmp(resp, "\x15\x03\x01\x00\x02\x02", 6));
+    return (sn >= 7
+        && resp[0] == 0x15 && resp[1] == 0x03
+        && !memcmp(resp + 3, "\x00\x02\x02", 3));
 }
 
 /*

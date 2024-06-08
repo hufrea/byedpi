@@ -70,9 +70,6 @@ struct desync_params {
     
     char *file_ptr;
     ssize_t file_size;
-    
-    char to_ip;
-    struct sockaddr_in6 addr;
 };
 
 struct params {
@@ -83,7 +80,6 @@ struct params {
     int def_ttl;
     char custom_ttl;
     
-    char late_conn;
     char tfo;
     unsigned int timeout;
     long cache_ttl;
