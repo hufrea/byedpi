@@ -278,6 +278,8 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
     else
         addr->in.sin_addr = (
             (struct sockaddr_in *)res->ai_addr)->sin_addr;
+    addr->sa.sa_family = res->ai_addr->sa_family;
+    
     freeaddrinfo(res);
     
     return 0;
@@ -633,7 +635,7 @@ int main(int argc, char **argv)
             break;
             
         case 'k':
-            if (dp->ip_options != ip_option) {
+            if (dp->ip_options) {
                 continue;
             }
             if (optarg)
