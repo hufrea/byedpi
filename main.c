@@ -24,7 +24,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "11"
+#define VERSION "11.1"
 
 char oob_char[1] = "a";
 char ip_option[1] = "\0";
@@ -243,7 +243,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
     char *e = buffer, *s = buffer;
     
     for (; e <= end; e++) {
-        if (*e != ' ' && *e != '\n' && *e != '\r' && e != end) {
+        if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
             continue;
         }
         if (s == e) {
@@ -372,6 +372,10 @@ void clear_params(void)
             if (s.file_ptr != 0) {
                 free(s.file_ptr);
                 s.file_ptr = 0;
+            }
+            if (s.hosts != 0) {
+                mem_destroy(s.hosts);
+                s.hosts = 0;
             }
         }
         free(params.dp);
