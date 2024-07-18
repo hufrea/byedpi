@@ -65,3 +65,10 @@ static inline const int unie(int e)
         if (params.debug >= s) \
             fprintf(stderr, str, ##__VA_ARGS__)
 #endif
+
+#define INIT_ADDR_STR(dst) \
+    char ADDR_STR[INET_ADDRSTRLEN + 1]; \
+    if (dst.sa.sa_family == AF_INET) \
+        inet_ntop(AF_INET, &dst.in.sin_addr, ADDR_STR, sizeof(ADDR_STR)); \
+    else \
+        inet_ntop(AF_INET6, &dst.in6.sin6_addr, ADDR_STR, sizeof(ADDR_STR));

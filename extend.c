@@ -128,7 +128,19 @@ bool check_host(struct mphdr *hosts, struct eval *val)
         len = parse_http(val->buff.data, val->buff.size, &host, 0);
     }
     assert(len == 0 || host != 0);
-    return (len > 0) && mem_get(hosts, host, len) != 0;
+    if (len <= 0) {
+        return 0;
+    }
+    char *e = host + len;
+    for (; host < e; host++) {
+        if (mem_get(hosts, host, e - host)) {
+            return 1;
+        }
+        if (!(host = memchr(host, '.', e - host))) {
+            return 0;
+        }
+    }
+    return 0;
 }
 
 
@@ -259,13 +271,15 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     if (!pair->cache) {
         return 0;
     }
+    struct sockaddr_ina *addr = (struct sockaddr_ina *)&val->in6;
+    
     if (m == 0) {
         LOG(LOG_S, "delete ip: m=%d\n", m);
     } else {
-        LOG(LOG_S, "save ip: m=%d\n", m);
+        INIT_ADDR_STR((*addr));
+        LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
     }
-    return mode_add_get(
-        (struct sockaddr_ina *)&val->in6, m);
+    return mode_add_get(addr, m);
 }
 
 

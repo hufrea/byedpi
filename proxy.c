@@ -505,6 +505,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             uniperror("accept");
             return -1;
         }
+        LOG(LOG_L, "accept: fd=%d\n", c);
         #ifndef __linux__
         #ifdef _WIN32
         unsigned long mode = 1;
@@ -753,7 +754,13 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         int en = get_e();
         if (resp_error(val->fd, en ? en : error, val->flag) < 0)
             uniperror("send");
+        LOG(LOG_S, "ss error: %d\n", en);
         return -1;
+    }
+    if (params.debug) {
+        INIT_ADDR_STR(dst);
+        LOG(LOG_L, "new conn: fd=%d, addr=%s:%d\n", 
+            val->pair->fd, ADDR_STR, ntohs(dst.in.sin_port));
     }
     return 0;
 }
@@ -784,6 +791,13 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
         return -1;
     }
     return e ? -1 : 0;
+}
+
+
+void close_conn(struct poolhd *pool, struct eval *val)
+{
+    LOG(LOG_L, "close: fds=%d,%d\n", val->fd, val->pair ? val->pair->fd : -1);
+    del_event(pool, val);
 }
 
 
@@ -835,39 +849,39 @@ int event_loop(int srvfd)
             case EV_REQUEST:
                 if ((etype & POLLHUP) || 
                         on_request(pool, val, buffer, bfsize))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
         
             case EV_PRE_TUNNEL:
                 if (on_tunnel_check(pool, val, 
                         buffer, bfsize, etype & POLLOUT))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
                 
             case EV_TUNNEL:
                 if (on_tunnel(pool, val, buffer, bfsize, etype))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
         
             case EV_UDP_TUNNEL:
                 if (on_udp_tunnel(val, buffer, bfsize))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
                 
             case EV_CONNECT:
                 if (on_connect(pool, val, etype & POLLERR))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
                 
             case EV_DESYNC:
                 if (on_desync(pool, val, 
                         buffer, bfsize, etype & POLLOUT))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
                     
             case EV_IGNORE:
                 if (etype & (POLLHUP | POLLERR | POLLRDHUP))
-                    del_event(pool, val);
+                    close_conn(pool, val);
                 continue;
             
             default:
