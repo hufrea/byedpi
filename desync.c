@@ -91,7 +91,7 @@ void wait_send(int sfd)
         
         if (getsockopt(sfd, IPPROTO_TCP,
                 TCP_INFO, (char *)&tcpi, &ts) < 0) {
-            perror("getsockopt TCP_INFO");
+            uniperror("getsockopt TCP_INFO");
             break;
         }
         if (tcpi.state != 1) {
@@ -172,14 +172,14 @@ ssize_t send_fake(int sfd, char *buffer,
             
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
-                perror("setsockopt TCP_MD5SIG");
+                uniperror("setsockopt TCP_MD5SIG");
                 break;
             }
         }
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
-            perror("setsockopt IP_OPTIONS");
+            uniperror("setsockopt IP_OPTIONS");
             break;
         }
         
@@ -197,7 +197,7 @@ ssize_t send_fake(int sfd, char *buffer,
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP,
                 IP_OPTIONS, opt->ip_options, 0) < 0) {
-            perror("setsockopt IP_OPTIONS");
+            uniperror("setsockopt IP_OPTIONS");
             break;
         }
         if (opt->md5sig) {
@@ -208,7 +208,7 @@ ssize_t send_fake(int sfd, char *buffer,
             
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
-                perror("setsockopt TCP_MD5SIG");
+                uniperror("setsockopt TCP_MD5SIG");
                 break;
             }
         }
@@ -221,6 +221,8 @@ ssize_t send_fake(int sfd, char *buffer,
 #endif
 
 #ifdef _WIN32
+OVERLAPPED ov = {};
+
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
@@ -252,7 +254,6 @@ ssize_t send_fake(int sfd, char *buffer,
         uniperror("CreateFileA");
         return -1;
     }
-    OVERLAPPED ov = {};
     ssize_t len = -1;
     
     while (1) {
