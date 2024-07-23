@@ -407,8 +407,7 @@ int create_conn(struct poolhd *pool,
 int udp_associate(struct poolhd *pool, 
         struct eval *val, struct sockaddr_ina *dst)
 {
-    struct sockaddr_ina addr = { .in6 = params.laddr };
-    addr.in.sin_port = 0;
+    struct sockaddr_ina addr = *dst;
     
     int ufd = nb_socket(params.baddr.sin6_family, SOCK_DGRAM);
     if (ufd < 0) {
@@ -428,6 +427,7 @@ int udp_associate(struct poolhd *pool,
             close(ufd);
             return -1;
         }
+        map_fix(&addr, 6);
     }
     if (bind(ufd, (struct sockaddr *)&params.baddr, 
             sizeof(params.baddr)) < 0) {
@@ -440,6 +440,22 @@ int udp_associate(struct poolhd *pool,
         close(ufd);
         return -1;
     }
+    if (dst->in6.sin6_port != 0) {
+        if (connect(ufd, &addr.sa, sizeof(addr)) < 0) {
+            uniperror("connect");
+            del_event(pool, pair);
+            return -1;
+        }
+        pair->in6 = dst->in6;
+    }
+    //
+    socklen_t sz = sizeof(addr);
+    
+    if (getsockname(val->fd, &addr.sa, &sz)) {
+        uniperror("getsockname");
+        return -1;
+    }
+    addr.in.sin_port = 0;
     
     int cfd = nb_socket(addr.sa.sa_family, SOCK_DGRAM);
     if (cfd < 0) {
@@ -468,7 +484,7 @@ int udp_associate(struct poolhd *pool,
     client->in6 = val->in6;
     client->in6.sin6_port = 0;
     
-    socklen_t sz = sizeof(addr);
+    sz = sizeof(addr);
     if (getsockname(cfd, &addr.sa, &sz)) {
         uniperror("getsockname");
         return -1;
@@ -639,15 +655,19 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
         
         ssize_t n = recvfrom(val->fd, data, data_len, 0, &addr.sa, &asz);
         if (n < 1) {
-            if (n && errno == EAGAIN)
+            if (n && get_e() == EAGAIN)
                 break;
             uniperror("recv udp");
             return -1;
         }
+        val->recv_count += n;
         ssize_t ns;
         
         if (val->flag == FLAG_CONN) {
             if (!val->in6.sin6_port) {
+                if (!addr_equ(&addr, (struct sockaddr_ina *)&val->in6)) {
+                    return 0;
+                }
                 if (connect(val->fd, &addr.sa, sizeof(addr)) < 0) {
                     uniperror("connect");
                     return -1;
@@ -662,14 +682,20 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 LOG(LOG_E, "udp parse error\n");
                 return -1;
             }
-            if (params.baddr.sin6_family == AF_INET6) {
-                map_fix(&addr, 6);
+            if (!val->pair->in6.sin6_port) {
+                if (params.baddr.sin6_family == AF_INET6) {
+                    map_fix(&addr, 6);
+                }
+                if (params.baddr.sin6_family != addr.sa.sa_family) {
+                    return -1;
+                }
+                if (connect(val->pair->fd, &addr.sa, sizeof(addr)) < 0) {
+                    uniperror("connect");
+                    return -1;
+                }
+                val->pair->in6 = addr.in6;
             }
-            if (params.baddr.sin6_family != addr.sa.sa_family) {
-                return -1;
-            }
-            ns = sendto(val->pair->fd, 
-                data + offs, n - offs, 0, &addr.sa, sizeof(addr));
+            ns = send(val->pair->fd, data + offs, n - offs, 0);
         }
         else {
             map_fix(&addr, 0);
