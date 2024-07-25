@@ -9,12 +9,14 @@
     #include <sys/time.h>
     #include <sys/socket.h>
     #include <arpa/inet.h>
+    #include <netinet/tcp.h>
     
     #ifdef __linux__
     #include <sys/mman.h>
     #include <sys/sendfile.h>
     #include <fcntl.h>
-    #include <linux/tcp.h>
+
+    #include <desync.h>
     
     #ifdef MFD_CLOEXEC
         #include <sys/syscall.h>
@@ -22,8 +24,6 @@
     #else
         #define memfd_create(name, flags) fileno(tmpfile())
     #endif
-    #else
-    #include <netinet/tcp.h>
     #endif
 #else
     #include <winsock2.h>
@@ -86,25 +86,24 @@ static inline void delay(long ms)
 void wait_send(int sfd)
 {
     for (int i = 0; params.wait_send && i < 500; i++) {
-        struct tcp_info tcpi = {};
+        struct tcpi tcpi = {};
         socklen_t ts = sizeof(tcpi);
         
         if (getsockopt(sfd, IPPROTO_TCP,
                 TCP_INFO, (char *)&tcpi, &ts) < 0) {
-            perror("getsockopt TCP_INFO");
+            uniperror("getsockopt TCP_INFO");
             break;
         }
-        if (tcpi.tcpi_state != 1) {
-            LOG(LOG_E, "state: %d\n", tcpi.tcpi_state);
+        if (tcpi.state != 1) {
+            LOG(LOG_E, "state: %d\n", tcpi.state);
             return;
         }
-        size_t s = (char *)&tcpi.tcpi_notsent_bytes - (char *)&tcpi.tcpi_state;
-        if (ts < s) {
+        if (ts < sizeof(tcpi)) {
             LOG(LOG_E, "tcpi_notsent_bytes not provided\n");
             params.wait_send = 0;
             break;
         }
-        if (tcpi.tcpi_notsent_bytes == 0) {
+        if (tcpi.notsent_bytes == 0) {
             return;
         }
         LOG(LOG_S, "not sent after %d ms\n", i);
