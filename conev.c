@@ -146,7 +146,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
 {
     while (1) {
         int i = *offs;
-        assert(i >= -1 && i < pool->count);
+        assert(i >= -1 && i < pool->max);
         if (i < 0) {
             i = (epoll_wait(pool->efd, pool->pevents, pool->max, -1) - 1);
             if (i < 0) {
