@@ -82,6 +82,8 @@ void del_event(struct poolhd *pool, struct eval *val)
     }
     #ifdef NOEPOLL
     assert(val->fd == pool->pevents[val->index].fd);
+    #else
+    epoll_ctl(pool->efd, EPOLL_CTL_DEL, val->fd, 0);
     #endif
     if (val->buff.data) {
         assert(val->buff.size);
