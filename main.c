@@ -24,7 +24,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "11.3"
+#define VERSION "12"
 
 char oob_char[1] = "a";
 char ip_option[1] = "\0";
@@ -85,7 +85,7 @@ const char help_text[] = {
     #endif
     "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
-    "    -V, --pf <port[-portr]>   Port or port range whitelist\n"
+    "    -V, --pf <port[-portr]>   Ports range whitelist\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -104,7 +104,7 @@ const char help_text[] = {
     "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
-    "    -a, --udp-fake <count>    UDP fake count, default 0\n"
+    "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
 };
 
 
