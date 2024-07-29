@@ -695,7 +695,8 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 }
                 val->pair->in6 = addr.in6;
             }
-            ns = send(val->pair->fd, data + offs, n - offs, 0);
+            ns = udp_hook(val, data + offs, bfsize - offs, n - offs, 
+                (struct sockaddr_ina *)&val->pair->in6);
         }
         else {
             map_fix(&addr, 0);

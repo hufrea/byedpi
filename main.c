@@ -37,6 +37,9 @@ fake_http = {
 },
 oob_data = { 
     sizeof(oob_char), oob_char
+},
+fake_udp = { 
+    sizeof(udp_data), udp_data
 };
 
 
@@ -80,7 +83,7 @@ const char help_text[] = {
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
-    "    -K, --proto[=t,h]         Protocol whitelist: tls,http\n"
+    "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
     "    -H, --hosts <file|:str>   Hosts whitelist\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
@@ -100,6 +103,7 @@ const char help_text[] = {
     "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
+    "    -a, --udp-fake <count>    UDP fake count, default 0\n"
 };
 
 
@@ -124,7 +128,7 @@ const struct option options[] = {
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
     #endif
-    {"proto",         2, 0, 'K'},
+    {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
@@ -142,6 +146,7 @@ const struct option options[] = {
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
+    {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
     {"delay",         1, 0, 'w'}, //
     {"not-wait-send", 0, 0, 'W'}, //
@@ -564,10 +569,6 @@ int main(int argc, char **argv)
             break;
             
         case 'K':
-            if (!optarg) {
-                dp->proto |= 0xffffffff;
-                break;
-            }
             end = optarg;
             while (end && !invalid) {
                 switch (*end) {
@@ -576,6 +577,9 @@ int main(int argc, char **argv)
                         break;
                     case 'h': 
                         dp->proto |= IS_HTTP;
+                        break;
+                    case 'u': 
+                        dp->proto |= IS_UDP;
                         break;
                     default:
                         invalid = 1;
@@ -723,6 +727,14 @@ int main(int argc, char **argv)
                 invalid = 1;
                 break;
             }
+            break;
+            
+        case 'a':
+            val = strtol(optarg, &end, 0);
+            if (val < 0 || val > INT_MAX || *end)
+                invalid = 1;
+            else
+                dp->udp_fake_count = val;
             break;
             
         case 'g':

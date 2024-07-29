@@ -3,11 +3,12 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define IS_UNKNOWN 0
-#define IS_HTTP 1
-#define IS_HTTPS 2
-//#define IS_QUIC 4
-//#define IS_DNS 8
+#define IS_TCP 1
+#define IS_UDP 2
+#define IS_HTTP 4
+#define IS_HTTPS 8
+//#define IS_QUIC 16
+//#define IS_DNS 32
 
 #define MH_HMIX 1
 #define MH_SPACE 2
@@ -15,6 +16,7 @@
 
 extern char tls_data[517];
 extern char http_data[43];
+extern char udp_data[64];
 
 int change_tls_sni(const char *host, char *buffer, size_t bsize);
 

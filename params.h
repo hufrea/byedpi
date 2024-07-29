@@ -56,6 +56,7 @@ struct desync_params {
     ssize_t ip_options_len;
     char md5sig;
     struct packet fake_data;
+    int udp_fake_count;
     
     int parts_n;
     struct part *parts;
@@ -101,5 +102,6 @@ extern struct params params;
 extern struct packet fake_tls;
 extern struct packet fake_http;
 extern struct packet oob_data;
+extern struct packet fake_udp;
 
 extern char ip_option[1];

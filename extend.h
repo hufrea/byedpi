@@ -7,6 +7,9 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
 int on_desync(struct poolhd *pool, struct eval *val,
         char *buffer, size_t bfsize, int out);
 
+ssize_t udp_hook(struct eval *val, 
+        char *buffer, size_t bfsize, ssize_t n, struct sockaddr_ina *dst);
+
 #ifdef __linux__
 int protect(int conn_fd, const char *path);
 #else

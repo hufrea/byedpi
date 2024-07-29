@@ -521,3 +521,39 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     }
     return n;
 }
+
+
+ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
+        ssize_t n, struct sockaddr *dst, int dp_c)
+{
+    struct desync_params *dp = &params.dp[dp_c];
+    int fa = get_family(dst);
+    
+    if (dp->udp_fake_count != 0) {
+        struct packet pkt;
+        if (dp->fake_data.data) {
+            pkt = dp->fake_data;
+        }
+        else {
+            pkt = fake_udp;
+        }
+
+        int bttl = dp->ttl ? dp->ttl : 8;
+        if (setttl(sfd, bttl, fa) < 0) {
+            return -1;
+        }
+        for (int i = 0; i < dp->udp_fake_count; i++) {
+            ssize_t len = sendto(sfd, pkt.data, 
+                pkt.size, 0, dst, sizeof(struct sockaddr_in6));
+            if (len < 0) {
+                uniperror("send");
+                return -1;
+            }
+        }
+        if (setttl(sfd, params.def_ttl, fa) < 0) {
+            return -1;
+        }
+    }
+    return sendto(sfd, buffer, n, 0, 
+        dst, sizeof(struct sockaddr_in6));
+}

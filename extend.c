@@ -146,11 +146,14 @@ bool check_host(struct mphdr *hosts, struct eval *val)
 
 bool check_proto_tcp(int proto, struct eval *val)
 {
-    if ((proto & IS_HTTP) && 
+    if (proto & IS_TCP) {
+        return 1;
+    }
+    else if ((proto & IS_HTTP) && 
             is_http(val->buff.data, val->buff.size)) {
         return 1;
     }
-    if ((proto & IS_HTTPS) && 
+    else if ((proto & IS_HTTPS) && 
             is_tls_chello(val->buff.data, val->buff.size)) {
         return 1;
     }
@@ -364,6 +367,30 @@ int on_desync(struct poolhd *pool, struct eval *val,
     
     return on_desync_again(pool, val, buffer, bfsize);
 }
+
+
+ssize_t udp_hook(struct eval *val, 
+        char *buffer, size_t bfsize, ssize_t n, struct sockaddr_ina *dst)
+{
+    if (val->recv_count) {
+        return send(val->fd, buffer, n, 0);
+    }
+    int m = val->attempt;
+    if (!m) for (; m < params.dp_count; m++) {
+        struct desync_params *dp = &params.dp[m];
+        if (!dp->detect && 
+                (!dp->proto || (dp->proto & IS_UDP))) {
+            break;
+        }
+    }
+    if (m >= params.dp_count) {
+        return -1;
+    }
+    val->attempt = m;
+    
+    return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, 0);
+}
+
 
 #ifdef __linux__
 int protect(int conn_fd, const char *path)

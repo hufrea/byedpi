@@ -53,6 +53,8 @@ char http_data[43] = {
     "Host: www.wikipedia.org\r\n\r\n"
 };
 
+char udp_data[64] = { 0 };
+
 
 char *strncasestr(char *a, size_t as, char *b, size_t bs)
 {
