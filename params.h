@@ -1,4 +1,6 @@
+#include <stdint.h>
 #include <stdio.h>
+
 #include "mpool.h"
 
 #ifdef _WIN32

@@ -446,7 +446,7 @@ int udp_associate(struct poolhd *pool,
             del_event(pool, pair);
             return -1;
         }
-        pair->in6 = dst->in6;
+        pair->in6 = addr.in6;
     }
     //
     socklen_t sz = sizeof(addr);
