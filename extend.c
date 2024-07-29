@@ -90,6 +90,13 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 }
 
 
+inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
+{
+    return (dst->sin6_port >= p[0] 
+            && dst->sin6_port <= p[1]);
+}
+
+
 int connect_hook(struct poolhd *pool, struct eval *val, 
         struct sockaddr_ina *dst, int next)
 {
@@ -355,8 +362,9 @@ int on_desync(struct poolhd *pool, struct eval *val,
     if (!m) for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect &&
-                (!dp->hosts || check_host(dp->hosts, val)) &&
-                (!dp->proto || check_proto_tcp(dp->proto, val))) {
+                (!dp->pf[0] || check_port(dp->pf, &val->pair->in6)) &&
+                (!dp->proto || check_proto_tcp(dp->proto, val)) &&
+                (!dp->hosts || check_host(dp->hosts, val))) {
             break;
         }
     }
@@ -379,16 +387,15 @@ ssize_t udp_hook(struct eval *val,
     if (!m) for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect && 
-                (!dp->proto || (dp->proto & IS_UDP))) {
+                (!dp->proto || (dp->proto & IS_UDP)) &&
+                (!dp->pf[0] || check_port(dp->pf, &dst->in6))) {
             break;
         }
     }
     if (m >= params.dp_count) {
         return -1;
-    }
-    val->attempt = m;
-    
-    return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, 0);
+    }   
+    return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, m);
 }
 
 

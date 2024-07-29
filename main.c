@@ -84,7 +84,8 @@ const char help_text[] = {
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
     "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
-    "    -H, --hosts <file|:str>   Hosts whitelist\n"
+    "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
+    "    -V, --pf <port[-portr]>   Port or port range whitelist\n"
     "    -s, --split <n[+s]>       Split packet at n\n"
     "                              +s - add SNI offset\n"
     "                              +h - add HTTP Host offset\n"
@@ -130,6 +131,7 @@ const struct option options[] = {
     #endif
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
+    {"pf",            1, 0, 'V'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -737,6 +739,24 @@ int main(int argc, char **argv)
                 dp->udp_fake_count = val;
             break;
             
+        case 'V':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > USHRT_MAX)
+                invalid = 1;
+            else {
+                dp->pf[0] = htons(val);
+                if (*end == '-') {
+                    val = strtol(end + 1, &end, 0);
+                    if (val <= 0 || val > USHRT_MAX)
+                        invalid = 1;
+                }
+                if (*end)
+                    invalid = 1;
+                else
+                    dp->pf[1] = htons(val);
+            }
+            break;
+            
         case 'g':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || val > 255 || *end)
@@ -780,7 +800,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-    if (dp->hosts || dp->proto) {
+    if (dp->hosts || dp->proto || dp->pf[0]) {
         dp = add((void *)&params.dp,
             &params.dp_count, sizeof(struct desync_params));
         if (!dp) {

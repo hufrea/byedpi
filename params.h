@@ -68,6 +68,7 @@ struct desync_params {
     int proto;
     int detect;
     struct mphdr *hosts;
+    uint16_t pf[2];
     
     char *file_ptr;
     ssize_t file_size;
