@@ -2,7 +2,7 @@ Implementation of some DPI bypass methods.
 The program is a local SOCKS proxy server.
 
 Usage example:
-ciadpi --disorder 3 --auto=torst --tlsrec 1+s
+ciadpi --disorder 1 --auto=torst --tlsrec 1+s
 ciadpi --fake -1 --ttl 8
 
 ------
@@ -156,7 +156,7 @@ ciadpi --fake -1 --ttl 8
 - Порядок отправки: 1-7, 23-30, 7-30
 
 На практике оптимально использовать:  
-Linux: --disorder 3  
+Linux: --disorder 1  
 Windows: --split 1+s --disorder 3+s  
 
 ------
@@ -215,7 +215,7 @@ TCP может отсылать данные вне основного пото�
 Сначала проверяется триггер, указанный в auto, затем proto и hosts.  
 Можно указывать несколько групп опций, раделяя их данным параметром.
 Параметры, которые можно вынести в отдельную группу:  
-proto, hosts, split, disorder, oob, fake, ttl, ip-opt, md5sig, fake-data, mod-http, tlsrec
+proto, hosts, pf, split, disorder, oob, fake, ttl, ip-opt, md5sig, fake-data, mod-http, tlsrec, udp-fake  
 
 Примеры:  
 --fake -1 --ttl 10 --auto=alert,sid_inv --fake -1 --ttl 5  
