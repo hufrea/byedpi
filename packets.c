@@ -363,7 +363,7 @@ bool is_dns_req(char *buffer, size_t n)
 }
 
 
-bool is_quic_inital(char *buffer, size_t bsize)
+bool is_quic_initial(char *buffer, size_t bsize)
 {
     return (bsize > 64 && (buffer[0] & 0xc0) == 0xc0);
 }
