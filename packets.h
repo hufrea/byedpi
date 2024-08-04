@@ -42,4 +42,4 @@ int part_tls(char *buffer, size_t bsize, ssize_t n, long pos);
 
 //bool is_dns_req(char *buffer, size_t n);
 
-//bool is_quic_inital(char *buffer, size_t bsize);
+//bool is_quic_initial(char *buffer, size_t bsize);
