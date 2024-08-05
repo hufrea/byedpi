@@ -137,10 +137,14 @@ int change_tls_sni(const char *host, char *buffer, size_t bsize)
             || free_sz < diff) {
         return -1;
     }
-    *(uint16_t *)(sni + 2) = htons(old_sz + diff + 5);
-    *(uint16_t *)(sni + 4) = htons(old_sz + diff + 3);
-    *(uint16_t *)(sni + 7) = htons(old_sz + diff);
-    *(uint16_t *)(pad + 2) = htons(free_sz - diff);
+    uint16_t htons_sni2 = htons(old_sz + diff + 5);
+    uint16_t htons_sni4 = htons(old_sz + diff + 3);
+    uint16_t htons_sni7 = htons(old_sz + diff);
+    uint16_t htons_pad2 = htons(old_sz - diff);
+    memcpy(sni + 2, &htons_sni2, sizeof(htons_sni2));
+    memcpy(sni + 4, &htons_sni4, sizeof(htons_sni4));
+    memcpy(sni + 7, &htons_sni7, sizeof(htons_sni7));
+    memcpy(pad + 2, &htons_pad2, sizeof(htons_pad2));
     
     char *host_end = sni + 9 + old_sz;
     int oth_sz = bsize - (sni_offs + 9 + old_sz);
@@ -410,7 +414,11 @@ int part_tls(char *buffer, size_t bsize, ssize_t n, long pos)
     memmove(buffer + 5 + pos + 5, buffer + 5 + pos, n - (5 + pos));
     memcpy(buffer + 5 + pos, buffer, 3);
     
-    *(uint16_t *)(buffer + 3) = htons(pos);
-    *(uint16_t *)(buffer + 5 + pos + 3) = htons(r_sz - pos);
+    uint16_t htons_pos = htons(pos);
+    memcpy(buffer + 3, &htons_pos, sizeof(htons_pos));
+    
+    uint16_t htons_rsz_pos = htons(r_sz - pos);
+    memcpy(buffer + 5 + pos + 3, &htons_rsz_pos, sizeof(htons_rsz_pos));
+    
     return 5;
 }
