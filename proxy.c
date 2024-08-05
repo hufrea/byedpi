@@ -274,7 +274,7 @@ int s5_get_addr(char *buffer, size_t n,
                 addr->in6.sin6_addr = r->i6;
             }
     }
-    addr->in.sin_port = *(uint16_t *)&buffer[o - 2];
+    memcpy(&addr->in.sin_port, &buffer[o - 2], sizeof(uint16_t));
     return o;
 }
 
