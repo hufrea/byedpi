@@ -17,6 +17,10 @@
 #define ANTOHS(data, i) \
     (uint16_t)((data[i] << 8) + (uint8_t)data[i + 1])
     
+#define SHTONA(data, i, x) \
+    data[i] = (uint8_t)(x >> 8); \
+    data[i + 1] = x & 0xff;
+
 
 char tls_data[517] = {
     "\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03\x03\x5f"
@@ -137,14 +141,10 @@ int change_tls_sni(const char *host, char *buffer, size_t bsize)
             || free_sz < diff) {
         return -1;
     }
-    uint16_t htons_sni2 = htons(old_sz + diff + 5);
-    uint16_t htons_sni4 = htons(old_sz + diff + 3);
-    uint16_t htons_sni7 = htons(old_sz + diff);
-    uint16_t htons_pad2 = htons(free_sz - diff);
-    memcpy(sni + 2, &htons_sni2, sizeof(htons_sni2));
-    memcpy(sni + 4, &htons_sni4, sizeof(htons_sni4));
-    memcpy(sni + 7, &htons_sni7, sizeof(htons_sni7));
-    memcpy(pad + 2, &htons_pad2, sizeof(htons_pad2));
+    SHTONA(sni, 2, old_sz + diff + 5);
+    SHTONA(sni, 4, old_sz + diff + 3);
+    SHTONA(sni, 7, old_sz + diff);
+    SHTONA(pad, 2, free_sz - diff);
     
     char *host_end = sni + 9 + old_sz;
     int oth_sz = bsize - (sni_offs + 9 + old_sz);
@@ -414,11 +414,7 @@ int part_tls(char *buffer, size_t bsize, ssize_t n, long pos)
     memmove(buffer + 5 + pos + 5, buffer + 5 + pos, n - (5 + pos));
     memcpy(buffer + 5 + pos, buffer, 3);
     
-    uint16_t htons_pos = htons(pos);
-    memcpy(buffer + 3, &htons_pos, sizeof(htons_pos));
-    
-    uint16_t htons_rsz_pos = htons(r_sz - pos);
-    memcpy(buffer + 5 + pos + 3, &htons_rsz_pos, sizeof(htons_rsz_pos));
-    
+    SHTONA(buffer, 3, pos);
+    SHTONA(buffer, 5 + pos + 3, r_sz - pos);
     return 5;
 }
