@@ -1,6 +1,6 @@
 TARGET = ciadpi
 CC ?= gcc
-CFLAGS += -std=c99 -O2 -D_XOPEN_SOURCE=500 
+CFLAGS += -std=c99 -O2 -D_XOPEN_SOURCE=500 -D_DARWIN_C_SOURCE
 SOURCES = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
 WIN_SOURCES = win_service.c
 
