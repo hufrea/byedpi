@@ -57,7 +57,7 @@ struct params params = {
         .sin6_family = AF_INET6
     },
     .laddr = {
-        .sin6_family = AF_INET
+        .sin6_family = AF_INET6
     },
     .debug = 0
 };
