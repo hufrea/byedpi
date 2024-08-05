@@ -140,7 +140,7 @@ int change_tls_sni(const char *host, char *buffer, size_t bsize)
     uint16_t htons_sni2 = htons(old_sz + diff + 5);
     uint16_t htons_sni4 = htons(old_sz + diff + 3);
     uint16_t htons_sni7 = htons(old_sz + diff);
-    uint16_t htons_pad2 = htons(old_sz - diff);
+    uint16_t htons_pad2 = htons(free_sz - diff);
     memcpy(sni + 2, &htons_sni2, sizeof(htons_sni2));
     memcpy(sni + 4, &htons_sni4, sizeof(htons_sni4));
     memcpy(sni + 7, &htons_sni7, sizeof(htons_sni7));
