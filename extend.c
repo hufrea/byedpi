@@ -90,7 +90,7 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 }
 
 
-inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
+static inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
 {
     return (dst->sin6_port >= p[0] 
             && dst->sin6_port <= p[1]);
