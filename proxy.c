@@ -938,7 +938,7 @@ int listen_socket(struct sockaddr_ina *srv)
         close(srvfd);
         return -1;
     }
-    if (bind(srvfd, &srv->sa, sizeof(*srv)) < 0) {
+    if (bind(srvfd, &srv->sa, sizeof(srv->sa)) < 0) {
         uniperror("bind");  
         close(srvfd);
         return -1;
