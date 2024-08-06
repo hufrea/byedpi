@@ -90,6 +90,7 @@ const char help_text[] = {
     "                              +h - add HTTP Host offset\n"
     "    -d, --disorder <n[+s]>    Split and send reverse order\n"
     "    -o, --oob <n[+s]>         Split and send as OOB data\n"
+    "    -O, --oob2 <n[+s]>        Insert OOB data\n"
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
@@ -97,6 +98,7 @@ const char help_text[] = {
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
+    "    -R, --fake-offset <n>     Fake data start offset\n"
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
@@ -134,6 +136,7 @@ const struct option options[] = {
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
+    {"oob2",          1, 0, 'O'},
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
@@ -143,6 +146,7 @@ const struct option options[] = {
     #endif
     {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
+    {"fake-offset",   1, 0, 'R'},
     #endif
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
@@ -346,6 +350,9 @@ int parse_offset(struct part *part, const char *str)
             break;
         case 'h': 
             part->flag = OFFSET_HOST;
+            break;
+        case 'e':
+            part->flag = OFFSET_END;
             break;
         default:
             return -1;
@@ -630,6 +637,7 @@ int main(int argc, char **argv)
         case 's':
         case 'd':
         case 'o':
+        case 'O':
         case 'f':
             ;
             struct part *part = add((void *)&dp->parts,
@@ -648,6 +656,8 @@ int main(int argc, char **argv)
                 case 'd': part->m = DESYNC_DISORDER;
                     break;
                 case 'o': part->m = DESYNC_OOB;
+                    break;
+                case 'O': part->m = DESYNC_OOB2;
                     break;
                 case 'f': part->m = DESYNC_FAKE;
             }
@@ -679,6 +689,14 @@ int main(int argc, char **argv)
             
         case 'S':
             dp->md5sig = 1;
+            break;
+            
+        case 'R':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || *end) 
+                invalid = 1;
+            else
+                dp->fake_offset = val;
             break;
             
         case 'n':

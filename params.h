@@ -22,6 +22,7 @@
     
 #define OFFSET_SNI 1
 #define OFFSET_HOST 2
+#define OFFSET_END 3
 
 #define DETECT_HTTP_LOCAT 1
 #define DETECT_TLS_ERR 2
@@ -32,6 +33,7 @@ enum demode {
     DESYNC_SPLIT,
     DESYNC_DISORDER,
     DESYNC_OOB,
+    DESYNC_OOB2,
     DESYNC_FAKE
 };
 
@@ -41,6 +43,7 @@ char *demode_str[] = {
     "DESYNC_SPLIT",
     "DESYNC_DISORDER",
     "DESYNC_OOB",
+    "DESYNC_OOB2",
     "DESYNC_FAKE"
 };
 #endif
@@ -63,6 +66,7 @@ struct desync_params {
     char md5sig;
     struct packet fake_data;
     int udp_fake_count;
+    int fake_offset;
     
     int parts_n;
     struct part *parts;
