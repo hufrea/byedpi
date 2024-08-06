@@ -1,14 +1,25 @@
 TARGET = ciadpi
-CC ?= gcc
-CFLAGS += -std=c99 -O2 -D_XOPEN_SOURCE=500 
-SOURCES = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
-WIN_SOURCES = win_service.c
 
-all:
-	$(CC) $(CFLAGS) $(SOURCES) -I . -o $(TARGET)
+CPPFLAGS = -D_XOPEN_SOURCE=500
+CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
+WIN_LDFLAGS = -lws2_32 -lmswsock
 
-windows:
-	$(CC) $(CFLAGS) $(SOURCES) $(WIN_SOURCES) -I . -lws2_32 -lmswsock -o $(TARGET).exe
+SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
+WIN_SRC = win_service.c
+
+OBJ = $(SRC:.c=.o)
+WIN_OBJ = $(WIN_SRC:.c=.o)
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	$(CC) -o $(TARGET) $(OBJ) $(LDFLAGS)
+
+windows: $(OBJ) $(WIN_OBJ)
+	$(CC) -o $(TARGET).exe $(OBJ) $(WIN_OBJ) $(WIN_LDFLAGS)
+
+.c.o:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $<
 
 clean:
-	rm -f $(TARGET) *.o
+	rm -f $(TARGET) $(TARGET).exe $(OBJ) $(WIN_OBJ)
