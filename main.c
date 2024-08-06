@@ -195,8 +195,11 @@ char *parse_cform(const char *str, ssize_t *size)
         }
         i--; p--;
     }
-    *size = i;
     char *m = realloc(d, i);
+    if (i == 0) {
+        return 0;
+    }
+    *size = i;
     return m ? m : d;
 }
 
