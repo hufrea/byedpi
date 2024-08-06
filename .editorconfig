@@ -1,0 +1,11 @@
+
+
+root = true
+
+# 4 space indentation
+[*.{c,h}]
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab
