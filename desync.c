@@ -392,12 +392,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         type = IS_HTTP;
     }
     if (len && host) {
-        LOG(LOG_S, "host: %.*s (%ld)\n",
+        LOG(LOG_S, "host: %.*s (%zd)\n",
             len, host, host - buffer);
     }
     // modify packet
     if (type == IS_HTTP && dp.mod_http) {
-        LOG(LOG_S, "modify HTTP: n=%ld\n", n);
+        LOG(LOG_S, "modify HTTP: n=%zd\n", n);
         if (mod_http(buffer, n, dp.mod_http)) {
             LOG(LOG_E, "mod http error\n");
             return -1;
@@ -421,10 +421,10 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             }
             if (!part_tls(buffer + lp, 
                     bfsize - lp, n - lp, pos - lp)) {
-                LOG(LOG_E, "tlsrec error: pos=%ld, n=%ld\n", pos, n);
+                LOG(LOG_E, "tlsrec error: pos=%ld, n=%zd\n", pos, n);
                 break;
             }
-            LOG(LOG_S, "tlsrec: pos=%ld, n=%ld\n", pos, n);
+            LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, n);
             n += 5;
             lp = pos + 5;
         }
@@ -463,7 +463,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             continue;
         }
         else if (pos <= 0 || pos >= n || pos <= lp) {
-            LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%ld\n", lp, pos, n);
+            LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
         // send part
@@ -495,7 +495,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             default:
                 return -1;
         }
-        LOG(LOG_S, "split: pos=%ld-%ld (%ld), m: %s\n", lp, pos, s, demode_str[part.m]);
+        LOG(LOG_S, "split: pos=%ld-%ld (%zd), m: %s\n", lp, pos, s, demode_str[part.m]);
         
         if (s < 0) {
             if (get_e() == EAGAIN) {
@@ -504,14 +504,14 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         } 
         else if (s != (pos - lp)) {
-            LOG(LOG_E, "%ld != %ld\n", s, pos - lp);
+            LOG(LOG_E, "%zd != %ld\n", s, pos - lp);
             return lp + s;
         }
         lp = pos;
     }
     // send all/rest
     if (lp < n) {
-        LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%ld\n", lp, n);
+        LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%zd\n", lp, n);
         if (send(sfd, buffer + lp, n - lp, 0) < 0) {
             if (get_e() == EAGAIN) {
                 return lp;
