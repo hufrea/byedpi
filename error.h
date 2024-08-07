@@ -1,5 +1,5 @@
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef CIADPI_ERROR_H
+#define CIADPI_ERROR_H
 
 #include <stdio.h>
 #include <errno.h>
