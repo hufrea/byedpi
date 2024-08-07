@@ -1,3 +1,6 @@
+#ifndef MPOOL_H
+#define MPOOL_H
+
 #include <stdbool.h>
 #include <time.h>
 #include "kavl.h"
@@ -24,3 +27,5 @@ struct elem *mem_add(struct mphdr *hdr, char *str, int len);
 void mem_delete(struct mphdr *hdr, char *str, int len);
 
 void mem_destroy(struct mphdr *hdr);
+
+#endif

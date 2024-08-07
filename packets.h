@@ -1,3 +1,6 @@
+#ifndef PACKETS_H
+#define PACKETS_H
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -43,3 +46,6 @@ int part_tls(char *buffer, size_t bsize, ssize_t n, long pos);
 //bool is_dns_req(char *buffer, size_t n);
 
 //bool is_quic_initial(char *buffer, size_t bsize);
+
+
+#endif

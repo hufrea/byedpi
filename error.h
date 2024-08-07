@@ -1,3 +1,6 @@
+#ifndef CIADPI_ERROR_H
+#define CIADPI_ERROR_H
+
 #include <stdio.h>
 #include <errno.h>
 
@@ -18,7 +21,7 @@
 
 #ifdef _WIN32
     #define uniperror(str) \
-        fprintf(stderr, "%s: %d\n", str, GetLastError())
+        fprintf(stderr, "%s: %ld\n", str, GetLastError())
 #else
     #ifdef ANDROID_APP
     #define uniperror(str) \
@@ -72,3 +75,5 @@ static inline const int unie(int e)
         inet_ntop(AF_INET, &dst.in.sin_addr, ADDR_STR, sizeof(ADDR_STR)); \
     else \
         inet_ntop(AF_INET6, &dst.in6.sin6_addr, ADDR_STR, sizeof(ADDR_STR));
+
+#endif
