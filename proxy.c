@@ -58,7 +58,8 @@ void map_fix(struct sockaddr_ina *addr, char f6)
     else if (!ipv6m->o64 && !ipv6m->o16 &&
             ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
-        addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
+        const struct in_addr *sin_addr_ptr = (struct in_addr *) &ipv6m->o32;
+        addr->in.sin_addr = *sin_addr_ptr;
     }
 }
 
