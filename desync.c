@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 
+#include "desync.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -16,7 +18,6 @@
     #include <sys/sendfile.h>
     #include <fcntl.h>
 
-    #include <desync.h>
     
     #ifdef MFD_CLOEXEC
         #include <sys/syscall.h>

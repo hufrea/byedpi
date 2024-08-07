@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 #define EID_STR
 
+#include "proxy.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +10,6 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "proxy.h"
 #include "params.h"
 #include "conev.h"
 #include "extend.h"

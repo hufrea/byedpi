@@ -1,3 +1,6 @@
+#ifndef PROXY_H
+#define PROXY_H
+
 #include <stdint.h>
 
 #ifdef _WIN32
@@ -111,3 +114,5 @@ int listen_socket(struct sockaddr_ina *srv);
 int event_loop(int srvfd);
 
 int run(struct sockaddr_ina *srv);
+
+#endif
