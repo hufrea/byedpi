@@ -11,8 +11,14 @@ set( PROJECT_VENDOR "GitHub" )
 
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>" )
 
-add_compile_options( -O3 -flto -D_XOPEN_SOURCE=500 )
-add_link_options( -s )
+add_compile_options( -D_XOPEN_SOURCE=500 )
+
+# Optimizations
+add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-O3> )
+# Link time optimizations
+add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-flto> )
+# Strip debug symbols
+add_link_options( $<$<NOT:$<CONFIG:Debug>>:-s> )
 
 include_directories( . )
 
