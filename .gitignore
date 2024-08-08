@@ -1,2 +1,4 @@
 .vscode
 ciadpi.exe
+build
+*.user
