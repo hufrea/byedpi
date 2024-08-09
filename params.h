@@ -67,6 +67,7 @@ struct desync_params {
     struct packet fake_data;
     int udp_fake_count;
     int fake_offset;
+    char drop_sack;
     
     int parts_n;
     struct part *parts;

@@ -285,6 +285,10 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     }
     int m = pair->attempt;
     
+    if (post_desync(val->fd, m)) {
+        return -1;
+    }
+    
     if (!pair->cache) {
         return 0;
     }

@@ -106,6 +106,9 @@ const char help_text[] = {
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
+    #ifdef __linux__
+    "    -Y, --drop-sack           Drop packets with SACK extension\n"
+    #endif
 };
 
 
@@ -156,6 +159,7 @@ const struct option options[] = {
     {"delay",         1, 0, 'w'}, //
     {"not-wait-send", 0, 0, 'W'}, //
     #ifdef __linux__
+    {"drop-sack",     0, 0, 'Y'},
     {"protect-path",  1, 0, 'P'}, //
     #endif
     {0}
@@ -800,6 +804,10 @@ int main(int argc, char **argv)
                 params.def_ttl = val;
                 params.custom_ttl = 1;
             }
+            break;
+            
+        case 'Y':
+            dp->drop_sack = 1;
             break;
             
         case 'w': //
