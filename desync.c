@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 
 #include "desync.h"
 
@@ -17,6 +16,8 @@
     #include <sys/mman.h>
     #include <sys/sendfile.h>
     #include <fcntl.h>
+    #include <linux/tcp.h>
+
     #include <sys/syscall.h>
     #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
     #endif

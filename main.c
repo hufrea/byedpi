@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -444,6 +444,11 @@ int main(int argc, char **argv)
     
     while (!invalid && (rez = getopt_long(
              argc, argv, opt, options, 0)) != -1) {
+#else
+    //#warning "Your platform has no long options support"
+    while (!invalid && (rez = getopt(
+             argc, argv, opt)) != -1) {
+#endif
         switch (rez) {
         
         case 'N':
