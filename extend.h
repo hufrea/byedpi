@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 
-#include "mpool.h"
 #include "conev.h"
 #include "proxy.h"
 
