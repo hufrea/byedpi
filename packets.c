@@ -15,6 +15,10 @@
     #include <arpa/inet.h>
 #endif
 
+#ifdef __FreeBSD__
+    #include <strings.h>
+#endif
+
 #define ANTOHS(data, i) \
     (uint16_t)((data[i] << 8) + (uint8_t)data[i + 1])
     
