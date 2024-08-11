@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 #define EID_STR
 
+#include "proxy.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +10,6 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "proxy.h"
 #include "params.h"
 #include "conev.h"
 #include "extend.h"
@@ -57,7 +58,8 @@ void map_fix(struct sockaddr_ina *addr, char f6)
     else if (!ipv6m->o64 && !ipv6m->o16 &&
             ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
-        addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
+        const struct in_addr *sin_addr_ptr = (struct in_addr *) &ipv6m->o32;
+        addr->in.sin_addr = *sin_addr_ptr;
     }
 }
 
@@ -617,7 +619,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
                 }
                 sn = 0;
             }
-            LOG(LOG_S, "send: %ld != %ld (fd: %d)\n", sn, n, pair->fd);
+            LOG(LOG_S, "send: %zd != %zd (fd: %d)\n", sn, n, pair->fd);
             assert(!(val->buff.size || val->buff.offset));
             
             val->buff.size = n - sn;
@@ -738,7 +740,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return 0;
         }
         if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request to small (%ld)\n", n);
+            LOG(LOG_E, "ss: request to small (%zd)\n", n);
             return -1;
         }
         struct s5_req *r = (struct s5_req *)buffer;
@@ -780,7 +782,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         error = connect_hook(pool, val, &dst, EV_CONNECT);
     }
     else {
-        LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
+        LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buffer, n);
         return -1;
     }
     if (error) {

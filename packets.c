@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
-#include <packets.h>
+#include "packets.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>

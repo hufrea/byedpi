@@ -1,4 +1,6 @@
-#pragma once
+#ifndef CONEV_H
+#define CONEV_H
+
 #include <stdint.h>
 
 #ifndef __linux__
@@ -107,3 +109,5 @@ void destroy_pool(struct poolhd *pool);
 struct eval *next_event(struct poolhd *pool, int *offs, int *type);
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type);
+
+#endif

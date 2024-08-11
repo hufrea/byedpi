@@ -1,3 +1,6 @@
+#ifndef PARAMS_H
+#define PARAMS_H
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -108,3 +111,5 @@ extern struct packet oob_data;
 extern struct packet fake_udp;
 
 extern char ip_option[1];
+
+#endif
