@@ -29,6 +29,11 @@
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
     #include <netdb.h>
+
+    #ifdef __linux__
+        // Copied from musl's socket.h to not use _GNU_SOURCE
+        extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
+    #endif
 #endif
 
     
