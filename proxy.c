@@ -515,8 +515,11 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
     
     while (1) {
         socklen_t len = sizeof(client);
+        #ifdef __linux__
+        int c = accept4(val->fd, &client.sa, &len, SOCK_NONBLOCK);
+        #else
         int c = accept(val->fd, &client.sa, &len);
-        
+        #endif
         if (c < 0) {
             if (get_e() == EAGAIN ||
                     get_e() == EINPROGRESS)
@@ -525,6 +528,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             return -1;
         }
         LOG(LOG_S, "accept: fd=%d\n", c);
+        #ifndef __linux__
         #ifdef _WIN32
         unsigned long mode = 1;
         if (ioctlsocket(c, FIONBIO, &mode) < 0) {
@@ -536,6 +540,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             close(c);
             continue;
         }
+        #endif
         int one = 1;
         if (setsockopt(c, IPPROTO_TCP, TCP_NODELAY,
                 (char *)&one, sizeof(one))) {
