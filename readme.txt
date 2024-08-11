@@ -245,6 +245,12 @@ Linux: make
 Windows: make windows CC=x86_64-w64-mingw32-gcc
 
 ------
+### Docker
+
+docker build ./ -t byedpi:latest
+docker run -p 1080:1080 -ti byedpi:latest ciadpi --disorder 1 --split 1 
+
+------
 ### Дополнительная информация о DPI, источники идей  
 https://github.com/bol-van/zapret/blob/master/docs/readme.txt  
 https://geneva.cs.umd.edu/papers/geneva_ccs19.pdf  
