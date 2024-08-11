@@ -1,4 +1,5 @@
 
+
 #include "desync.h"
 
 #include <stdio.h>
@@ -9,13 +10,13 @@
     #include <time.h>
     #include <sys/time.h>
     #include <sys/socket.h>
+    #include <sys/mman.h>
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
-    
-    #ifdef __linux__
-    #include <sys/mman.h>
-    #include <sys/sendfile.h>
     #include <fcntl.h>
+
+    #ifdef __linux__
+    #include <sys/sendfile.h>
     #include <linux/tcp.h>
 
     #include <sys/syscall.h>
@@ -23,7 +24,6 @@
     #endif
 #else
     #include <winsock2.h>
-    #include <windows.h>
     #include <ws2tcpip.h>
     #include <mswsock.h>
 #endif
@@ -114,12 +114,13 @@ void wait_send(int sfd)
 #define wait_send_if_support(sfd) // :(
 #endif
 
-#ifdef __linux__
+#ifndef _WIN32
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
+#ifdef __linux__
     if (opt->md5sig) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
@@ -127,6 +128,7 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
+#endif
     struct packet pkt;
     if (opt->fake_data.data) {
         pkt = opt->fake_data;
@@ -135,12 +137,19 @@ ssize_t send_fake(int sfd, char *buffer,
         pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     }
     size_t psz = pkt.size;
-    
+#ifdef __linux__
     int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
     }
+#else
+    int ffd = shm_open("name", O_RDWR | O_CREAT, 0);
+    if (ffd < 0) {
+        uniperror("shm_open");
+        return -1;
+    }
+#endif
     char *p = 0;
     ssize_t len = -1;
     
@@ -160,6 +169,8 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
+
+#ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
@@ -172,19 +183,37 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
+#endif
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-        
+#ifdef __linux__
         len = sendfile(sfd, ffd, 0, pos);
         if (len < 0) {
             uniperror("sendfile");
             break;
         }
         wait_send(sfd);
+#else
+        // Emulate sendfile with reading ffd to buffer on other unix systems
+        char* buffer2 = calloc(sizeof(char), pos+1);
+        int n = read(ffd, buffer2, pos);
+        if (n < 0) {
+            uniperror("read");
+            break;
+        }
+        len = send(sfd, buffer2, pos, 0);
+        if (len < 0) {
+            uniperror("send");
+            break;
+        }
+        wait_send(sfd);
+        // should be already copied to socket so safe to free
+        free(buffer2);
+#endif
         memcpy(p, buffer, pos);
         
         if (setttl(sfd, params.def_ttl, fa) < 0) {
@@ -196,6 +225,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
+#ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
@@ -208,15 +238,14 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
+#endif
         break;
     }
     if (p) munmap(p, pos);
     close(ffd);
     return len;
 }
-#endif
-
-#ifdef _WIN32
+#else
 OVERLAPPED ov = {};
 
 ssize_t send_fake(int sfd, char *buffer,
