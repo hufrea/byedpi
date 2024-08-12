@@ -12,13 +12,14 @@
     #include <sys/socket.h>
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
-    
-    #ifdef __linux__
+
     #include <sys/mman.h>
-    #include <sys/sendfile.h>
+    #ifdef __linux__
+        #include <sys/sendfile.h>
+    #endif
     #include <fcntl.h>
 
-    
+    #ifdef __linux__
     #ifdef MFD_CLOEXEC
         #include <sys/syscall.h>
         #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
@@ -83,7 +84,7 @@ static inline void delay(long ms)
 #define delay(ms) Sleep(ms)
 #endif
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 void wait_send(int sfd)
 {
     for (int i = 0; params.wait_send && i < 500; i++) {
@@ -119,7 +120,7 @@ void wait_send(int sfd)
 #define wait_send_if_support(sfd) // :(
 #endif
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__FreeBSD__)
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
@@ -166,11 +167,18 @@ ssize_t send_fake(int sfd, char *buffer,
             break;
         }
         if (opt->md5sig) {
+#ifdef __linux__
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
             };
             memcpy(&md5.tcpm_addr, &addr, addr_size);
-            
+#elif defined(__FreeBSD__)
+            // FIXME: Should be struct tcpmd5_support
+            // but netipsec/ipsec_support.h hides this under ifdef KERNEL
+            int md5 = 1;
+#else
+#error
+#endif
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
                 uniperror("setsockopt TCP_MD5SIG");
@@ -184,7 +192,15 @@ ssize_t send_fake(int sfd, char *buffer,
             break;
         }
         
+#ifdef __linux__
         len = sendfile(sfd, ffd, 0, pos);
+#else
+        int ret = sendfile(ffd, sfd, 0, pos, NULL, &len, 0);
+        if (ret < 0) {
+            uniperror("sendfile");
+            break;
+        }
+#endif
         if (len < 0) {
             uniperror("sendfile");
             break;
@@ -202,10 +218,16 @@ ssize_t send_fake(int sfd, char *buffer,
             break;
         }
         if (opt->md5sig) {
+#ifdef __linux__
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
             };
             memcpy(&md5.tcpm_addr, &addr, addr_size);
+#elif defined(__FreeBSD__)
+            int md5 = 0;
+#else
+#error
+#endif
             
             if (setsockopt(sfd, IPPROTO_TCP,
                     TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {

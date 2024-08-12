@@ -9,12 +9,20 @@
 #ifdef _WIN32
     #include <ws2tcpip.h>
 #else
+    #include <unistd.h>
     #include <arpa/inet.h>
+#endif
+
+#ifdef __FreeBSD__
+    #include <netinet/in.h>
 #endif
 
 #if defined(__linux__) || defined(_WIN32)
 #define FAKE_SUPPORT 1
 #define TIMEOUT_SUPPORT 1
+#elif defined(__FreeBSD__)
+#define FAKE_SUPPORT 1
+// TIMEOUT_SUPPORT can't be used
 #endif
     
 #define OFFSET_SNI 1

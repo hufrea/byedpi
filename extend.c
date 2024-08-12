@@ -33,14 +33,15 @@ int set_timeout(int fd, unsigned int s)
         uniperror("setsockopt TCP_USER_TIMEOUT");
         return -1;
     }
-    #else
-    #ifdef _WIN32
+    #elif defined(__FreeBSD__)
+    // https://wiki.freebsd.org/CatalinNicutar/TCPUTO
+    // sadly not yet available
+    #elif defined(_WIN32)
     if (setsockopt(fd, IPPROTO_TCP,
             TCP_MAXRT, (char *)&s, sizeof(s))) {
         uniperror("setsockopt TCP_MAXRT");
         return -1;
     }
-    #endif
     #endif
     return 0;
 }

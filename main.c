@@ -24,6 +24,10 @@
     #define close(fd) closesocket(fd)
 #endif
 
+#ifdef __FreeBSD__
+    #include <netinet/in.h>
+#endif
+
 #define VERSION "12"
 
 char oob_char[1] = "a";
@@ -94,7 +98,7 @@ const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-    #ifdef __linux__
+    #if defined(__linux__) || defined(__FreeBSD__)
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
@@ -138,7 +142,7 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
-    #ifdef __linux__
+    #if defined(__linux__) || defined(__FreeBSD__)
     {"ip-opt",        2, 0, 'k'},
     {"md5sig",        0, 0, 'S'},
     #endif

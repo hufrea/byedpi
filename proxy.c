@@ -82,7 +82,7 @@ static inline char addr_equ(
 
 static inline int nb_socket(int domain, int type)
 {
-    #ifdef __linux__
+    #if defined(__linux__) || defined(__FreeBSD__)
     int fd = socket(domain, type | SOCK_NONBLOCK, 0);
     #else
     int fd = socket(domain, type, 0);
@@ -98,14 +98,12 @@ static inline int nb_socket(int domain, int type)
         close(fd);
         return -1;
     }
-    #else
-    #ifndef __linux__
+    #elif !defined(__linux__)
     if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0) {
         uniperror("fcntl");
         close(fd);
         return -1;
     }
-    #endif
     #endif
     return fd;
 }
@@ -517,7 +515,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
     
     while (1) {
         socklen_t len = sizeof(client);
-        #ifdef __linux__
+        #if defined(__linux__) || defined(__FreeBSD__)
         int c = accept4(val->fd, &client.sa, &len, SOCK_NONBLOCK);
         #else
         int c = accept(val->fd, &client.sa, &len);
@@ -940,7 +938,8 @@ int listen_socket(struct sockaddr_ina *srv)
         close(srvfd);
         return -1;
     }
-    if (bind(srvfd, &srv->sa, sizeof(*srv)) < 0) {
+    size_t size = srv->sa.sa_family == AF_INET6 ? sizeof(srv->in6) : sizeof(srv->in);
+    if (bind(srvfd, &srv->sa, size) < 0) {
         uniperror("bind");  
         close(srvfd);
         return -1;
