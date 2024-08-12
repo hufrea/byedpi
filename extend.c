@@ -1,4 +1,3 @@
-
 #include "extend.h"
 
 #ifdef _WIN32

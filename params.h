@@ -10,6 +10,9 @@
     #include <ws2tcpip.h>
 #else
     #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <unistd.h>
+    #include <sys/socket.h>
 #endif
 
 #if defined(__linux__) || defined(_WIN32)

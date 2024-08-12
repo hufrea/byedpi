@@ -346,7 +346,7 @@ int create_conn(struct poolhd *pool,
         }
     }
     if (bind(sfd, (struct sockaddr *)&params.baddr, 
-            sizeof(params.baddr)) < 0) {
+            SA_SIZE(&params.baddr)) < 0) {
         uniperror("bind");  
         close(sfd);
         return -1;
@@ -376,7 +376,7 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
-    int status = connect(sfd, &addr.sa, sizeof(addr));
+    int status = connect(sfd, &addr.sa, SA_SIZE(&addr));
     if (status == 0 && params.tfo) {
         LOG(LOG_S, "TFO supported!\n");
     }
@@ -432,7 +432,7 @@ int udp_associate(struct poolhd *pool,
         map_fix(&addr, 6);
     }
     if (bind(ufd, (struct sockaddr *)&params.baddr, 
-            sizeof(params.baddr)) < 0) {
+            SA_SIZE(&params.baddr)) < 0) {
         uniperror("bind");  
         close(ufd);
         return -1;
@@ -443,7 +443,7 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     if (dst->in6.sin6_port != 0) {
-        if (connect(ufd, &addr.sa, sizeof(addr)) < 0) {
+        if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
             uniperror("connect");
             del_event(pool, pair);
             return -1;
@@ -465,7 +465,7 @@ int udp_associate(struct poolhd *pool,
         del_event(pool, pair);
         return -1;
     }
-    if (bind(cfd, &addr.sa, sizeof(addr)) < 0) {
+    if (bind(cfd, &addr.sa, SA_SIZE(&addr)) < 0) {
         uniperror("bind");
         del_event(pool, pair);
         close(cfd);
@@ -670,7 +670,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 if (!addr_equ(&addr, (struct sockaddr_ina *)&val->in6)) {
                     return 0;
                 }
-                if (connect(val->fd, &addr.sa, sizeof(addr)) < 0) {
+                if (connect(val->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
                 }
@@ -691,7 +691,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 if (params.baddr.sin6_family != addr.sa.sa_family) {
                     return -1;
                 }
-                if (connect(val->pair->fd, &addr.sa, sizeof(addr)) < 0) {
+                if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
                 }
@@ -940,7 +940,7 @@ int listen_socket(struct sockaddr_ina *srv)
         close(srvfd);
         return -1;
     }
-    if (bind(srvfd, &srv->sa, sizeof(*srv)) < 0) {
+    if (bind(srvfd, &srv->sa, SA_SIZE(srv)) < 0) {
         uniperror("bind");  
         close(srvfd);
         return -1;
