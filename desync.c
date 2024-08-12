@@ -196,24 +196,29 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("sendfile");
             break;
         }
-        wait_send(sfd);
 #else
-        // Emulate sendfile with reading ffd to buffer on other unix systems
-        char* buffer2 = calloc(sizeof(char), pos+1);
-        int n = read(ffd, buffer2, pos);
-        if (n < 0) {
-            uniperror("read");
+        // Emulate sendfile on other unix systems
+        // https://mail-index.netbsd.org/tech-kern/2008/11/25/msg003672.html
+        #ifdef __linux__
+            #define MAP_FILE 0
+        #endif
+        void *addr = mmap(NULL, pos, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, ffd, 0);
+        if (addr == MAP_FAILED) {
+            uniperror("mmap ffd");
             break;
         }
-        len = send(sfd, buffer2, pos, 0);
+        len = send(sfd, addr, pos, 0);
         if (len < 0) {
-            uniperror("send");
+            uniperror("send sfd");
             break;
         }
-        wait_send(sfd);
-        // should be already copied to socket so safe to free
-        free(buffer2);
+        if (munmap(addr, pos) == -1) {
+            uniperror("munmap");
+            break;
+        }
+
 #endif
+        wait_send(sfd);
         memcpy(p, buffer, pos);
         
         if (setttl(sfd, params.def_ttl, fa) < 0) {
