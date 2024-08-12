@@ -144,7 +144,7 @@ ssize_t send_fake(int sfd, char *buffer,
         return -1;
     }
 #else
-    int ffd = shm_open("name", O_RDWR | O_CREAT, 0);
+    int ffd = shm_open("/name", O_RDWR | O_CREAT, 0);
     if (ffd < 0) {
         uniperror("shm_open");
         return -1;
