@@ -1,4 +1,3 @@
-
 #include "win_service.h"
 
 #include <windows.h>

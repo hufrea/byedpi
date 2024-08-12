@@ -7,9 +7,14 @@
     #include <ws2tcpip.h>
 #else
     #include <arpa/inet.h>
+    #include <sys/socket.h>
 #endif
 
 #include "conev.h"
+
+#define SA_SIZE(s) \
+    (((struct sockaddr *)s)->sa_family == AF_INET6) ? \
+        sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in)
 
 struct sockaddr_ina {
     union {

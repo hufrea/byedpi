@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 
-#include "conev.h"
 #include "proxy.h"
 
 int connect_hook(struct poolhd *pool, struct eval *val, 

@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include "packets.h"
 
 #include <ctype.h>
@@ -8,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <strings.h>
 
 #ifdef _WIN32
     #include <winsock2.h>
