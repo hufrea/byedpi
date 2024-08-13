@@ -1,5 +1,4 @@
 
-
 #include "desync.h"
 
 #include <stdio.h>
@@ -12,10 +11,11 @@
     #include <sys/socket.h>
     #include <sys/mman.h>
     #include <arpa/inet.h>
-    #include <netinet/tcp.h>
     #include <fcntl.h>
 
-    #ifdef __linux__
+    #ifndef __linux__
+    #include <netinet/tcp.h>
+    #else    
     #include <sys/sendfile.h>
     #include <linux/tcp.h>
 
