@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 #define EID_STR
 
+#include "proxy.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +10,6 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "proxy.h"
 #include "params.h"
 #include "conev.h"
 #include "extend.h"
@@ -57,7 +58,8 @@ void map_fix(struct sockaddr_ina *addr, char f6)
     else if (!ipv6m->o64 && !ipv6m->o16 &&
             ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
-        addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
+        const struct in_addr *sin_addr_ptr = (struct in_addr *) &ipv6m->o32;
+        addr->in.sin_addr = *sin_addr_ptr;
     }
 }
 
@@ -344,7 +346,7 @@ int create_conn(struct poolhd *pool,
         }
     }
     if (bind(sfd, (struct sockaddr *)&params.baddr, 
-            sizeof(params.baddr)) < 0) {
+            SA_SIZE(&params.baddr)) < 0) {
         uniperror("bind");  
         close(sfd);
         return -1;
@@ -374,7 +376,7 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
-    int status = connect(sfd, &addr.sa, sizeof(addr));
+    int status = connect(sfd, &addr.sa, SA_SIZE(&addr));
     if (status == 0 && params.tfo) {
         LOG(LOG_S, "TFO supported!\n");
     }
@@ -430,7 +432,7 @@ int udp_associate(struct poolhd *pool,
         map_fix(&addr, 6);
     }
     if (bind(ufd, (struct sockaddr *)&params.baddr, 
-            sizeof(params.baddr)) < 0) {
+            SA_SIZE(&params.baddr)) < 0) {
         uniperror("bind");  
         close(ufd);
         return -1;
@@ -441,7 +443,7 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     if (dst->in6.sin6_port != 0) {
-        if (connect(ufd, &addr.sa, sizeof(addr)) < 0) {
+        if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
             uniperror("connect");
             del_event(pool, pair);
             return -1;
@@ -463,7 +465,7 @@ int udp_associate(struct poolhd *pool,
         del_event(pool, pair);
         return -1;
     }
-    if (bind(cfd, &addr.sa, sizeof(addr)) < 0) {
+    if (bind(cfd, &addr.sa, SA_SIZE(&addr)) < 0) {
         uniperror("bind");
         del_event(pool, pair);
         close(cfd);
@@ -617,7 +619,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
                 }
                 sn = 0;
             }
-            LOG(LOG_S, "send: %ld != %ld (fd: %d)\n", sn, n, pair->fd);
+            LOG(LOG_S, "send: %zd != %zd (fd: %d)\n", sn, n, pair->fd);
             assert(!(val->buff.size || val->buff.offset));
             
             val->buff.size = n - sn;
@@ -668,7 +670,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 if (!addr_equ(&addr, (struct sockaddr_ina *)&val->in6)) {
                     return 0;
                 }
-                if (connect(val->fd, &addr.sa, sizeof(addr)) < 0) {
+                if (connect(val->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
                 }
@@ -689,7 +691,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 if (params.baddr.sin6_family != addr.sa.sa_family) {
                     return -1;
                 }
-                if (connect(val->pair->fd, &addr.sa, sizeof(addr)) < 0) {
+                if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
                 }
@@ -738,7 +740,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return 0;
         }
         if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request to small (%ld)\n", n);
+            LOG(LOG_E, "ss: request to small (%zd)\n", n);
             return -1;
         }
         struct s5_req *r = (struct s5_req *)buffer;
@@ -780,7 +782,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         error = connect_hook(pool, val, &dst, EV_CONNECT);
     }
     else {
-        LOG(LOG_E, "ss: invalid version: 0x%x (%lu)\n", *buffer, n);
+        LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buffer, n);
         return -1;
     }
     if (error) {
@@ -938,7 +940,7 @@ int listen_socket(struct sockaddr_ina *srv)
         close(srvfd);
         return -1;
     }
-    if (bind(srvfd, &srv->sa, sizeof(*srv)) < 0) {
+    if (bind(srvfd, &srv->sa, SA_SIZE(srv)) < 0) {
         uniperror("bind");  
         close(srvfd);
         return -1;

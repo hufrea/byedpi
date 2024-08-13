@@ -1,7 +1,7 @@
+#include "mpool.h"
+
 #include <stdlib.h>
 #include <string.h>
-
-#include "mpool.h"
 
 
 static inline int scmp(const struct elem *p, const struct elem *q)

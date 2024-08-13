@@ -1,4 +1,5 @@
 #include "win_service.h"
+
 #include <windows.h>
 
 #define SERVICE_NAME "ByeDPI"

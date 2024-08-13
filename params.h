@@ -1,3 +1,6 @@
+#ifndef PARAMS_H
+#define PARAMS_H
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -7,6 +10,9 @@
     #include <ws2tcpip.h>
 #else
     #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <unistd.h>
+    #include <sys/socket.h>
 #endif
 
 #if defined(__linux__) || defined(_WIN32)
@@ -108,3 +114,5 @@ extern struct packet oob_data;
 extern struct packet fake_udp;
 
 extern char ip_option[1];
+
+#endif

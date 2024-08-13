@@ -16,8 +16,9 @@
     #include <unistd.h>
     #include <netdb.h>
     #include <fcntl.h>
+    #include <netinet/in.h>
     #include <netinet/tcp.h>
-    #include <sys/mman.h>
+    #include <sys/socket.h>
 #else
     #include <ws2tcpip.h>
     #include "win_service.h"
@@ -441,7 +442,7 @@ int main(int argc, char **argv)
         return -1;
     }
     
-    while (!invalid && (rez = getopt_long_only(
+    while (!invalid && (rez = getopt_long(
              argc, argv, opt, options, 0)) != -1) {
         switch (rez) {
         
