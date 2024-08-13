@@ -223,19 +223,10 @@ int on_response(struct poolhd *pool, struct eval *val,
                 && is_http_redirect(req, qn, resp, sn)) {
             break;
         }
-        else if ((dp->detect & DETECT_TLS_INVSID)
-                && neq_tls_sid(req, qn, resp, sn)) {
+        else if ((dp->detect & DETECT_TLS_ERR)
+                && ((is_tls_chello(req, qn) && !is_tls_shello(resp, sn))
+                    || neq_tls_sid(req, qn, resp, sn))) {
             break;
-        }
-        else if ((dp->detect & DETECT_TLS_ALERT)
-                && is_tls_alert(resp, sn)) {
-            break;
-        }
-        else if (dp->detect & DETECT_HTTP_CLERR) {
-            int code = get_http_code(resp, sn);
-            if (code > 400 && code < 451 && code != 429) {
-                break;
-            }
         }
     }
     if (m < params.dp_count) {

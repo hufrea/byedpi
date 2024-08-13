@@ -76,8 +76,8 @@ const char help_text[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
-    "    -A, --auto[=t,r,c,s,a,n]  Try desync params after this option\n"
-    "                              Detect: torst,redirect,cl_err,sid_inv,alert,none\n"
+    "    -A, --auto <t,r,s,n>      Try desync params after this option\n"
+    "                              Detect: torst,redirect,ssl_err,none\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
@@ -123,7 +123,7 @@ const struct option options[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo ",          0, 0, 'F'},
     #endif
-    {"auto",          2, 0, 'A'},
+    {"auto",          1, 0, 'A'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
@@ -542,10 +542,6 @@ int main(int argc, char **argv)
                 clear_params();
                 return -1;
             }
-            if (!optarg) {
-                dp->detect |= DETECT_TORST;
-                break;
-            }
             end = optarg;
             while (end && !invalid) {
                 switch (*end) {
@@ -555,14 +551,9 @@ int main(int argc, char **argv)
                     case 'r': 
                         dp->detect |= DETECT_HTTP_LOCAT;
                         break;
-                    case 'c': 
-                        dp->detect |= DETECT_HTTP_CLERR;
-                        break;
+                    case 'a':
                     case 's': 
-                        dp->detect |= DETECT_TLS_INVSID;
-                        break;
-                    case 'a': 
-                        dp->detect |= DETECT_TLS_ALERT;
+                        dp->detect |= DETECT_TLS_ERR;
                         break;
                     case 'n': 
                         break;
