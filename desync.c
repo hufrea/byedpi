@@ -20,7 +20,12 @@
     #include <linux/tcp.h>
 
     #include <sys/syscall.h>
-    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
+    
+    #ifdef __GLIBC__
+    extern long syscall();
+    #endif
+
+    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
     #endif
 #else
     #include <winsock2.h>

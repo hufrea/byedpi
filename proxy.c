@@ -32,7 +32,9 @@
 
     #ifdef __linux__
         // Copied from musl's socket.h to not use _GNU_SOURCE
+        #ifdef __GLIBC__
         extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
+        #endif
     #endif
 #endif
 
