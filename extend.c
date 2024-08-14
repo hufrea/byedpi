@@ -110,6 +110,20 @@ int connect_hook(struct poolhd *pool, struct eval *val,
 }
 
 
+int socket_mod(int fd, struct sockaddr *dst)
+{
+    if (params.custom_ttl) {
+        if (setttl(fd, params.def_ttl, get_family(dst)) < 0) {
+            return -1;
+        }
+    }
+    if (params.protect_path) {
+        return protect(fd, params.protect_path);
+    }
+    return 0;
+}
+
+
 int reconnect(struct poolhd *pool, struct eval *val, int m)
 {
     struct eval *client = val->pair;

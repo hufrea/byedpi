@@ -39,7 +39,7 @@
 #include "error.h"
 
 
-static inline int get_family(struct sockaddr *dst)
+int get_family(struct sockaddr *dst)
 {
     if (dst->sa_family == AF_INET6) {
         struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)dst;
@@ -427,12 +427,6 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, n);
             n += 5;
             lp = pos + 5;
-        }
-    }
-    // set custom TTL
-    if (params.custom_ttl) {
-        if (setttl(sfd, params.def_ttl, fa) < 0) {
-            return -1;
         }
     }
     // desync

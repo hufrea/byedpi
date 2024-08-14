@@ -5,6 +5,8 @@
 
 #include "proxy.h"
 
+int socket_mod(int fd, struct sockaddr *dst);
+
 int connect_hook(struct poolhd *pool, struct eval *val, 
         struct sockaddr_ina *dst, int next);
         
