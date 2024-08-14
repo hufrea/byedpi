@@ -36,9 +36,12 @@ project( ByeDPI
 
 set( PROJECT_VENDOR "hufrea" )
 
-add_compile_definitions( _XOPEN_SOURCE=500 )
+set( CMAKE_C_STANDARD 99 )
+
+#add_compile_definitions( _XOPEN_SOURCE=500 )
+add_compile_options( -Wall -Wno-unused )
 # Optimizations
-add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-O3> )
+add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-O2> )
 # Link time optimizations
 add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-flto> )
 # Strip debug symbols
@@ -85,7 +88,7 @@ if( WIN32 )
     # NSIS package - https://sourceforge.net/projects/nsis/
     list( APPEND CPACK_GENERATOR NSIS )
     set( CPACK_NSIS_MENU_LINKS
-        "readme.txt"          "Read Me"
+        "README.md"           "Read Me"
         "byedpi.bat"          "Run standalone"
         "proxy_reset.bat"     "Proxy reset"
         "proxy_set.bat"       "Proxy setup"
@@ -123,7 +126,7 @@ install( TARGETS ciadpi
 )
 
 install( FILES
-    readme.txt
+    README.md
     TYPE DOC
 )
 
