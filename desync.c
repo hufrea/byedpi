@@ -17,14 +17,8 @@
     #include <sys/mman.h>
     #include <sys/sendfile.h>
     #include <fcntl.h>
-
-    
-    #ifdef MFD_CLOEXEC
-        #include <sys/syscall.h>
-        #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
-    #else
-        #define memfd_create(name, flags) fileno(tmpfile())
-    #endif
+    #include <sys/syscall.h>
+    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
     #endif
 #else
     #include <winsock2.h>
@@ -141,7 +135,7 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     size_t psz = pkt.size;
     
-    int ffd = memfd_create("name", O_RDWR);
+    int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
