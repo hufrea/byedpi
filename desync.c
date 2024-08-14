@@ -17,14 +17,8 @@
     #include <sys/mman.h>
     #include <sys/sendfile.h>
     #include <fcntl.h>
-
-    
-    #ifdef MFD_CLOEXEC
-        #include <sys/syscall.h>
-        #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
-    #else
-        #define memfd_create(name, flags) fileno(tmpfile())
-    #endif
+    #include <sys/syscall.h>
+    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
     #endif
 #else
     #include <winsock2.h>
@@ -39,7 +33,7 @@
 #include "error.h"
 
 
-static inline int get_family(struct sockaddr *dst)
+int get_family(struct sockaddr *dst)
 {
     if (dst->sa_family == AF_INET6) {
         struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)dst;
@@ -141,7 +135,7 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     size_t psz = pkt.size;
     
-    int ffd = memfd_create("name", O_RDWR);
+    int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
@@ -427,12 +421,6 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, n);
             n += 5;
             lp = pos + 5;
-        }
-    }
-    // set custom TTL
-    if (params.custom_ttl) {
-        if (setttl(sfd, params.def_ttl, fa) < 0) {
-            return -1;
         }
     }
     // desync

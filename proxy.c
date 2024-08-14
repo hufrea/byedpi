@@ -331,8 +331,7 @@ int create_conn(struct poolhd *pool,
         uniperror("socket");  
         return -1;
     }
-    if (params.protect_path 
-            && protect(sfd, params.protect_path) < 0) {
+    if (socket_mod(sfd, &addr.sa) < 0) {
         close(sfd);
         return -1;
     }
@@ -416,11 +415,6 @@ int udp_associate(struct poolhd *pool,
         uniperror("socket");  
         return -1;
     }
-    if (params.protect_path 
-            && protect(ufd, params.protect_path) < 0) {
-        close(ufd);
-        return -1;
-    }
     if (params.baddr.sin6_family == AF_INET6) {
         int no = 0;
         if (setsockopt(ufd, IPPROTO_IPV6,
@@ -445,6 +439,10 @@ int udp_associate(struct poolhd *pool,
     if (dst->in6.sin6_port != 0) {
         if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
             uniperror("connect");
+            del_event(pool, pair);
+            return -1;
+        }
+        if (socket_mod(ufd, &addr.sa) < 0) {
             del_event(pool, pair);
             return -1;
         }
@@ -693,6 +691,9 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 }
                 if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
+                    return -1;
+                }
+                if (socket_mod(val->pair->fd, &addr.sa) < 0) {
                     return -1;
                 }
                 val->pair->in6 = addr.in6;
