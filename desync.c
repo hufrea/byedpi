@@ -41,6 +41,7 @@
 
 int get_family(struct sockaddr *dst)
 {
+#ifndef __NetBSD__
     if (dst->sa_family == AF_INET6) {
         struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)dst;
         static char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
@@ -49,6 +50,7 @@ int get_family(struct sockaddr *dst)
             return AF_INET;
         }
     }
+#endif
     return dst->sa_family;
 }
 

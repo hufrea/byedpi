@@ -399,7 +399,11 @@ int create_conn(struct poolhd *pool,
     }
     val->pair = pair;
     pair->pair = val;
+#ifdef __NetBSD__
+    pair->in6 = addr.in6;
+#else
     pair->in6 = dst->in6;
+#endif
     pair->flag = FLAG_CONN;
     val->type = EV_IGNORE;
     
