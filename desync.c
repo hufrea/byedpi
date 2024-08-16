@@ -365,13 +365,10 @@ ssize_t send_fake(int sfd, char *buffer,
 #endif
 
 ssize_t send_oob(int sfd, char *buffer,
-        ssize_t n, long pos)
+        ssize_t n, long pos, char *c)
 {
-    ssize_t size = oob_data.size - 1;
-    char *data = oob_data.data + 1;
-    
     char rchar = buffer[pos];
-    buffer[pos] = oob_data.data[0];
+    buffer[pos] = c[1] ? c[0] : 'a';
     
     ssize_t len = send(sfd, buffer, pos + 1, MSG_OOB);
     buffer[pos] = rchar;
@@ -380,23 +377,11 @@ ssize_t send_oob(int sfd, char *buffer,
         uniperror("send");
         return -1;
     }
+    wait_send_if_support(sfd);
+    
     len--;
     if (len != pos) {
         return len;
-    }
-    if (size) {
-        wait_send(sfd);
-    }
-    for (long i = 0; i < size; i++) {
-        if (send(sfd, data + i, 1, MSG_OOB) < 0) {
-            uniperror("send");
-            if (get_e() == EAGAIN) {
-                return len;
-            }
-        }
-        if (size != 1) {
-            wait_send(sfd);
-        }
     }
     return len;
 }
@@ -414,7 +399,7 @@ ssize_t send_disorder(int sfd,
     if (len < 0) {
         uniperror("send");
     }
-    wait_send_if_support(sfd);
+    else wait_send_if_support(sfd);
     
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
@@ -424,19 +409,17 @@ ssize_t send_disorder(int sfd,
 
 
 ssize_t send_late_oob(int sfd, char *buffer,
-        ssize_t n, long pos, int fa)
+        ssize_t n, long pos, int fa, char *c)
 {
     int bttl = 1;
     
     if (setttl(sfd, bttl, fa) < 0) {
         return -1;
     }
-    ssize_t len = send_oob(sfd, buffer, n, pos);
+    ssize_t len = send_oob(sfd, buffer, n, pos, c);
     if (len < 0) {
         uniperror("send");
     }
-    wait_send_if_support(sfd);
-    
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
@@ -529,7 +512,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         if (offset && pos <= offset) {
             continue;
         }
-        else if (pos <= 0 || pos >= n || pos <= lp) {
+        else if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
@@ -538,7 +521,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         switch (part.m) {
             #ifdef FAKE_SUPPORT
             case DESYNC_FAKE:
-                s = send_fake(sfd, 
+                if (pos != lp) s = send_fake(sfd, 
                     buffer + lp, type, pos - lp, fa, &dp);
                 break;
             #endif
@@ -549,14 +532,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             
             case DESYNC_OOB:
                 s = send_oob(sfd, 
-                    buffer + lp, n - lp, pos - lp);
-                wait_send_if_support(sfd);
+                    buffer + lp, n - lp, pos - lp, dp.oob_char);
                 break;
                 
-            case DESYNC_OOB2:
+            case DESYNC_DISOOB:
                 s = send_late_oob(sfd, 
-                    buffer + lp, n - lp, pos - lp, fa);
-                //wait_send_if_support(sfd);
+                    buffer + lp, n - lp, pos - lp, fa, dp.oob_char);
                 break;
                 
             case DESYNC_SPLIT:
@@ -628,7 +609,13 @@ ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
         else {
             pkt = fake_udp;
         }
-
+        if (dp->fake_offset) {
+            if (pkt.size > dp->fake_offset) { 
+                pkt.size -= dp->fake_offset;
+                pkt.data += dp->fake_offset;
+            }
+            else pkt.size = 0;
+        }
         int bttl = dp->ttl ? dp->ttl : 8;
         if (setttl(sfd, bttl, fa) < 0) {
             return -1;

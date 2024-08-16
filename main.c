@@ -25,7 +25,6 @@
 
 #define VERSION "12"
 
-char oob_char[1] = "a";
 char ip_option[1] = "\0";
 
 struct packet fake_tls = { 
@@ -33,9 +32,6 @@ struct packet fake_tls = {
 },
 fake_http = { 
     sizeof(http_data), http_data
-},
-oob_data = { 
-    sizeof(oob_char), oob_char
 },
 fake_udp = { 
     sizeof(udp_data), udp_data
@@ -90,7 +86,7 @@ const char help_text[] = {
     "                              +h - add HTTP Host offset\n"
     "    -d, --disorder <n[+s]>    Split and send reverse order\n"
     "    -o, --oob <n[+s]>         Split and send as OOB data\n"
-    "    -O, --oob2 <n[+s]>        Insert OOB data\n"
+    "    -q, --disoob <n[+s]>      Split and send reverse order as OOB data\n"
     #ifdef FAKE_SUPPORT
     "    -f, --fake <n[+s]>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
@@ -98,11 +94,11 @@ const char help_text[] = {
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
-    "    -R, --fake-offset <n>     Fake data start offset\n"
+    "    -O, --fake-offset <n>     Fake data start offset\n"
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
-    "    -e, --oob-data <f|:str>   Set custom OOB data, filename or :string\n"
+    "    -e, --oob-data <str>      Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
@@ -139,7 +135,7 @@ const struct option options[] = {
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
-    {"oob2",          1, 0, 'O'},
+    {"disoob",        1, 0, 'q'},
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     {"ttl",           1, 0, 't'},
@@ -149,7 +145,7 @@ const struct option options[] = {
     #endif
     {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
-    {"fake-offset",   1, 0, 'R'},
+    {"fake-offset",   1, 0, 'O'},
     #endif
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
@@ -166,28 +162,24 @@ const struct option options[] = {
 };
     
 
-char *parse_cform(const char *str, ssize_t *size)
+size_t parse_cform(char *buffer, size_t blen, 
+        const char *str, size_t slen)
 {
-    ssize_t len = strlen(str);
-    char *d = malloc(len);
-    if (!d) {
-        return 0;
-    }
     static char esca[] = {
         'r','\r','n','\n','t','\t','\\','\\',
         'f','\f','b','\b','v','\v','a','\a', 0
     };
     ssize_t i = 0, p = 0;
-    for (; p < len; ++p && ++i) {
+    for (; p < slen && i < blen; ++p && ++i) {
         if (str[p] != '\\') {
-            d[i] = str[p];
+            buffer[i] = str[p];
             continue;
         }
         p++;
         char *e = esca;
         for (; *e; e += 2) {
             if (*e == str[p]) {
-                d[i] = *(e + 1);
+                buffer[i] = *(e + 1);
                 break;
             }
         }
@@ -195,14 +187,30 @@ char *parse_cform(const char *str, ssize_t *size)
             continue;
         }
         int n = 0;
-        if (sscanf(&str[p], "x%2hhx%n", &d[i], &n) == 1
-              || sscanf(&str[p], "%3hho%n", &d[i], &n) == 1) {
+        if (sscanf(&str[p], "x%2hhx%n", &buffer[i], &n) == 1
+              || sscanf(&str[p], "%3hho%n", &buffer[i], &n) == 1) {
             p += (n - 1);
             continue;
         }
         i--; p--;
     }
-    char *m = realloc(d, i);
+    return i;
+}
+
+
+char *data_from_str(const char *str, ssize_t *size)
+{
+    ssize_t len = strlen(str);
+    if (len == 0) {
+        return 0;
+    }
+    char *d = malloc(len);
+    if (!d) {
+        return 0;
+    }
+    size_t i = parse_cform(d, len, str, len);
+    
+    char *m = len != i ? realloc(d, i) : 0;
     if (i == 0) {
         return 0;
     }
@@ -214,7 +222,7 @@ char *parse_cform(const char *str, ssize_t *size)
 char *ftob(const char *str, ssize_t *sl)
 {
     if (*str == ':') {
-        return parse_cform(str + 1, sl);
+        return data_from_str(str + 1, sl);
     }
     char *buffer = 0;
     long size;
@@ -423,10 +431,6 @@ void clear_params(void)
         }
         free(params.dp);
         params.dp = 0;
-    }
-    if (oob_data.data != oob_char) {
-        free(oob_data.data);
-        oob_data.data = oob_char;
     }
 }
 
@@ -641,7 +645,7 @@ int main(int argc, char **argv)
         case 's':
         case 'd':
         case 'o':
-        case 'O':
+        case 'q':
         case 'f':
             ;
             struct part *part = add((void *)&dp->parts,
@@ -661,7 +665,7 @@ int main(int argc, char **argv)
                     break;
                 case 'o': part->m = DESYNC_OOB;
                     break;
-                case 'O': part->m = DESYNC_OOB2;
+                case 'q': part->m = DESYNC_DISOOB;
                     break;
                 case 'f': part->m = DESYNC_FAKE;
             }
@@ -695,7 +699,7 @@ int main(int argc, char **argv)
             dp->md5sig = 1;
             break;
             
-        case 'R':
+        case 'O':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || *end) 
                 invalid = 1;
@@ -724,14 +728,11 @@ int main(int argc, char **argv)
             break;
             
         case 'e':
-            if (oob_data.data != oob_char) {
-                continue;
-            }
-            oob_data.data = ftob(optarg, &oob_data.size);
-            if (!oob_data.data) {
-                uniperror("read/parse");
+            val = parse_cform(dp->oob_char, 1, optarg, strlen(optarg));
+            if (val != 1) {
                 invalid = 1;
             }
+            else dp->oob_char[1] = 1;
             break;
             
         case 'M':

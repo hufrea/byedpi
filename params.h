@@ -33,7 +33,7 @@ enum demode {
     DESYNC_SPLIT,
     DESYNC_DISORDER,
     DESYNC_OOB,
-    DESYNC_OOB2,
+    DESYNC_DISOOB,
     DESYNC_FAKE
 };
 
@@ -43,7 +43,7 @@ char *demode_str[] = {
     "DESYNC_SPLIT",
     "DESYNC_DISORDER",
     "DESYNC_OOB",
-    "DESYNC_OOB2",
+    "DESYNC_DISOOB",
     "DESYNC_FAKE"
 };
 #endif
@@ -68,6 +68,7 @@ struct desync_params {
     int udp_fake_count;
     int fake_offset;
     char drop_sack;
+    char oob_char[2];
     
     int parts_n;
     struct part *parts;
@@ -113,9 +114,7 @@ extern struct params params;
 
 extern struct packet fake_tls;
 extern struct packet fake_http;
-extern struct packet oob_data;
 extern struct packet fake_udp;
 
 extern char ip_option[1];
-
 #endif
