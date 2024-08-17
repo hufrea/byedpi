@@ -15,7 +15,7 @@
     #include <sys/socket.h>
 #endif
 
-#if defined(__linux__) || defined(__NetBSD__) || defined(_WIN32)
+#if defined(__linux__) || defined(_WIN32)
 #define FAKE_SUPPORT 1
 #define TIMEOUT_SUPPORT 1
 #endif

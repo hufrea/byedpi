@@ -203,26 +203,6 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("sendfile");
             break;
         }
-#else
-        // https://mail-index.netbsd.org/tech-kern/2008/11/25/msg003672.html
-        #warning "no sendfile"
-        #ifdef __linux__
-            #define MAP_FILE 0
-        #endif
-        void *p2 = mmap(NULL, pos, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, ffd, 0);
-        if (p2 == MAP_FAILED) {
-            uniperror("mmap ffd");
-            break;
-        }
-        len = send(sfd, p2, pos, 0);
-        if (len < 0) {
-            uniperror("send sfd");
-            break;
-        }
-        if (munmap(p2, pos) == -1) {
-            uniperror("munmap");
-            break;
-        }
 #endif
         wait_send(sfd);
         memcpy(p, buffer, pos);
