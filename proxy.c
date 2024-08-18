@@ -1,4 +1,3 @@
-
 #define EID_STR
 
 #include "proxy.h"
@@ -30,11 +29,8 @@
     #include <netinet/tcp.h>
     #include <netdb.h>
 
-    #ifdef __linux__
-        // Copied from musl's socket.h to not use _GNU_SOURCE
-        #ifdef __GLIBC__
+    #if defined(__linux__) && defined(__GLIBC__)
         extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
-        #endif
     #endif
 #endif
 

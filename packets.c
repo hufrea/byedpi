@@ -1,5 +1,3 @@
-
-
 #include "packets.h"
 
 #include <ctype.h>
