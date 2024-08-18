@@ -1,3 +1,5 @@
+#define _DEFAULT_SOURCE
+
 #include "desync.h"
 
 #include <stdio.h>
@@ -20,10 +22,6 @@
 
     #include <sys/syscall.h>
     
-    #ifdef __GLIBC__
-    extern long syscall();
-    #endif
-
     #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
     #endif
 #else
