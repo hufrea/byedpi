@@ -2,7 +2,6 @@ TARGET = ciadpi
 
 CPPFLAGS = -D_XOPEN_SOURCE=600
 CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
-LDFLAGS += -lrt
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
 SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c

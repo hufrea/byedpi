@@ -121,6 +121,7 @@ void wait_send(int sfd)
 #define wait_send_if_support(sfd) // :(
 #endif
 
+#ifdef FAKE_SUPPORT
 #ifndef _WIN32
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
@@ -148,12 +149,6 @@ ssize_t send_fake(int sfd, char *buffer,
     int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
-        return -1;
-    }
-#else
-    int ffd = shm_open("/name", O_RDWR | O_CREAT, 0);
-    if (ffd < 0) {
-        uniperror("shm_open");
         return -1;
     }
 #endif
@@ -330,6 +325,7 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     return len;
 }
+#endif
 #endif
 
 ssize_t send_oob(int sfd, char *buffer,
