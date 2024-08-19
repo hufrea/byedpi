@@ -1,5 +1,3 @@
-#define _DEFAULT_SOURCE
-
 #include "desync.h"
 
 #include <stdio.h>
