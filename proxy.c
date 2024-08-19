@@ -437,16 +437,21 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     if (dst->in6.sin6_port != 0) {
+        if (socket_mod(ufd, &addr.sa) < 0) {
+            del_event(pool, pair);
+            return -1;
+        }
         if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
             uniperror("connect");
             del_event(pool, pair);
             return -1;
         }
-        if (socket_mod(ufd, &addr.sa) < 0) {
-            del_event(pool, pair);
-            return -1;
-        }
         pair->in6 = addr.in6;
+    }
+    if (params.debug) {
+        INIT_ADDR_STR((*dst));
+        LOG(LOG_S, "udp associate: fd=%d, addr=%s:%d\n", 
+            ufd, ADDR_STR, ntohs(dst->in.sin_port));
     }
     //
     socklen_t sz = sizeof(addr);
@@ -689,11 +694,11 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 if (params.baddr.sin6_family != addr.sa.sa_family) {
                     return -1;
                 }
-                if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
-                    uniperror("connect");
+                if (socket_mod(val->pair->fd, &addr.sa) < 0) {
                     return -1;
                 }
-                if (socket_mod(val->pair->fd, &addr.sa) < 0) {
+                if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
+                    uniperror("connect");
                     return -1;
                 }
                 val->pair->in6 = addr.in6;
