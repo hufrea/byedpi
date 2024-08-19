@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -444,6 +442,7 @@ int main(int argc, char **argv)
     
     while (!invalid && (rez = getopt_long(
              argc, argv, opt, options, 0)) != -1) {
+
         switch (rez) {
         
         case 'N':
