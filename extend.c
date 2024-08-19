@@ -206,6 +206,30 @@ int on_torst(struct poolhd *pool, struct eval *val)
 }
 
 
+int on_fin(struct poolhd *pool, struct eval *val)
+{
+    int m = val->pair->attempt + 1;
+    
+    for (; m < params.dp_count; m++) {
+        struct desync_params *dp = &params.dp[m];
+        if (!dp->detect) {
+            return -1;
+        }
+        if (!(dp->detect & DETECT_TLS_ERR)) {
+            continue;
+        }
+        char *req = val->pair->buff.data;
+        ssize_t qn = val->pair->buff.size;
+
+        if (!is_tls_chello(req, qn)) {
+            continue;
+        }
+        return reconnect(pool, val, m);
+    }
+    return -1;
+}
+
+
 int on_response(struct poolhd *pool, struct eval *val, 
         char *resp, ssize_t sn)
 {
@@ -260,10 +284,9 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
             case ECONNRESET:
             case ECONNREFUSED:
             case ETIMEDOUT: 
-                break;
-            default: return -1;
+                return on_torst(pool, val);
         }
-        return on_torst(pool, val);
+        return on_fin(pool, val);
     }
     //
     if (on_response(pool, val, buffer, n) == 0) {
