@@ -215,16 +215,16 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
     }
     host += 6;
     
-    while ((buff_end - host) > 0 && isblank(*host)) {
+    while ((buff_end - host) > 0 && isblank((unsigned char) *host)) {
         host++;
     }
     char *l_end = memchr(host, '\n', buff_end - host);
     if (!l_end) {
         return 0;
     }
-    for (; isspace(*(l_end - 1)); l_end--) {}
+    for (; isspace((unsigned char) *(l_end - 1)); l_end--) {}
     
-    if (!(isdigit(*(l_end - 1))))
+    if (!(isdigit((unsigned char) *(l_end - 1))))
         h_end = 0;
     else {
         char *h = host;
@@ -265,7 +265,7 @@ int get_http_code(char *b, size_t n)
     }
     char *e;
     long num = strtol(b + 9, &e, 10);
-    if (num < 100 || num > 511 || !isspace(*e)) {
+    if (num < 100 || num > 511 || !isspace((unsigned char) *e)) {
         return 0;
     }
     return (int )num;
@@ -297,7 +297,7 @@ bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn)
     if (!l_end) {
         return 0;
     }
-    for (; isspace(*(l_end - 1)); l_end--) {}
+    for (; isspace((unsigned char) *(l_end - 1)); l_end--) {}
     
     if ((l_end - location) > 7) {
         if (!strncmp(location, "http://", 7)) {
@@ -382,17 +382,17 @@ int mod_http(char *buffer, size_t bsize, int m)
     for (par = host - 1; *par != ':'; par--) {}
     par -= 4;
     if (m & MH_HMIX) {
-        par[0] = tolower(par[0]);
-        par[1] = toupper(par[1]);
-        par[3] = toupper(par[3]);
+        par[0] = tolower((unsigned char) par[0]);
+        par[1] = toupper((unsigned char) par[1]);
+        par[3] = toupper((unsigned char) par[3]);
     }
     if (m & MH_DMIX) {
         for (int i = 0; i < hlen; i += 2) {
-            host[i] = toupper(host[i]);
+            host[i] = toupper((unsigned char)host[i]);
         }
     }
     if (m & MH_SPACE) {
-        for (; !isspace(*(host + hlen)); hlen++) {}
+        for (; !isspace((unsigned char) *(host + hlen)); hlen++) {}
         int sc = host - (par + 5);
         memmove(par + 5, host, hlen);
         memset(par + 5 + hlen, '\t', sc);
