@@ -9,10 +9,13 @@ endif()
 # Prepend version by "0"
 string( REGEX MATCHALL "([0-9]+)" MAIN_VERSION "${MAIN_VERSION}" )
 list( LENGTH MAIN_VERSION _LENGTH )
-while( ${_LENGTH} LESS 3 )
+if( ${_LENGTH} LESS 2 )
+    list( APPEND MAIN_VERSION "0" )
+endif()
+list( LENGTH MAIN_VERSION _LENGTH )
+if( ${_LENGTH} LESS 3 )
     list( PREPEND MAIN_VERSION "0" )
-    list( LENGTH MAIN_VERSION _LENGTH )
-endwhile()
+endif()
 string( JOIN "." MAIN_VERSION ${MAIN_VERSION} )
 
 # Extract Git revision order number, used as last part of version
@@ -35,6 +38,7 @@ project( ByeDPI
 )
 
 set( PROJECT_VENDOR "hufrea" )
+set( PROJECT_COPYRIGHT "Copyright (c) 2024 hufrea" )
 
 set( CMAKE_C_STANDARD 99 )
 
@@ -72,17 +76,19 @@ endif()
 add_executable( ciadpi ${SOURCES} )
 
 # Installer
-set( CPACK_VERBATIM_VARIABLES          ON )
-set( CPACK_STRIP_FILES                 ON )
-set( CPACK_INCLUDE_TOPLEVEL_DIRECTORY  OFF )
-set( CPACK_PACKAGE_NAME                ${PROJECT_NAME} )
-set( CPACK_PACKAGE_VENDOR              ${PROJECT_VENDOR} )
-set( CPACK_PACKAGE_DESCRIPTION_SUMMARY ${PROJECT_NAME} )
-set( CPACK_PACKAGE_DESCRIPTION         ${PROJECT_DESCRIPTION} )
-set( CPACK_PACKAGE_INSTALL_DIRECTORY   ${CPACK_PACKAGE_NAME} )
-set( CPACK_PACKAGE_CONTACT             ${PROJECT_VENDOR} )
-set( CPACK_RESOURCE_FILE_LICENSE       ${CMAKE_SOURCE_DIR}/LICENSE )
-include( GNUInstallDirs )
+set( CPACK_VERBATIM_VARIABLES           ON )
+set( CPACK_STRIP_FILES                  ON )
+set( CPACK_INCLUDE_TOPLEVEL_DIRECTORY   OFF )
+set( CPACK_PACKAGE_NAME                 "${PROJECT_NAME}" )
+set( CPACK_PACKAGE_VENDOR               "${PROJECT_VENDOR}" )
+set( CPACK_PACKAGE_DESCRIPTION_SUMMARY  "${PROJECT_NAME}" )
+set( CPACK_PACKAGE_DESCRIPTION          "${PROJECT_DESCRIPTION}" )
+set( CPACK_PACKAGE_INSTALL_DIRECTORY    "${PROJECT_NAME}" )
+set( CPACK_PACKAGE_INSTALL_REGISTRY_KEY "${PROJECT_NAME}" )
+set( CPACK_PACKAGE_CONTACT              "${PROJECT_VENDOR}" )
+set( CPACK_PACKAGE_HOMEPAGE_URL         "${PROJECT_HOMEPAGE_URL}" )
+set( CPACK_RESOURCE_FILE_LICENSE        "${CMAKE_SOURCE_DIR}/LICENSE" )
+set( CPACK_RESOURCE_FILE_README         "${CMAKE_SOURCE_DIR}/README.md" )
 
 if( WIN32 )
     # NSIS package - https://sourceforge.net/projects/nsis/
@@ -96,19 +102,26 @@ if( WIN32 )
         "service_install.bat" "Service install and run"
         "service_restart.bat" "Service restart"
     )
-	file( WRITE  "${CMAKE_BINARY_DIR}/ver.nsi" "VIProductVersion ${PROJECT_VERSION}\n" )
-	file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"ProductName\" \"${PROJECT_NAME}\"\n" )
-	file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileDescription\" \"${PROJECT_DESCRIPTION}\"\n" )
-	file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"CompanyName\" \"${PROJECT_VENDOR}\"\n" )
-	file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileVersion\" \"${PROJECT_VERSION}\"\n" )
-	set( CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS  "V0 ${CMAKE_BINARY_DIR}/ver.nsi" )
+
+    file( WRITE  "${CMAKE_BINARY_DIR}/ver.nsi" "VIProductVersion ${MAIN_VERSION}.0\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIFileVersion ${PROJECT_VERSION}\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"ProductVersion\" \"${MAIN_VERSION}.0\"\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileVersion\" \"${PROJECT_VERSION}\"\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"ProductName\" \"${PROJECT_NAME}\"\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileDescription\" \"${PROJECT_DESCRIPTION}\"\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"CompanyName\" \"${PROJECT_VENDOR}\"\n" )
+    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"LegalCopyright\" \"${PROJECT_COPYRIGHT}\"\n" )
+    set( CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS  "V0 ${CMAKE_BINARY_DIR}/ver.nsi" )
+
     set( CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "ExecWait \"sc stop ${PROJECT_NAME}\"" )
     set( CPACK_NSIS_EXTRA_INSTALL_COMMANDS    "ExecWait \"$INSTDIR\\service_install.bat\"" )
     set( CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS  "ExecWait \"$INSTDIR\\service_delete.bat\"" )
-    set( CPACK_NSIS_CONTACT        "${PROJECT_VENDOR}" )
-    set( CPACK_NSIS_HELP_LINK      "${PROJECT_HOMEPAGE_URL}" )
-    set( CPACK_NSIS_URL_INFO_ABOUT "${PROJECT_HOMEPAGE_URL}" )
-    set( CPACK_NSIS_BRANDING_TEXT  " " )
+    set( CPACK_NSIS_CONTACT                   "${PROJECT_VENDOR}" )
+    set( CPACK_NSIS_HELP_LINK                 "${PROJECT_HOMEPAGE_URL}" )
+    set( CPACK_NSIS_URL_INFO_ABOUT            "${PROJECT_HOMEPAGE_URL}" )
+    set( CPACK_NSIS_BRANDING_TEXT             " " )
+    set( CPACK_NSIS_COMPRESSOR                "/SOLID lzma" )
+
     set( CMAKE_INSTALL_BINDIR . )
     set( CMAKE_INSTALL_DOCDIR . )
 else()
@@ -118,8 +131,6 @@ endif()
 
 # Zip package
 list( APPEND CPACK_GENERATOR ZIP )
-
-include( CPack )
 
 install( TARGETS ciadpi
     RUNTIME
@@ -141,3 +152,6 @@ if( WIN32 )
         TYPE BIN
     )
 endif()
+
+include( GNUInstallDirs )
+include( CPack )
