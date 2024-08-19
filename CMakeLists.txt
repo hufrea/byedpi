@@ -42,7 +42,7 @@ set( PROJECT_COPYRIGHT "Copyright (c) 2024 hufrea" )
 
 set( CMAKE_C_STANDARD 99 )
 
-#add_compile_definitions( _XOPEN_SOURCE=500 )
+add_compile_definitions( _DEFAULT_SOURCE )
 add_compile_options( -Wall -Wno-unused )
 # Optimizations
 add_compile_options( $<$<NOT:$<CONFIG:Debug>>:-O2> )
