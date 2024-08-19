@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #define EID_STR
 
 #include "proxy.h"
@@ -29,6 +28,10 @@
     #include <arpa/inet.h>
     #include <netinet/tcp.h>
     #include <netdb.h>
+
+    #if defined(__linux__) && defined(__GLIBC__)
+        extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
+    #endif
 #endif
 
     
@@ -392,7 +395,11 @@ int create_conn(struct poolhd *pool,
     }
     val->pair = pair;
     pair->pair = val;
+#ifdef __NetBSD__
+    pair->in6 = addr.in6;
+#else
     pair->in6 = dst->in6;
+#endif
     pair->flag = FLAG_CONN;
     val->type = EV_IGNORE;
     

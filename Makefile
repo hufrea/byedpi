@@ -1,6 +1,6 @@
 TARGET = ciadpi
 
-#CPPFLAGS = -D_XOPEN_SOURCE=500
+CPPFLAGS = -D_DEFAULT_SOURCE
 CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
