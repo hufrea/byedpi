@@ -1,4 +1,3 @@
-#define CONEV_H
 #include "conev.h"
 
 #include <stdlib.h>

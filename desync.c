@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+#include "desync.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -8,26 +8,22 @@
     #include <time.h>
     #include <sys/time.h>
     #include <sys/socket.h>
-    #include <arpa/inet.h>
-    #include <netinet/tcp.h>
-    
-    #ifdef __linux__
     #include <sys/mman.h>
-    #include <sys/sendfile.h>
+    #include <arpa/inet.h>
     #include <fcntl.h>
 
-    #include <desync.h>
+    #ifndef __linux__
+    #include <netinet/tcp.h>
+    #else    
+    #include <sys/sendfile.h>
+    #include <linux/tcp.h>
+
+    #include <sys/syscall.h>
     
-    #ifdef MFD_CLOEXEC
-        #include <sys/syscall.h>
-        #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags);
-    #else
-        #define memfd_create(name, flags) fileno(tmpfile())
-    #endif
+    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
     #endif
 #else
     #include <winsock2.h>
-    #include <windows.h>
     #include <ws2tcpip.h>
     #include <mswsock.h>
 #endif
@@ -38,8 +34,9 @@
 #include "error.h"
 
 
-static inline int get_family(struct sockaddr *dst)
+int get_family(struct sockaddr *dst)
 {
+#ifndef __NetBSD__
     if (dst->sa_family == AF_INET6) {
         struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)dst;
         static char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
@@ -48,6 +45,7 @@ static inline int get_family(struct sockaddr *dst)
             return AF_INET;
         }
     }
+#endif
     return dst->sa_family;
 }
 
@@ -118,12 +116,14 @@ void wait_send(int sfd)
 #define wait_send_if_support(sfd) // :(
 #endif
 
-#ifdef __linux__
+#ifdef FAKE_SUPPORT
+#ifndef _WIN32
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
+#ifdef __linux__
     if (opt->md5sig) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
@@ -131,6 +131,7 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
+#endif
     struct packet pkt;
     if (opt->fake_data.data) {
         pkt = opt->fake_data;
@@ -139,12 +140,13 @@ ssize_t send_fake(int sfd, char *buffer,
         pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     }
     size_t psz = pkt.size;
-    
-    int ffd = memfd_create("name", O_RDWR);
+#ifdef __linux__
+    int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
     }
+#endif
     char *p = 0;
     ssize_t len = -1;
     
@@ -164,6 +166,8 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
+
+#ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
@@ -176,18 +180,20 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
+#endif
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-        
+#ifdef __linux__
         len = sendfile(sfd, ffd, 0, pos);
         if (len < 0) {
             uniperror("sendfile");
             break;
         }
+#endif
         wait_send(sfd);
         memcpy(p, buffer, pos);
         
@@ -200,6 +206,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
+#ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
@@ -212,15 +219,14 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
+#endif
         break;
     }
     if (p) munmap(p, pos);
     close(ffd);
     return len;
 }
-#endif
-
-#ifdef _WIN32
+#else
 OVERLAPPED ov = {};
 
 ssize_t send_fake(int sfd, char *buffer,
@@ -315,6 +321,7 @@ ssize_t send_fake(int sfd, char *buffer,
     return len;
 }
 #endif
+#endif
 
 ssize_t send_oob(int sfd, char *buffer,
         ssize_t n, long pos)
@@ -391,12 +398,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         type = IS_HTTP;
     }
     if (len && host) {
-        LOG(LOG_S, "host: %.*s (%ld)\n",
+        LOG(LOG_S, "host: %.*s (%zd)\n",
             len, host, host - buffer);
     }
     // modify packet
     if (type == IS_HTTP && dp.mod_http) {
-        LOG(LOG_S, "modify HTTP: n=%ld\n", n);
+        LOG(LOG_S, "modify HTTP: n=%zd\n", n);
         if (mod_http(buffer, n, dp.mod_http)) {
             LOG(LOG_E, "mod http error\n");
             return -1;
@@ -420,18 +427,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             }
             if (!part_tls(buffer + lp, 
                     bfsize - lp, n - lp, pos - lp)) {
-                LOG(LOG_E, "tlsrec error: pos=%ld, n=%ld\n", pos, n);
+                LOG(LOG_E, "tlsrec error: pos=%ld, n=%zd\n", pos, n);
                 break;
             }
-            LOG(LOG_S, "tlsrec: pos=%ld, n=%ld\n", pos, n);
+            LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, n);
             n += 5;
             lp = pos + 5;
-        }
-    }
-    // set custom TTL
-    if (params.custom_ttl) {
-        if (setttl(sfd, params.def_ttl, fa) < 0) {
-            return -1;
         }
     }
     // desync
@@ -462,7 +463,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             continue;
         }
         else if (pos <= 0 || pos >= n || pos <= lp) {
-            LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%ld\n", lp, pos, n);
+            LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
         // send part
@@ -494,7 +495,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             default:
                 return -1;
         }
-        LOG(LOG_S, "split: pos=%ld-%ld (%ld), m: %s\n", lp, pos, s, demode_str[part.m]);
+        LOG(LOG_S, "split: pos=%ld-%ld (%zd), m: %s\n", lp, pos, s, demode_str[part.m]);
         
         if (s < 0) {
             if (get_e() == EAGAIN) {
@@ -503,14 +504,14 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             return -1;
         } 
         else if (s != (pos - lp)) {
-            LOG(LOG_E, "%ld != %ld\n", s, pos - lp);
+            LOG(LOG_E, "%zd != %ld\n", s, pos - lp);
             return lp + s;
         }
         lp = pos;
     }
     // send all/rest
     if (lp < n) {
-        LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%ld\n", lp, n);
+        LOG((lp ? LOG_S : LOG_L), "send: pos=%ld-%zd\n", lp, n);
         if (send(sfd, buffer + lp, n - lp, 0) < 0) {
             if (get_e() == EAGAIN) {
                 return lp;

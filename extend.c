@@ -1,3 +1,5 @@
+#include "extend.h"
+
 #ifdef _WIN32
     #include <ws2tcpip.h>
     
@@ -105,6 +107,20 @@ int connect_hook(struct poolhd *pool, struct eval *val,
     val->attempt = m < 0 ? 0 : m;
     
     return create_conn(pool, val, dst, next);
+}
+
+
+int socket_mod(int fd, struct sockaddr *dst)
+{
+    if (params.custom_ttl) {
+        if (setttl(fd, params.def_ttl, get_family(dst)) < 0) {
+            return -1;
+        }
+    }
+    if (params.protect_path) {
+        return protect(fd, params.protect_path);
+    }
+    return 0;
 }
 
 
