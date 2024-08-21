@@ -12,5 +12,3 @@ set svc_name="ByeDPI"
 
 sc stop %svc_name%
 sc delete %svc_name%
-
-call "%~dp0proxy_reset.bat"

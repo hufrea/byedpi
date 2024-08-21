@@ -18,5 +18,3 @@ sc delete %svc_name%
 sc create %svc_name% binPath= %svc_bin% start= "auto"
 sc description %svc_name% %svc_desc%
 sc start %svc_name%
-
-call "%~dp0proxy_set.bat"
