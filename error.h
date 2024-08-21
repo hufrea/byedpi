@@ -70,10 +70,12 @@ static inline const int unie(int e)
 #endif
 
 #define INIT_ADDR_STR(dst) \
-    char ADDR_STR[INET_ADDRSTRLEN + 1]; \
+    char ADDR_STR[INET6_ADDRSTRLEN]; \
+    const char *p = 0; \
     if (dst.sa.sa_family == AF_INET) \
-        inet_ntop(AF_INET, &dst.in.sin_addr, ADDR_STR, sizeof(ADDR_STR)); \
+        p = inet_ntop(AF_INET, &dst.in.sin_addr, ADDR_STR, sizeof(ADDR_STR)); \
     else \
-        inet_ntop(AF_INET6, &dst.in6.sin6_addr, ADDR_STR, sizeof(ADDR_STR));
+        p = inet_ntop(AF_INET6, &dst.in6.sin6_addr, ADDR_STR, sizeof(ADDR_STR)); \
+    if (!p) uniperror("inet_ntop");
 
 #endif

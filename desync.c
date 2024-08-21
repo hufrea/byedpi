@@ -11,13 +11,12 @@
     #include <sys/mman.h>
     #include <arpa/inet.h>
     #include <fcntl.h>
-
+    
     #ifndef __linux__
     #include <netinet/tcp.h>
     #else    
     #include <sys/sendfile.h>
     #include <linux/tcp.h>
-
     #include <sys/syscall.h>
     
     #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
@@ -84,24 +83,25 @@ static inline void delay(long ms)
 void wait_send(int sfd)
 {
     for (int i = 0; params.wait_send && i < 500; i++) {
-        struct tcpi tcpi = {};
+        struct tcp_info tcpi = {};
         socklen_t ts = sizeof(tcpi);
         
         if (getsockopt(sfd, IPPROTO_TCP,
                 TCP_INFO, (char *)&tcpi, &ts) < 0) {
-            uniperror("getsockopt TCP_INFO");
+            perror("getsockopt TCP_INFO");
             break;
         }
-        if (tcpi.state != 1) {
-            LOG(LOG_E, "state: %d\n", tcpi.state);
+        if (tcpi.tcpi_state != 1) {
+            LOG(LOG_E, "state: %d\n", tcpi.tcpi_state);
             return;
         }
-        if (ts < sizeof(tcpi)) {
+        size_t s = (char *)&tcpi.tcpi_notsent_bytes - (char *)&tcpi.tcpi_state;
+        if (ts < s) {
             LOG(LOG_E, "tcpi_notsent_bytes not provided\n");
             params.wait_send = 0;
             break;
         }
-        if (tcpi.notsent_bytes == 0) {
+        if (tcpi.tcpi_notsent_bytes == 0) {
             return;
         }
         LOG(LOG_S, "not sent after %d ms\n", i);

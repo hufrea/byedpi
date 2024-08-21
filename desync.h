@@ -18,13 +18,4 @@ int get_family(struct sockaddr *dst);
 
 int setttl(int fd, int ttl, int family);
 
-struct tcpi {
-    uint8_t state;
-    uint8_t r[3];
-    uint32_t rr[5];
-    uint32_t unacked;
-    uint32_t rrr[29];
-    uint32_t notsent_bytes;
-};
-
 #endif
