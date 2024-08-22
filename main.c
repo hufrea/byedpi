@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "12"
+#define VERSION "13"
 
 char ip_option[1] = "\0";
 
@@ -98,7 +98,7 @@ const char help_text[] = {
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
-    "    -e, --oob-data <str>      Set custom OOB data\n"
+    "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
