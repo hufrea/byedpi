@@ -242,17 +242,39 @@ char *ftob(const char *str, ssize_t *sl)
 }
 
 
+static inline int lower_char(char *cl)
+{
+    char c = *cl;
+    if (c < 'A') {
+        if (c > '9' || c < '-')
+            return -1;
+    }
+    else if (c < 'a') {
+        if (c > 'Z') 
+            return -1;
+        *cl = c + 32;
+    }
+    else if (c > 'z') 
+        return -1;
+    return 0;
+}
+
+
 struct mphdr *parse_hosts(char *buffer, size_t size)
 {
     struct mphdr *hdr = mem_pool(1);
     if (!hdr) {
         return 0;
     }
+    size_t num = 0;
     char *end = buffer + size;
     char *e = buffer, *s = buffer;
     
     for (; e <= end; e++) {
         if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
+            if (lower_char(e)) {
+                LOG(LOG_E, "invalid host: num: %zd (%.*s)\n", num + 1, (int )(e - s + 1), s);
+            }
             continue;
         }
         if (s == e) {
@@ -263,6 +285,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
             free(hdr);
             return 0;
         }
+        num++;
         s = e + 1;
     }
     return hdr;
