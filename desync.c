@@ -150,7 +150,7 @@ ssize_t send_fake(int sfd, char *buffer,
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
-#ifdef __linux__
+    #ifdef __linux__
     if (opt->md5sig) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
@@ -158,7 +158,7 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
-#endif
+    #endif
     struct packet pkt;
     if (opt->fake_data.data) {
         pkt = opt->fake_data;
@@ -174,13 +174,11 @@ ssize_t send_fake(int sfd, char *buffer,
         else pkt.size = 0;
     }
     
-#ifdef __linux__
     int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
     }
-#endif
     char *p = 0;
     ssize_t len = -1;
     
@@ -201,7 +199,7 @@ ssize_t send_fake(int sfd, char *buffer,
             break;
         }
 
-#ifdef __linux__
+        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
@@ -214,20 +212,19 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-#endif
+        #endif
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-#ifdef __linux__
+        
         len = sendfile(sfd, ffd, 0, pos);
         if (len < 0) {
             uniperror("sendfile");
             break;
         }
-#endif
         wait_send(sfd);
         memcpy(p, buffer, pos);
         
@@ -240,7 +237,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-#ifdef __linux__
+        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
@@ -253,7 +250,7 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-#endif
+        #endif
         break;
     }
     if (p) munmap(p, pos);
