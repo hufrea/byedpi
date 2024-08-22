@@ -18,4 +18,6 @@ int get_family(struct sockaddr *dst);
 
 int setttl(int fd, int ttl, int family);
 
+int post_desync(int sfd, int dp_c);
+
 #endif
