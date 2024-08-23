@@ -103,19 +103,39 @@ if( WIN32 )
         "service_restart.bat" "Service restart"
     )
 
-    file( WRITE  "${CMAKE_BINARY_DIR}/ver.nsi" "VIProductVersion ${MAIN_VERSION}.0\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIFileVersion ${PROJECT_VERSION}\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"ProductVersion\" \"${MAIN_VERSION}.0\"\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileVersion\" \"${PROJECT_VERSION}\"\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"ProductName\" \"${PROJECT_NAME}\"\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"FileDescription\" \"${PROJECT_DESCRIPTION}\"\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"CompanyName\" \"${PROJECT_VENDOR}\"\n" )
-    file( APPEND "${CMAKE_BINARY_DIR}/ver.nsi" "VIAddVersionKey /LANG=0 \"LegalCopyright\" \"${PROJECT_COPYRIGHT}\"\n" )
-    set( CPACK_NSIS_EXECUTABLE_PRE_ARGUMENTS  "V0 ${CMAKE_BINARY_DIR}/ver.nsi" )
+    # Attributes section (installer version info)
+    string( REPLACE ";" "" CPACK_NSIS_DEFINES
+        "VIProductVersion ${PROJECT_VERSION}\n"
+        "VIFileVersion    ${PROJECT_VERSION}\n"
+        "VIAddVersionKey /LANG=0 \"ProductVersion\"  \"${PROJECT_VERSION}\"\n"
+        "VIAddVersionKey /LANG=0 \"FileVersion\"     \"${PROJECT_VERSION}\"\n"
+        "VIAddVersionKey /LANG=0 \"ProductName\"     \"${CPACK_PACKAGE_DESCRIPTION}\"\n"
+        "VIAddVersionKey /LANG=0 \"FileDescription\" \"${CPACK_PACKAGE_DESCRIPTION}\"\n"
+        "VIAddVersionKey /LANG=0 \"CompanyName\"     \"${PROJECT_VENDOR}\"\n"
+        "VIAddVersionKey /LANG=0 \"LegalCopyright\"  \"${PROJECT_COPYRIGHT}\""
+    )
 
-    set( CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS "ExecWait \"sc stop ${PROJECT_NAME}\"" )
-    set( CPACK_NSIS_EXTRA_INSTALL_COMMANDS    "ExecWait \"$INSTDIR\\service_install.bat\"" )
-    set( CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS  "ExecWait \"$INSTDIR\\service_delete.bat\"" )
+    # Preinstall section
+    string( REPLACE ";" "" CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS
+        "  ExecWait \"sc stop ${PROJECT_NAME}\""
+    )
+
+    # Install section
+    string( REPLACE ";" "" CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+        "Push \"InstallLocation\"\n"
+        "Push \"$INSTDIR\\\"\n"
+        "Call ConditionalAddToRegistry\n"
+        "Push \"Comments\"\n"
+        "Push \"${CPACK_PACKAGE_DESCRIPTION}\"\n"
+        "Call ConditionalAddToRegistry\n"
+        "ExecWait \"$INSTDIR\\service_install.bat\""
+    )
+
+    # Uninstall section
+    string( REPLACE ";" "" CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+        "ExecWait \"$INSTDIR\\service_delete.bat\""
+    )
+
     set( CPACK_NSIS_CONTACT                   "${PROJECT_VENDOR}" )
     set( CPACK_NSIS_HELP_LINK                 "${PROJECT_HOMEPAGE_URL}" )
     set( CPACK_NSIS_URL_INFO_ABOUT            "${PROJECT_HOMEPAGE_URL}" )
