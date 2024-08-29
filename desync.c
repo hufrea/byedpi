@@ -270,13 +270,12 @@ ssize_t send_fake(int sfd, char *buffer,
     else {
         pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     }
-    size_t psz = pkt.size;
     if (opt->fake_offset) {
-        if (psz > opt->fake_offset) { 
-            psz -= opt->fake_offset;
+        if (pkt.size > opt->fake_offset) { 
+            pkt.size -= opt->fake_offset;
             pkt.data += opt->fake_offset;
         }
-        else psz = 0;
+        else pkt.size = 0;
     }
     
     char path[MAX_PATH], temp[MAX_PATH + 1];
@@ -306,11 +305,12 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("CreateEvent");
              break;
         }
-        if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
+        DWORD wrtcnt = 0;
+        if (!WriteFile(hfile, pkt.data, pkt.size < pos ? pkt.size : pos, &wrtcnt, 0)) {
             uniperror("WriteFile");
             break;
         }
-        if (psz < pos) {
+        if (pkt.size < pos) {
             if (SetFilePointer(hfile, pos, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
                 uniperror("SetFilePointer");
                 break;
@@ -341,7 +341,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("SetFilePointer");
             break;
         }
-        if (!WriteFile(hfile, buffer, pos, 0, 0)) {
+        if (!WriteFile(hfile, buffer, pos, &wrtcnt, 0)) {
             uniperror("WriteFile");
             break;
         }
