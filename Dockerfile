@@ -1,24 +1,19 @@
-FROM alpine:latest AS builder
-
+FROM alpine:3.20 AS builder
 RUN apk update && apk add --no-cache \
-    git \
     build-base \
-    openssl-dev \
+    curl \
+    git \
     libpcap-dev \
     linux-headers \
     musl-dev \
-    curl
-
-RUN git clone -b $(basename $(curl -Ls -o /dev/null -w %{url_effective} https://github.com/hufrea/byedpi/releases/latest)) https://github.com/hufrea/byedpi.git /opt/byedpi
-
+    openssl-dev && git clone -b \
+    $(basename $(curl -Ls -o /dev/null -w %{url_effective} \
+    https://github.com/hufrea/byedpi/releases/latest)) \ 
+    https://github.com/hufrea/byedpi.git \
+    /opt/byedpi
 WORKDIR /opt/byedpi
-
 RUN make
-
-FROM alpine:latest
-
+FROM alpine:3.20
 COPY --from=builder /opt/byedpi/ciadpi /opt/byedpi/ciadpi
-
 EXPOSE 1080
-
 ENTRYPOINT ["/opt/byedpi/ciadpi"]
