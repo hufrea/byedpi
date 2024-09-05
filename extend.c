@@ -206,6 +206,30 @@ int on_torst(struct poolhd *pool, struct eval *val)
 }
 
 
+int on_fin(struct poolhd *pool, struct eval *val)
+{
+    int m = val->pair->attempt + 1;
+    
+    for (; m < params.dp_count; m++) {
+        struct desync_params *dp = &params.dp[m];
+        if (!dp->detect) {
+            return -1;
+        }
+        if (!(dp->detect & DETECT_TLS_ERR)) {
+            continue;
+        }
+        char *req = val->pair->buff.data;
+        ssize_t qn = val->pair->buff.size;
+
+        if (!is_tls_chello(req, qn)) {
+            continue;
+        }
+        return reconnect(pool, val, m);
+    }
+    return -1;
+}
+
+
 int on_response(struct poolhd *pool, struct eval *val, 
         char *resp, ssize_t sn)
 {
@@ -223,19 +247,10 @@ int on_response(struct poolhd *pool, struct eval *val,
                 && is_http_redirect(req, qn, resp, sn)) {
             break;
         }
-        else if ((dp->detect & DETECT_TLS_INVSID)
-                && neq_tls_sid(req, qn, resp, sn)) {
+        else if ((dp->detect & DETECT_TLS_ERR)
+                && ((is_tls_chello(req, qn) && !is_tls_shello(resp, sn))
+                    || neq_tls_sid(req, qn, resp, sn))) {
             break;
-        }
-        else if ((dp->detect & DETECT_TLS_ALERT)
-                && is_tls_alert(resp, sn)) {
-            break;
-        }
-        else if (dp->detect & DETECT_HTTP_CLERR) {
-            int code = get_http_code(resp, sn);
-            if (code > 400 && code < 451 && code != 429) {
-                break;
-            }
         }
     }
     if (m < params.dp_count) {
@@ -269,10 +284,9 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
             case ECONNRESET:
             case ECONNREFUSED:
             case ETIMEDOUT: 
-                break;
-            default: return -1;
+                return on_torst(pool, val);
         }
-        return on_torst(pool, val);
+        return on_fin(pool, val);
     }
     //
     if (on_response(pool, val, buffer, n) == 0) {
@@ -293,6 +307,10 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
         return -1;
     }
     int m = pair->attempt;
+    
+    if (post_desync(val->fd, m)) {
+        return -1;
+    }
     
     if (!pair->cache) {
         return 0;

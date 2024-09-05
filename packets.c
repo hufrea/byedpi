@@ -351,10 +351,11 @@ bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
 }
 
 
-bool is_tls_alert(char *resp, size_t sn) {
-    return (sn >= 7
-        && resp[0] == 0x15 && resp[1] == 0x03
-        && !memcmp(resp + 3, "\x00\x02\x02", 3));
+bool is_tls_shello(char *buffer, size_t bsize)
+{
+    return (bsize > 5 &&
+        ANTOHS(buffer, 0) == 0x1603 &&
+        buffer[5] == 0x02);
 }
 
 /*

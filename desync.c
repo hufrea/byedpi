@@ -11,13 +11,13 @@
     #include <sys/mman.h>
     #include <arpa/inet.h>
     #include <fcntl.h>
-
+    
     #ifndef __linux__
     #include <netinet/tcp.h>
-    #else    
-    #include <sys/sendfile.h>
+    #else
     #include <linux/tcp.h>
-
+    #include <sys/sendfile.h>
+    #include <linux/filter.h>
     #include <sys/syscall.h>
     
     #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
@@ -68,6 +68,32 @@ int setttl(int fd, int ttl, int family) {
     return 0;
 }
 
+#ifdef __linux__
+int drop_sack(int fd)
+{
+    struct sock_filter code[] = {
+        { 0x30, 0, 0, 0x0000000c },
+        { 0x74, 0, 0, 0x00000004 },
+        { 0x35, 0, 3, 0x0000000b },
+        { 0x30, 0, 0, 0x00000022 },
+        { 0x15, 0, 1, 0x00000005 },
+        { 0x6,  0, 0, 0x00000000 },
+        { 0x6,  0, 0, 0x00040000 },
+    };
+    struct sock_fprog bpf = {
+        .len = sizeof(code)/sizeof(*code),
+        .filter = code
+    };
+    if (setsockopt(fd, SOL_SOCKET, 
+            SO_ATTACH_FILTER, (char *)&bpf, sizeof(bpf)) == -1) {
+        uniperror("setsockopt SO_ATTACH_FILTER");
+        return -1;
+    }
+    return 0;
+}
+#endif
+
+
 #ifndef _WIN32
 static inline void delay(long ms)
 {
@@ -84,24 +110,25 @@ static inline void delay(long ms)
 void wait_send(int sfd)
 {
     for (int i = 0; params.wait_send && i < 500; i++) {
-        struct tcpi tcpi = {};
+        struct tcp_info tcpi = {};
         socklen_t ts = sizeof(tcpi);
         
         if (getsockopt(sfd, IPPROTO_TCP,
                 TCP_INFO, (char *)&tcpi, &ts) < 0) {
-            uniperror("getsockopt TCP_INFO");
+            perror("getsockopt TCP_INFO");
             break;
         }
-        if (tcpi.state != 1) {
-            LOG(LOG_E, "state: %d\n", tcpi.state);
+        if (tcpi.tcpi_state != 1) {
+            LOG(LOG_E, "state: %d\n", tcpi.tcpi_state);
             return;
         }
-        if (ts < sizeof(tcpi)) {
+        size_t s = (char *)&tcpi.tcpi_notsent_bytes - (char *)&tcpi.tcpi_state;
+        if (ts < s) {
             LOG(LOG_E, "tcpi_notsent_bytes not provided\n");
             params.wait_send = 0;
             break;
         }
-        if (tcpi.notsent_bytes == 0) {
+        if (tcpi.tcpi_notsent_bytes == 0) {
             return;
         }
         LOG(LOG_S, "not sent after %d ms\n", i);
@@ -123,7 +150,7 @@ ssize_t send_fake(int sfd, char *buffer,
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
-#ifdef __linux__
+    #ifdef __linux__
     if (opt->md5sig) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
@@ -131,7 +158,7 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
-#endif
+    #endif
     struct packet pkt;
     if (opt->fake_data.data) {
         pkt = opt->fake_data;
@@ -139,14 +166,19 @@ ssize_t send_fake(int sfd, char *buffer,
     else {
         pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     }
-    size_t psz = pkt.size;
-#ifdef __linux__
+    if (opt->fake_offset) {
+        if (pkt.size > opt->fake_offset) { 
+            pkt.size -= opt->fake_offset;
+            pkt.data += opt->fake_offset;
+        }
+        else pkt.size = 0;
+    }
+    
     int ffd = memfd_create("name", 0);
     if (ffd < 0) {
         uniperror("memfd_create");
         return -1;
     }
-#endif
     char *p = 0;
     ssize_t len = -1;
     
@@ -161,13 +193,13 @@ ssize_t send_fake(int sfd, char *buffer,
             p = 0;
             break;
         }
-        memcpy(p, pkt.data, psz < pos ? psz : pos);
+        memcpy(p, pkt.data, pkt.size < pos ? pkt.size : pos);
         
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
 
-#ifdef __linux__
+        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
@@ -180,20 +212,19 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-#endif
+        #endif
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-#ifdef __linux__
+        
         len = sendfile(sfd, ffd, 0, pos);
         if (len < 0) {
             uniperror("sendfile");
             break;
         }
-#endif
         wait_send(sfd);
         memcpy(p, buffer, pos);
         
@@ -206,7 +237,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-#ifdef __linux__
+        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
@@ -219,7 +250,7 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-#endif
+        #endif
         break;
     }
     if (p) munmap(p, pos);
@@ -239,7 +270,13 @@ ssize_t send_fake(int sfd, char *buffer,
     else {
         pkt = cnt != IS_HTTP ? fake_tls : fake_http;
     }
-    size_t psz = pkt.size;
+    if (opt->fake_offset) {
+        if (pkt.size > opt->fake_offset) { 
+            pkt.size -= opt->fake_offset;
+            pkt.data += opt->fake_offset;
+        }
+        else pkt.size = 0;
+    }
     
     char path[MAX_PATH], temp[MAX_PATH + 1];
     int ps = GetTempPath(sizeof(temp), temp);
@@ -268,11 +305,12 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("CreateEvent");
              break;
         }
-        if (!WriteFile(hfile, pkt.data, psz < pos ? psz : pos, 0, 0)) {
+        DWORD wrtcnt = 0;
+        if (!WriteFile(hfile, pkt.data, pkt.size < pos ? pkt.size : pos, &wrtcnt, 0)) {
             uniperror("WriteFile");
             break;
         }
-        if (psz < pos) {
+        if (pkt.size < pos) {
             if (SetFilePointer(hfile, pos, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
                 uniperror("SetFilePointer");
                 break;
@@ -303,7 +341,7 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("SetFilePointer");
             break;
         }
-        if (!WriteFile(hfile, buffer, pos, 0, 0)) {
+        if (!WriteFile(hfile, buffer, pos, &wrtcnt, 0)) {
             uniperror("WriteFile");
             break;
         }
@@ -324,13 +362,10 @@ ssize_t send_fake(int sfd, char *buffer,
 #endif
 
 ssize_t send_oob(int sfd, char *buffer,
-        ssize_t n, long pos)
+        ssize_t n, long pos, char *c)
 {
-    ssize_t size = oob_data.size - 1;
-    char *data = oob_data.data + 1;
-    
     char rchar = buffer[pos];
-    buffer[pos] = oob_data.data[0];
+    buffer[pos] = c[1] ? c[0] : 'a';
     
     ssize_t len = send(sfd, buffer, pos + 1, MSG_OOB);
     buffer[pos] = rchar;
@@ -339,23 +374,11 @@ ssize_t send_oob(int sfd, char *buffer,
         uniperror("send");
         return -1;
     }
+    wait_send_if_support(sfd);
+    
     len--;
     if (len != pos) {
         return len;
-    }
-    if (size) {
-        wait_send(sfd);
-    }
-    for (long i = 0; i < size; i++) {
-        if (send(sfd, data + i, 1, MSG_OOB) < 0) {
-            uniperror("send");
-            if (get_e() == EAGAIN) {
-                return len;
-            }
-        }
-        if (size != 1) {
-            wait_send(sfd);
-        }
     }
     return len;
 }
@@ -373,8 +396,27 @@ ssize_t send_disorder(int sfd,
     if (len < 0) {
         uniperror("send");
     }
-    wait_send_if_support(sfd);
+    else wait_send_if_support(sfd);
     
+    if (setttl(sfd, params.def_ttl, fa) < 0) {
+        return -1;
+    }
+    return len;
+}
+
+
+ssize_t send_late_oob(int sfd, char *buffer,
+        ssize_t n, long pos, int fa, char *c)
+{
+    int bttl = 1;
+    
+    if (setttl(sfd, bttl, fa) < 0) {
+        return -1;
+    }
+    ssize_t len = send_oob(sfd, buffer, n, pos, c);
+    if (len < 0) {
+        uniperror("send");
+    }
     if (setttl(sfd, params.def_ttl, fa) < 0) {
         return -1;
     }
@@ -436,6 +478,11 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         }
     }
     // desync
+    #ifdef __linux__
+    if (dp.drop_sack && drop_sack(sfd)) {
+        return -1;
+    }
+    #endif
     long lp = offset;
     
     for (int i = 0; i < dp.parts_n; i++) {
@@ -455,14 +502,14 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             else 
                 pos += (host - buffer);
         }
-        else if (pos < 0) {
+        else if (pos < 0 || part.flag == OFFSET_END) {
             pos += n;
         }
         // after EAGAIN
-        if (pos <= offset) {
+        if (offset && pos <= offset) {
             continue;
         }
-        else if (pos <= 0 || pos >= n || pos <= lp) {
+        else if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
@@ -471,7 +518,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         switch (part.m) {
             #ifdef FAKE_SUPPORT
             case DESYNC_FAKE:
-                s = send_fake(sfd, 
+                if (pos != lp) s = send_fake(sfd, 
                     buffer + lp, type, pos - lp, fa, &dp);
                 break;
             #endif
@@ -482,8 +529,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             
             case DESYNC_OOB:
                 s = send_oob(sfd, 
-                    buffer + lp, n - lp, pos - lp);
-                wait_send_if_support(sfd);
+                    buffer + lp, n - lp, pos - lp, dp.oob_char);
+                break;
+                
+            case DESYNC_DISOOB:
+                s = send_late_oob(sfd, 
+                    buffer + lp, n - lp, pos - lp, fa, dp.oob_char);
                 break;
                 
             case DESYNC_SPLIT:
@@ -524,6 +575,23 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
 }
 
 
+int post_desync(int sfd, int dp_c)
+{
+    struct desync_params *dp = &params.dp[dp_c];
+    
+    #ifdef __linux__
+    if (dp->drop_sack) {
+        if (setsockopt(sfd, SOL_SOCKET, 
+                SO_DETACH_FILTER, &dp_c, sizeof(dp_c)) == -1) {
+            uniperror("setsockopt SO_DETACH_FILTER");
+            return -1;
+        }
+    }
+    #endif
+    return 0;
+}
+
+
 ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
         ssize_t n, struct sockaddr *dst, int dp_c)
 {
@@ -538,7 +606,13 @@ ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
         else {
             pkt = fake_udp;
         }
-
+        if (dp->fake_offset) {
+            if (pkt.size > dp->fake_offset) { 
+                pkt.size -= dp->fake_offset;
+                pkt.data += dp->fake_offset;
+            }
+            else pkt.size = 0;
+        }
         int bttl = dp->ttl ? dp->ttl : 8;
         if (setttl(sfd, bttl, fa) < 0) {
             return -1;

@@ -22,18 +22,18 @@
     
 #define OFFSET_SNI 1
 #define OFFSET_HOST 2
+#define OFFSET_END 3
 
 #define DETECT_HTTP_LOCAT 1
-#define DETECT_HTTP_CLERR 2
-#define DETECT_TLS_INVSID 4
-#define DETECT_TLS_ALERT 8
-#define DETECT_TORST 16
+#define DETECT_TLS_ERR 2
+#define DETECT_TORST 8
 
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
     DESYNC_DISORDER,
     DESYNC_OOB,
+    DESYNC_DISOOB,
     DESYNC_FAKE
 };
 
@@ -43,6 +43,7 @@ char *demode_str[] = {
     "DESYNC_SPLIT",
     "DESYNC_DISORDER",
     "DESYNC_OOB",
+    "DESYNC_DISOOB",
     "DESYNC_FAKE"
 };
 #endif
@@ -65,6 +66,9 @@ struct desync_params {
     char md5sig;
     struct packet fake_data;
     int udp_fake_count;
+    int fake_offset;
+    char drop_sack;
+    char oob_char[2];
     
     int parts_n;
     struct part *parts;
@@ -110,9 +114,7 @@ extern struct params params;
 
 extern struct packet fake_tls;
 extern struct packet fake_http;
-extern struct packet oob_data;
 extern struct packet fake_udp;
 
 extern char ip_option[1];
-
 #endif
