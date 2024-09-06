@@ -85,7 +85,7 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
     }
     time(&t);
     if (t > val->time + params.cache_ttl) {
-        LOG(LOG_S, "time=%ld, now=%ld, ignore\n", val->time, t);
+        LOG(LOG_S, "time=%lld, now=%lld, ignore\n", (long long)val->time, (long long)t);
         return 0;
     }
     return val->m;
