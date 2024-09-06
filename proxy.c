@@ -580,7 +580,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             struct sockaddr_ina remote;
             socklen_t rlen = sizeof(remote);
             if ( getsockopt(c, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
-                uniperror("setsockopt SO_ORIGINAL_DST");
+                uniperror("getsockopt SO_ORIGINAL_DST");
                 close(c);
             }
             int error = connect_hook(pool, rval, &remote, EV_CONNECT);
