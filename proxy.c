@@ -246,7 +246,7 @@ int s5_get_addr(char *buffer, size_t n,
         struct sockaddr_ina *addr, int type) 
 {
     if (n < S_SIZE_MIN) {
-        LOG(LOG_E, "ss: request to small\n");
+        LOG(LOG_E, "ss: request too small\n");
         return -S_ER_GEN;
     }
     struct s5_req *r = (struct s5_req *)buffer;
@@ -779,7 +779,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return 0;
         }
         if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request to small (%zd)\n", n);
+            LOG(LOG_E, "ss: request too small (%zd)\n", n);
             return -1;
         }
         struct s5_req *r = (struct s5_req *)buffer;
