@@ -33,6 +33,7 @@
         extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
     #endif
     #ifdef __linux__
+        /* For SO_ORIGINAL_DST only (which is 0x50) */
         #include "linux/netfilter_ipv4.h"
     #endif
 #endif
