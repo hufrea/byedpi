@@ -32,9 +32,12 @@
     #if defined(__linux__) && defined(__GLIBC__)
         extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
     #endif
+    #ifdef __linux__
+        #include "linux/netfilter_ipv4.h"
+    #endif
 #endif
 
-    
+
 int NOT_EXIT = 1;
 
 static void on_cancel(int sig) {
@@ -560,11 +563,33 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             close(c);
             continue;
         }
-        if (!(rval = add_event(pool, EV_REQUEST, c, POLLIN))) {
+        if (!(rval = add_event(pool,
+#ifdef __linux__
+                val->transparent ? EV_CONNECT : EV_REQUEST,
+#else
+                EV_REQUEST,
+#endif
+                c, POLLIN))) {
             close(c);
             continue;
         }
         rval->in6 = client.in6;
+#ifdef __linux__
+        if (val->transparent) {
+            struct sockaddr_ina remote;
+            socklen_t rlen = sizeof(remote);
+            if ( getsockopt(c, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+                uniperror("setsockopt SO_ORIGINAL_DST");
+                close(c);
+            }
+            int error = connect_hook(pool, rval, &remote, EV_CONNECT);
+            if (error) {
+                uniperror("connect_hook");
+                close(c);
+                continue;
+            }
+        }
+#endif
     }
     return 0;
 }
@@ -844,7 +869,7 @@ void close_conn(struct poolhd *pool, struct eval *val)
 }
 
 
-int event_loop(int srvfd) 
+int event_loop(int srvfd, int tsrvfd)
 {
     size_t bfsize = params.bfsize;
     
@@ -852,13 +877,24 @@ int event_loop(int srvfd)
     if (!pool) {
         uniperror("init pool");
         close(srvfd);
+        if (tsrvfd >= 0) close(tsrvfd);
         return -1;
     }
     if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
         uniperror("add event");
         destroy_pool(pool);
         close(srvfd);
+        if (tsrvfd >= 0) close(tsrvfd);
         return -1;
+    }
+    if (tsrvfd >= 0) {
+        if (!add_event(pool, EV_ACCEPT, tsrvfd, POLLIN)) {
+            uniperror("add event");
+            destroy_pool(pool);
+            close(srvfd);
+            close(tsrvfd);
+            return -1;
+        }
     }
     char *buffer = malloc(params.bfsize);
     if (!buffer) {
@@ -880,7 +916,12 @@ int event_loop(int srvfd)
         }
         assert(val->type >= 0
             && val->type < sizeof(eid_name)/sizeof(*eid_name));
-        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", val->fd, eid_name[val->type], val->mod_iter);
+        val->transparent = val->fd == tsrvfd;
+        if (val->type != EV_IGNORE)
+            LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d %s\n", 
+                        val->fd, eid_name[val->type], val->mod_iter,
+                        val->transparent ? " transp":"");
+
         
         switch (val->type) {
             case EV_ACCEPT:
@@ -967,7 +1008,7 @@ int listen_socket(struct sockaddr_ina *srv)
 }
 
 
-int run(struct sockaddr_ina *srv)
+int run(struct sockaddr_ina *srv, struct sockaddr_ina *tsrv)
 {
     #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
@@ -979,6 +1020,11 @@ int run(struct sockaddr_ina *srv)
     if (fd < 0) {
         return -1;
     }
-    return event_loop(fd);
+    int tfd = -1;
+    if (tsrv->in.sin_port) {
+        tfd = listen_socket(tsrv);
+        if (tfd < 0)
+            return -1;
+    }
+    return event_loop(fd, tfd);
 }
-    

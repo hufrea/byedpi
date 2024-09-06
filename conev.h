@@ -79,6 +79,7 @@ struct eval {
     };
     ssize_t recv_count;
     int attempt;
+    int transparent;
     char cache;
 };
 
