@@ -116,8 +116,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         
 int listen_socket(struct sockaddr_ina *srv);
 
-int event_loop(int srvfd, int tsrvfd);
+int event_loop(int srvfd);
 
-int run(struct sockaddr_ina *srv, struct sockaddr_ina *tsrv);
+int run(struct sockaddr_ina *srv);
 
 #endif

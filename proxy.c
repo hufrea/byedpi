@@ -564,24 +564,31 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             close(c);
             continue;
         }
-        if (!(rval = add_event(pool,
-#ifdef __linux__
-                val->transparent ? EV_CONNECT : EV_REQUEST,
-#else
-                EV_REQUEST,
-#endif
-                c, POLLIN))) {
+        if (!(rval = add_event(pool, EV_REQUEST, c, POLLIN))) {
             close(c);
             continue;
         }
         rval->in6 = client.in6;
-#ifdef __linux__
-        if (val->transparent) {
-            struct sockaddr_ina remote;
-            socklen_t rlen = sizeof(remote);
-            if ( getsockopt(c, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+        #ifdef __linux__
+        if (params.transparent) {
+            struct sockaddr_ina remote, self;
+            socklen_t rlen = sizeof(remote), slen = sizeof(self);
+            if (getsockopt(c, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
                 uniperror("getsockopt SO_ORIGINAL_DST");
                 close(c);
+                continue;
+            }
+            if (getsockname(c, &self.sa, &slen) < 0) {
+                uniperror("getsockname");
+                close(c);
+                continue;
+            }
+            if (self.sa.sa_family == remote.sa.sa_family && 
+                    self.in.sin_port == remote.in.sin_port &&
+                    addr_equ(&self, &remote)) {
+                LOG(LOG_E, "connect to self, ignore\n");
+                close(c);
+                continue;
             }
             int error = connect_hook(pool, rval, &remote, EV_CONNECT);
             if (error) {
@@ -590,7 +597,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
                 continue;
             }
         }
-#endif
+        #endif
     }
     return 0;
 }
@@ -870,7 +877,7 @@ void close_conn(struct poolhd *pool, struct eval *val)
 }
 
 
-int event_loop(int srvfd, int tsrvfd)
+int event_loop(int srvfd)
 {
     size_t bfsize = params.bfsize;
     
@@ -878,24 +885,13 @@ int event_loop(int srvfd, int tsrvfd)
     if (!pool) {
         uniperror("init pool");
         close(srvfd);
-        if (tsrvfd >= 0) close(tsrvfd);
         return -1;
     }
     if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
         uniperror("add event");
         destroy_pool(pool);
         close(srvfd);
-        if (tsrvfd >= 0) close(tsrvfd);
         return -1;
-    }
-    if (tsrvfd >= 0) {
-        if (!add_event(pool, EV_ACCEPT, tsrvfd, POLLIN)) {
-            uniperror("add event");
-            destroy_pool(pool);
-            close(srvfd);
-            close(tsrvfd);
-            return -1;
-        }
     }
     char *buffer = malloc(params.bfsize);
     if (!buffer) {
@@ -917,12 +913,8 @@ int event_loop(int srvfd, int tsrvfd)
         }
         assert(val->type >= 0
             && val->type < sizeof(eid_name)/sizeof(*eid_name));
-        val->transparent = val->fd == tsrvfd;
-        if (val->type != EV_IGNORE)
-            LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d %s\n", 
-                        val->fd, eid_name[val->type], val->mod_iter,
-                        val->transparent ? " transp":"");
-
+        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", 
+            val->fd, eid_name[val->type], val->mod_iter);
         
         switch (val->type) {
             case EV_ACCEPT:
@@ -1009,7 +1001,7 @@ int listen_socket(struct sockaddr_ina *srv)
 }
 
 
-int run(struct sockaddr_ina *srv, struct sockaddr_ina *tsrv)
+int run(struct sockaddr_ina *srv)
 {
     #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
@@ -1021,11 +1013,5 @@ int run(struct sockaddr_ina *srv, struct sockaddr_ina *tsrv)
     if (fd < 0) {
         return -1;
     }
-    int tfd = -1;
-    if (tsrv->in.sin_port) {
-        tfd = listen_socket(tsrv);
-        if (tfd < 0)
-            return -1;
-    }
-    return event_loop(fd, tfd);
+    return event_loop(fd);
 }
