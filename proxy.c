@@ -205,8 +205,8 @@ int resp_error(int fd, int e, int flag)
     if (params.transparent &&
             (e == ECONNREFUSED || e == ETIMEDOUT)) {
         struct linger l = { .l_onoff = 1 };
-        if (setsockopt(fd, SOL_SOCKET, 
-                SO_LINGER, &l, sizeof(l)) < 0) {
+        if (setsockopt(fd, 
+                SOL_SOCKET, SO_LINGER, &l, sizeof(l)) < 0) {
             uniperror("setsockopt SO_LINGER");
             return -1;
         }
@@ -534,13 +534,13 @@ int udp_associate(struct poolhd *pool,
     return 0;
 }
 
-
+#ifdef __linux__
 static inline int transp_conn(struct poolhd *pool, struct eval *val)
 {
-    #ifdef __linux__
     struct sockaddr_ina remote, self;
     socklen_t rlen = sizeof(remote), slen = sizeof(self);
-    if (getsockopt(val->fd, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+    if (getsockopt(val->fd,
+            IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
         uniperror("getsockopt SO_ORIGINAL_DST");
         return -1;
     }
@@ -549,8 +549,8 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
         return -1;
     }
     if (self.sa.sa_family == remote.sa.sa_family && 
-            self.in.sin_port == remote.in.sin_port &&
-            addr_equ(&self, &remote)) {
+            self.in.sin_port == remote.in.sin_port && 
+                addr_equ(&self, &remote)) {
         LOG(LOG_E, "connect to self, ignore\n");
         return -1;
     }
@@ -559,10 +559,9 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
         uniperror("connect_hook");
         return -1;
     }
-    #endif
     return 0;
 }
-
+#endif
 
 static inline int on_accept(struct poolhd *pool, struct eval *val)
 {
