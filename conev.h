@@ -68,7 +68,7 @@ struct buffer {
 struct eval {
     int fd;    
     int index;
-    unsigned int mod_iter;
+    unsigned long long mod_iter;
     enum eid type;
     struct eval *pair;
     struct buffer buff;
@@ -93,7 +93,7 @@ struct poolhd {
 #else
     struct pollfd *pevents;
 #endif
-    unsigned int iters;
+    unsigned long long iters;
 };
 
 struct poolhd *init_pool(int count);
