@@ -201,6 +201,17 @@ int resp_error(int fd, int e, int flag)
         }
         return resp_s5_error(fd, e);
     }
+    #ifdef __linux__
+    if (params.transparent &&
+            (e == ECONNREFUSED || e == ETIMEDOUT)) {
+        struct linger l = { .l_onoff = 1 };
+        if (setsockopt(fd, SOL_SOCKET, 
+                SO_LINGER, &l, sizeof(l)) < 0) {
+            uniperror("setsockopt SO_LINGER");
+            return -1;
+        }
+    }
+    #endif
     return 0;
 }
 
@@ -524,6 +535,35 @@ int udp_associate(struct poolhd *pool,
 }
 
 
+static inline int transp_conn(struct poolhd *pool, struct eval *val)
+{
+    #ifdef __linux__
+    struct sockaddr_ina remote, self;
+    socklen_t rlen = sizeof(remote), slen = sizeof(self);
+    if (getsockopt(val->fd, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+        uniperror("getsockopt SO_ORIGINAL_DST");
+        return -1;
+    }
+    if (getsockname(val->fd, &self.sa, &slen) < 0) {
+        uniperror("getsockname");
+        return -1;
+    }
+    if (self.sa.sa_family == remote.sa.sa_family && 
+            self.in.sin_port == remote.in.sin_port &&
+            addr_equ(&self, &remote)) {
+        LOG(LOG_E, "connect to self, ignore\n");
+        return -1;
+    }
+    int error = connect_hook(pool, val, &remote, EV_CONNECT);
+    if (error) {
+        uniperror("connect_hook");
+        return -1;
+    }
+    #endif
+    return 0;
+}
+
+
 static inline int on_accept(struct poolhd *pool, struct eval *val)
 {
     struct sockaddr_ina client;
@@ -570,32 +610,9 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         }
         rval->in6 = client.in6;
         #ifdef __linux__
-        if (params.transparent) {
-            struct sockaddr_ina remote, self;
-            socklen_t rlen = sizeof(remote), slen = sizeof(self);
-            if (getsockopt(c, IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
-                uniperror("getsockopt SO_ORIGINAL_DST");
-                close(c);
-                continue;
-            }
-            if (getsockname(c, &self.sa, &slen) < 0) {
-                uniperror("getsockname");
-                close(c);
-                continue;
-            }
-            if (self.sa.sa_family == remote.sa.sa_family && 
-                    self.in.sin_port == remote.in.sin_port &&
-                    addr_equ(&self, &remote)) {
-                LOG(LOG_E, "connect to self, ignore\n");
-                close(c);
-                continue;
-            }
-            int error = connect_hook(pool, rval, &remote, EV_CONNECT);
-            if (error) {
-                uniperror("connect_hook");
-                close(c);
-                continue;
-            }
+        if (params.transparent && transp_conn(pool, rval) < 0) {
+            close(c);
+            continue;
         }
         #endif
     }
