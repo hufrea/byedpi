@@ -974,6 +974,7 @@ int run(struct sockaddr_ina *srv)
         uniperror("signal SIGPIPE!");
     #endif
     signal(SIGINT, on_cancel);
+    signal(SIGTERM, on_cancel);
     
     int fd = listen_socket(srv);
     if (fd < 0) {
