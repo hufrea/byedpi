@@ -61,6 +61,9 @@ struct params params = {
 const char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
+    #ifdef __linux__
+    "    -E, --transparent         Transparent proxy mode\n"
+    #endif
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
     "    -U, --no-udp              Deny UDP association\n"
@@ -116,6 +119,9 @@ const struct option options[] = {
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
     {"port",          1, 0, 'p'},
+    #ifdef __linux__
+    {"transparent",   0, 0, 'E'},
+    #endif
     {"conn-ip",       1, 0, 'I'},
     {"buf-size",      1, 0, 'b'},
     {"max-conn",      1, 0, 'c'},
@@ -492,6 +498,11 @@ int main(int argc, char **argv)
         case 'U':
             params.udp = 0;
             break;
+        #ifdef __linux__
+        case 'E':
+            params.transparent = 1;
+            break;
+        #endif
             
         case 'h':
             printf(help_text);
@@ -868,6 +879,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
+
     int status = run((struct sockaddr_ina *)&params.laddr);
     clear_params();
     return status;
