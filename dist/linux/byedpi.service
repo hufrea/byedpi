@@ -1,0 +1,16 @@
+[Unit]
+Description=byedpi
+Documentation=https://github.com/hufrea/byedpi
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+ExecStart=ciadpi --split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=default.target
