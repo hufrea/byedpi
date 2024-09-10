@@ -29,4 +29,4 @@ clean:
 
 install: $(TARGET)
 	mkdir -p $(INSTALL_DIR)
-	install $(TARGET) $(INSTALL_DIR)
+	install -m 755 $(TARGET) $(INSTALL_DIR)
