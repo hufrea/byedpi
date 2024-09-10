@@ -497,7 +497,7 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     struct eval *client = add_event(pool, EV_UDP_TUNNEL, cfd, POLLIN);
-    if (!pair) {
+    if (!client) {
         del_event(pool, pair);
         close(cfd);
         return -1;
@@ -929,8 +929,7 @@ int event_loop(int srvfd)
         }
         assert(val->type >= 0
             && val->type < sizeof(eid_name)/sizeof(*eid_name));
-        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", 
-            val->fd, eid_name[val->type], val->mod_iter);
+        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %llu\n", val->fd, eid_name[val->type], val->mod_iter);
         
         switch (val->type) {
             case EV_ACCEPT:

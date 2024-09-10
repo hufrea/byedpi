@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "desync.h"
 
 #include <stdio.h>
@@ -16,11 +18,7 @@
     #include <netinet/tcp.h>
     #else
     #include <linux/tcp.h>
-    #include <sys/sendfile.h>
     #include <linux/filter.h>
-    #include <sys/syscall.h>
-    
-    #define memfd_create(name, flags) syscall(__NR_memfd_create, name, flags)
     #endif
 #else
     #include <winsock2.h>
@@ -143,14 +141,12 @@ void wait_send(int sfd)
 #define wait_send_if_support(sfd) // :(
 #endif
 
-#ifdef FAKE_SUPPORT
-#ifndef _WIN32
+#ifdef __linux__
 ssize_t send_fake(int sfd, char *buffer,
         int cnt, long pos, int fa, struct desync_params *opt)
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
-    #ifdef __linux__
     if (opt->md5sig) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
@@ -158,7 +154,6 @@ ssize_t send_fake(int sfd, char *buffer,
             return -1;
         }
     }
-    #endif
     struct packet pkt;
     if (opt->fake_data.data) {
         pkt = opt->fake_data;
@@ -173,21 +168,16 @@ ssize_t send_fake(int sfd, char *buffer,
         }
         else pkt.size = 0;
     }
-    
-    int ffd = memfd_create("name", 0);
-    if (ffd < 0) {
-        uniperror("memfd_create");
+    int fds[2];
+    if (pipe(fds) < 0) {
+        uniperror("pipe");
         return -1;
     }
     char *p = 0;
     ssize_t len = -1;
     
     while (1) {
-        if (ftruncate(ffd, pos) < 0) {
-            uniperror("ftruncate");
-            break;
-        }
-        p = mmap(0, pos, PROT_WRITE, MAP_SHARED, ffd, 0);
+        p = mmap(0, pos, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
         if (p == MAP_FAILED) {
             uniperror("mmap");
             p = 0;
@@ -198,8 +188,6 @@ ssize_t send_fake(int sfd, char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;
         }
-
-        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 5
@@ -212,17 +200,22 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-        #endif
         if (opt->ip_options && fa == AF_INET
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
+        struct iovec vec = { .iov_base = p, .iov_len = pos };
         
-        len = sendfile(sfd, ffd, 0, pos);
+        len = vmsplice(fds[1], &vec, 1, SPLICE_F_GIFT);
         if (len < 0) {
-            uniperror("sendfile");
+            uniperror("vmsplice");
+            break;
+        }
+        len = splice(fds[0], 0, sfd, 0, len, 0);
+        if (len < 0) {
+            uniperror("splice");
             break;
         }
         wait_send(sfd);
@@ -237,7 +230,6 @@ ssize_t send_fake(int sfd, char *buffer,
             uniperror("setsockopt IP_OPTIONS");
             break;
         }
-        #ifdef __linux__
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
                 .tcpm_keylen = 0
@@ -250,11 +242,11 @@ ssize_t send_fake(int sfd, char *buffer,
                 break;
             }
         }
-        #endif
         break;
     }
     if (p) munmap(p, pos);
-    close(ffd);
+    close(fds[0]);
+    close(fds[1]);
     return len;
 }
 #else
@@ -358,7 +350,6 @@ ssize_t send_fake(int sfd, char *buffer,
     }
     return len;
 }
-#endif
 #endif
 
 ssize_t send_oob(int sfd, char *buffer,
