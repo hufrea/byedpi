@@ -408,6 +408,10 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
+    if (mod_etype(pool, val, 0) < 0) {
+        uniperror("mod_etype");
+        return -1;
+    }
     val->pair = pair;
     pair->pair = val;
     #ifdef __NetBSD__
@@ -870,7 +874,8 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
         }
     }
     else {
-        if (mod_etype(pool, val, POLLIN)) {
+        if (mod_etype(pool, val, POLLIN) ||
+                mod_etype(pool, val->pair, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
