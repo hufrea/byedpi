@@ -12,13 +12,13 @@ sudo make install
 Copy and enable the service:
 
 ```sh
-cp byedpi.service /etc/systemd/system/byedpi.service
+cp byedpi.service ~/.config/systemd/user/
 sudo systemctl daemon-reload
-sudo systemctl enable byedpi.service
-sudo systemctl start byedpi.service
+systemctl --user enable byedpi.service
+systemctl --user start byedpi.service
 ```
 
 You should see the service now marked as "active":
 ```sh
-sudo systemctl status byedpi.service
+systemctl --user status byedpi.service
 ```
