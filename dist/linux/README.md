@@ -13,7 +13,7 @@ Copy and enable the service:
 
 ```sh
 cp byedpi.service ~/.config/systemd/user/
-sudo systemctl daemon-reload
+systemctl --user daemon-reload
 systemctl --user enable byedpi.service
 systemctl --user start byedpi.service
 ```
