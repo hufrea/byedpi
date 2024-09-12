@@ -105,6 +105,7 @@ struct params {
     size_t bfsize;
     struct sockaddr_in6 baddr;
     struct sockaddr_in6 laddr;
+    char transparent;
     struct mphdr *mempool;
     
     char *protect_path;

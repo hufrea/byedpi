@@ -15,7 +15,7 @@
 #endif
 
 #define ANTOHS(data, i) \
-    (uint16_t)((data[i] << 8) + (uint8_t)data[i + 1])
+    (((uint16_t)data[i] << 8) + (uint8_t)data[i + 1])
     
 #define SHTONA(data, i, x) \
     data[i] = (uint8_t)((x) >> 8); \

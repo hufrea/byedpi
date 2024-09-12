@@ -153,9 +153,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
             if (i < 0) {
                 return 0;
             }
-            if (pool->iters == UINT_MAX) {
-                pool->iters = 0;
-            }
             pool->iters++;
         }
         struct eval *val = pool->pevents[i].data.ptr;
@@ -188,9 +185,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
                 return 0;
             }
             i = pool->count - 1;
-            if (pool->iters == UINT_MAX) {
-                pool->iters = 0;
-            }
             pool->iters++;
         }
         short type = pool->pevents[i].revents;

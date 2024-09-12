@@ -32,9 +32,13 @@
     #if defined(__linux__) && defined(__GLIBC__)
         extern int accept4(int, struct sockaddr *__restrict, socklen_t *__restrict, int);
     #endif
+    #ifdef __linux__
+        /* For SO_ORIGINAL_DST only (which is 0x50) */
+        #include "linux/netfilter_ipv4.h"
+    #endif
 #endif
 
-    
+
 int NOT_EXIT = 1;
 
 static void on_cancel(int sig) {
@@ -197,6 +201,17 @@ int resp_error(int fd, int e, int flag)
         }
         return resp_s5_error(fd, e);
     }
+    #ifdef __linux__
+    if (params.transparent &&
+            (e == ECONNREFUSED || e == ETIMEDOUT)) {
+        struct linger l = { .l_onoff = 1 };
+        if (setsockopt(fd, 
+                SOL_SOCKET, SO_LINGER, &l, sizeof(l)) < 0) {
+            uniperror("setsockopt SO_LINGER");
+            return -1;
+        }
+    }
+    #endif
     return 0;
 }
 
@@ -242,7 +257,7 @@ int s5_get_addr(char *buffer, size_t n,
         struct sockaddr_ina *addr, int type) 
 {
     if (n < S_SIZE_MIN) {
-        LOG(LOG_E, "ss: request to small\n");
+        LOG(LOG_E, "ss: request too small\n");
         return -S_ER_GEN;
     }
     struct s5_req *r = (struct s5_req *)buffer;
@@ -393,6 +408,10 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
+    if (mod_etype(pool, val, 0) < 0) {
+        uniperror("mod_etype");
+        return -1;
+    }
     val->pair = pair;
     pair->pair = val;
     #ifdef __NetBSD__
@@ -482,7 +501,7 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     struct eval *client = add_event(pool, EV_UDP_TUNNEL, cfd, POLLIN);
-    if (!pair) {
+    if (!client) {
         del_event(pool, pair);
         close(cfd);
         return -1;
@@ -519,6 +538,34 @@ int udp_associate(struct poolhd *pool,
     return 0;
 }
 
+#ifdef __linux__
+static inline int transp_conn(struct poolhd *pool, struct eval *val)
+{
+    struct sockaddr_ina remote, self;
+    socklen_t rlen = sizeof(remote), slen = sizeof(self);
+    if (getsockopt(val->fd,
+            IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+        uniperror("getsockopt SO_ORIGINAL_DST");
+        return -1;
+    }
+    if (getsockname(val->fd, &self.sa, &slen) < 0) {
+        uniperror("getsockname");
+        return -1;
+    }
+    if (self.sa.sa_family == remote.sa.sa_family && 
+            self.in.sin_port == remote.in.sin_port && 
+                addr_equ(&self, &remote)) {
+        LOG(LOG_E, "connect to self, ignore\n");
+        return -1;
+    }
+    int error = connect_hook(pool, val, &remote, EV_CONNECT);
+    if (error) {
+        uniperror("connect_hook");
+        return -1;
+    }
+    return 0;
+}
+#endif
 
 static inline int on_accept(struct poolhd *pool, struct eval *val)
 {
@@ -565,6 +612,12 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             continue;
         }
         rval->in6 = client.in6;
+        #ifdef __linux__
+        if (params.transparent && transp_conn(pool, rval) < 0) {
+            close(c);
+            continue;
+        }
+        #endif
     }
     return 0;
 }
@@ -753,7 +806,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return 0;
         }
         if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request to small (%zd)\n", n);
+            LOG(LOG_E, "ss: request too small (%zd)\n", n);
             return -1;
         }
         struct s5_req *r = (struct s5_req *)buffer;
@@ -821,7 +874,8 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
         }
     }
     else {
-        if (mod_etype(pool, val, POLLIN)) {
+        if (mod_etype(pool, val, POLLIN) ||
+                mod_etype(pool, val->pair, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
@@ -844,7 +898,7 @@ void close_conn(struct poolhd *pool, struct eval *val)
 }
 
 
-int event_loop(int srvfd) 
+int event_loop(int srvfd)
 {
     size_t bfsize = params.bfsize;
     
@@ -880,7 +934,7 @@ int event_loop(int srvfd)
         }
         assert(val->type >= 0
             && val->type < sizeof(eid_name)/sizeof(*eid_name));
-        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %d\n", val->fd, eid_name[val->type], val->mod_iter);
+        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %llu\n", val->fd, eid_name[val->type], val->mod_iter);
         
         switch (val->type) {
             case EV_ACCEPT:
@@ -974,6 +1028,7 @@ int run(struct sockaddr_ina *srv)
         uniperror("signal SIGPIPE!");
     #endif
     signal(SIGINT, on_cancel);
+    signal(SIGTERM, on_cancel);
     
     int fd = listen_socket(srv);
     if (fd < 0) {
@@ -981,4 +1036,3 @@ int run(struct sockaddr_ina *srv)
     }
     return event_loop(fd);
 }
-    
