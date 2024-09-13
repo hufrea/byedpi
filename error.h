@@ -11,6 +11,8 @@
     #include <android/log.h>
 #endif
 
+#include "params.h"
+
 #ifdef _WIN32
 #define get_e() \
     unie(WSAGetLastError())
