@@ -614,7 +614,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         rval->in6 = client.in6;
         #ifdef __linux__
         if (params.transparent && transp_conn(pool, rval) < 0) {
-            close(c);
+            del_event(pool, rval);
             continue;
         }
         #endif
@@ -904,12 +904,10 @@ int event_loop(int srvfd)
     
     struct poolhd *pool = init_pool(params.max_open * 2 + 1);
     if (!pool) {
-        uniperror("init pool");
         close(srvfd);
         return -1;
     }
     if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
-        uniperror("add event");
         destroy_pool(pool);
         close(srvfd);
         return -1;
