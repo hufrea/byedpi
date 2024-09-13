@@ -608,7 +608,6 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
             continue;
         }
         if (!(rval = add_event(pool, EV_REQUEST, c, POLLIN))) {
-            LOG(LOG_E, "add_event: pool is full\n");
             close(c);
             continue;
         }
@@ -905,12 +904,10 @@ int event_loop(int srvfd)
     
     struct poolhd *pool = init_pool(params.max_open * 2 + 1);
     if (!pool) {
-        uniperror("init pool");
         close(srvfd);
         return -1;
     }
     if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
-        uniperror("add event");
         destroy_pool(pool);
         close(srvfd);
         return -1;
