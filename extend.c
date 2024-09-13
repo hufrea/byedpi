@@ -331,7 +331,8 @@ int on_desync_again(struct poolhd *pool,
         struct eval *val, char *buffer, size_t bfsize)
 {
     if (val->flag == FLAG_CONN) {
-        if (mod_etype(pool, val, POLLIN)) {
+        if (mod_etype(pool, val, POLLIN) ||
+                mod_etype(pool, val->pair, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
