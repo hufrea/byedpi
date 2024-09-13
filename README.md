@@ -288,7 +288,7 @@ TCP может отсылать данные вне основного пото�
 
 ```sh
 docker build ./ -t byedpi:latest
-docker run -p 1080:1080 -ti byedpi:latest ciadpi --disorder 1 --split 1 
+docker run -p 1080:1080 -ti byedpi:latest ciadpi --disorder 1 --auto=torst --tlsrec 1+s 
 ```
 
 ------
