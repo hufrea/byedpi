@@ -616,7 +616,6 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
         #ifdef __linux__
         if (params.transparent && transp_conn(pool, rval) < 0) {
             del_event(pool, rval);
-            close(c);
             continue;
         }
         #endif
