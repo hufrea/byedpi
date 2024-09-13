@@ -3,10 +3,8 @@ RUN apk update && apk add --no-cache \
     build-base \
     curl \
     git \
-    libpcap-dev \
-    linux-headers \
-    musl-dev \
-    openssl-dev && git clone -b \
+    linux-headers && \
+    git clone -b \
     $(basename $(curl -Ls -o /dev/null -w %{url_effective} \
     https://github.com/hufrea/byedpi/releases/latest)) \ 
     https://github.com/hufrea/byedpi.git \
