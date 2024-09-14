@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "mpool.h"
 
@@ -63,11 +64,11 @@ struct desync_params {
     int ttl;
     char *ip_options;
     ssize_t ip_options_len;
-    char md5sig;
+    bool md5sig;
     struct packet fake_data;
     int udp_fake_count;
     int fake_offset;
-    char drop_sack;
+    bool drop_sack;
     char oob_char[2];
     
     int parts_n;
@@ -90,23 +91,23 @@ struct params {
     int dp_count;
     struct desync_params *dp;
     long sfdelay;
-    char wait_send;
+    bool wait_send;
     int def_ttl;
-    char custom_ttl;
+    bool custom_ttl;
     
-    char tfo;
+    bool tfo;
     unsigned int timeout;
     int auto_level;
     long cache_ttl;
-    char ipv6;
-    char resolve;
-    char udp;
+    bool ipv6;
+    bool resolve;
+    bool udp;
     int max_open;
     int debug;
     size_t bfsize;
     struct sockaddr_in6 baddr;
     struct sockaddr_in6 laddr;
-    char transparent;
+    bool transparent;
     struct mphdr *mempool;
     
     char *protect_path;
