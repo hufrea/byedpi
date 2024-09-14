@@ -19,6 +19,10 @@ int on_desync(struct poolhd *pool, struct eval *val,
 ssize_t udp_hook(struct eval *val, 
         char *buffer, size_t bfsize, ssize_t n, struct sockaddr_ina *dst);
 
+int on_torst(struct poolhd *pool, struct eval *val);
+
+int on_fin(struct poolhd *pool, struct eval *val);
+
 #ifdef __linux__
 int protect(int conn_fd, const char *path);
 #else

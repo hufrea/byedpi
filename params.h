@@ -96,6 +96,7 @@ struct params {
     
     char tfo;
     unsigned int timeout;
+    int auto_level;
     long cache_ttl;
     char ipv6;
     char resolve;

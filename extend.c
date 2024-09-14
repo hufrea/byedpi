@@ -49,28 +49,50 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
     assert(m >= -1 && m < params.dp_count);
+    struct {
+        uint16_t port;
+        union {
+            struct in_addr i4;
+            struct in6_addr i6;
+        };
+    } key = { .port = dst->in.sin_port };
     
     time_t t = 0;
     struct elem *val = 0;
-    char *str = (char *)&dst->in;
-    int len = 0;
+    int len = sizeof(dst->in.sin_port);
     
     if (dst->sa.sa_family == AF_INET) {
-        len = sizeof(dst->in);
+        len += sizeof(dst->in.sin_addr);
+        key.i4 = dst->in.sin_addr;
     }
     else {
-        len = sizeof(dst->in6) - sizeof(dst->in6.sin6_scope_id);
+        len += sizeof(dst->in6.sin6_addr);
+        key.i6 = dst->in6.sin6_addr;
     }
-    len -= sizeof(dst->sa.sa_family);
-    assert(len > 0);
+    
+    if (m < 0) {
+        val = mem_get(params.mempool, (char *)&key, len);
+        if (!val) {
+            return -1;
+        }
+        time(&t);
+        if (t > val->time + params.cache_ttl) {
+            LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
+            return 0;
+        }
+        return val->m;
+    }
+    INIT_ADDR_STR((*dst));
     
     if (m == 0) {
-        mem_delete(params.mempool, str, len);
+        LOG(LOG_S, "delete ip: %s\n", ADDR_STR);
+        mem_delete(params.mempool, (char *)&key, len);
         return 0;
     }
-    else if (m > 0) {
+    else {
+        LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
         time(&t);
-        val = mem_add(params.mempool, str, len);
+        val = mem_add(params.mempool, (char *)&key, len);
         if (!val) {
             uniperror("mem_add");
             return -1;
@@ -79,16 +101,7 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
         val->time = t;
         return 0;
     }
-    val = mem_get(params.mempool, str, len);
-    if (!val) {
-        return -1;
-    }
-    time(&t);
-    if (t > val->time + params.cache_ttl) {
-        LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
-        return 0;
-    }
-    return val->m;
+    
 }
 
 
@@ -188,21 +201,36 @@ int on_torst(struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
-    for (; m < params.dp_count; m++) {
-        struct desync_params *dp = &params.dp[m];
-        if (!dp->detect) {
-            return -1;
+    bool can_reconn = (
+        val->pair->buff.data && !val->recv_count
+    );
+    if (can_reconn || params.auto_level >= 1) {
+        for (; m < params.dp_count; m++) {
+            struct desync_params *dp = &params.dp[m];
+            if (!dp->detect) {
+                return -1;
+            }
+            if (dp->detect & DETECT_TORST) {
+                break;
+            }
         }
-        if (dp->detect & DETECT_TORST) {
-            break;
+        if (m >= params.dp_count) {
+            if (m > 1) mode_add_get(
+                (struct sockaddr_ina *)&val->in6, 0);
         }
+        else if (can_reconn)
+            return reconnect(pool, val, m);
+        else 
+            mode_add_get(
+                (struct sockaddr_ina *)&val->in6, m);
     }
-    if (m >= params.dp_count) {
-        mode_add_get(
-            (struct sockaddr_ina *)&val->in6, 0);
+    struct linger l = { .l_onoff = 1 };
+    if (setsockopt(val->pair->fd, SOL_SOCKET,
+            SO_LINGER, (char *)&l, sizeof(l)) < 0) {
+        uniperror("setsockopt SO_LINGER");
         return -1;
     }
-    return reconnect(pool, val, m);
+    return -1;
 }
 
 
@@ -210,21 +238,44 @@ int on_fin(struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
+    bool can_reconn = (
+        val->pair->buff.data && !val->recv_count
+    );
+    if (!can_reconn && params.auto_level < 1) {
+        return -1;
+    }
+    bool ssl_err = 0;
+    
+    if (can_reconn) {
+        char *req = val->pair->buff.data;
+        ssize_t qn = val->pair->buff.size;
+    
+        ssl_err = is_tls_chello(req, qn);
+    }
+    else if (val->mark && val->round_count <= 1) {
+        ssl_err = 1;
+    }
+    if (!ssl_err) {
+        return -1;
+    }
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect) {
             return -1;
         }
-        if (!(dp->detect & DETECT_TLS_ERR)) {
-            continue;
+        if (dp->detect & DETECT_TLS_ERR) {
+            if (can_reconn)
+                return reconnect(pool, val, m);
+            else {
+                mode_add_get(
+                    (struct sockaddr_ina *)&val->in6, m);
+                return -1;
+            }
         }
-        char *req = val->pair->buff.data;
-        ssize_t qn = val->pair->buff.size;
-
-        if (!is_tls_chello(req, qn)) {
-            continue;
-        }
-        return reconnect(pool, val, m);
+    }
+    if (m > 1) { // delete
+        mode_add_get(
+            (struct sockaddr_ina *)&val->in6, 0);
     }
     return -1;
 }
@@ -279,20 +330,25 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     assert(!out);
     ssize_t n = recv(val->fd, buffer, bfsize, 0);
     if (n < 1) {
-        if (n) uniperror("recv");
+        if (!n) {
+            return on_fin(pool, val);
+        }
+        uniperror("recv");
         switch (get_e()) {
             case ECONNRESET:
             case ECONNREFUSED:
             case ETIMEDOUT: 
                 return on_torst(pool, val);
         }
-        return on_fin(pool, val);
+        return -1;
     }
     //
     if (on_response(pool, val, buffer, n) == 0) {
         return 0;
     }
     val->recv_count += n;
+    val->round_count = 1;
+    val->last_round = 1;
     struct eval *pair = val->pair;
     
     ssize_t sn = send(pair->fd, buffer, n, 0);
@@ -300,9 +356,12 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
         uniperror("send");
         return -1;
     }
+    if (params.auto_level > 0 && params.dp_count > 1) {
+        val->mark = is_tls_chello(pair->buff.data, pair->buff.size);
+    }
     to_tunnel(pair);
     
-    if (params.timeout &&
+    if (params.timeout && params.auto_level < 1 &&
             set_timeout(val->fd, 0)) {
         return -1;
     }
@@ -315,15 +374,7 @@ int on_tunnel_check(struct poolhd *pool, struct eval *val,
     if (!pair->cache) {
         return 0;
     }
-    struct sockaddr_ina *addr = (struct sockaddr_ina *)&val->in6;
-    
-    if (m == 0) {
-        LOG(LOG_S, "delete ip: m=%d\n", m);
-    } else {
-        INIT_ADDR_STR((*addr));
-        LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
-    }
-    return mode_add_get(addr, m);
+    return mode_add_get((struct sockaddr_ina *)&val->in6, m);
 }
 
 
@@ -385,6 +436,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
     }
     val->buff.size += n;
     val->recv_count += n;
+    val->round_count = 1;
     
     val->buff.data = realloc(val->buff.data, val->buff.size);
     if (val->buff.data == 0) {

@@ -667,11 +667,30 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         if (n < 0 && get_e() == EAGAIN) {
             break;
         }
-        if (n < 1) {
-            if (n) uniperror("recv");
+        if (n == 0) {
+            if (val->flag != FLAG_CONN)
+                val = val->pair;
+            on_fin(pool, val);
+            return -1;
+        }
+        if (n < 0) {
+            uniperror("recv");
+            switch (get_e()) {
+            case ECONNRESET:
+            case ETIMEDOUT: 
+                if (val->flag == FLAG_CONN)
+                    on_torst(pool, val);
+                else
+                    on_fin(pool, val->pair);
+            }
             return -1;
         }
         val->recv_count += n;
+        if (!val->last_round) {
+            val->round_count++;
+            val->last_round = 1;
+            pair->last_round = 0;
+        }
         
         ssize_t sn = send(pair->fd, buffer, n, 0);
         if (sn != n) {
@@ -893,7 +912,10 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
 
 void close_conn(struct poolhd *pool, struct eval *val)
 {
-    LOG(LOG_S, "close: fds=%d,%d\n", val->fd, val->pair ? val->pair->fd : -1);
+    LOG(LOG_S, "close: fds=%d,%d, recv: %zd,%zd, rounds: %d,%d\n", 
+        val->fd, val->pair ? val->pair->fd : -1,
+        val->recv_count, val->pair ? val->pair->recv_count : 0,
+        val->round_count, val->pair ? val->pair->round_count : 0);
     del_event(pool, val);
 }
 
