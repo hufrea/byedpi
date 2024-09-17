@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "14"
+#define VERSION "14.1"
 
 char ip_option[1] = "\0";
 

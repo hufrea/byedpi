@@ -35,6 +35,9 @@
     #ifdef __linux__
         /* For SO_ORIGINAL_DST only (which is 0x50) */
         #include "linux/netfilter_ipv4.h"
+        #ifndef IP6T_SO_ORIGINAL_DST
+        #define IP6T_SO_ORIGINAL_DST SO_ORIGINAL_DST
+        #endif
     #endif
 #endif
 
@@ -129,6 +132,7 @@ int resolve(char *host, int len,
     
     char rchar = host[len];
     host[len] = '\0';
+    LOG(LOG_S, "resolve: %s\n", host);
     
     if (getaddrinfo(host, 0, &hints, &res) || !res) {
         host[len] = rchar;
@@ -543,10 +547,14 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
 {
     struct sockaddr_ina remote, self;
     socklen_t rlen = sizeof(remote), slen = sizeof(self);
-    if (getsockopt(val->fd,
-            IPPROTO_IP, SO_ORIGINAL_DST, &remote, &rlen) != 0) {
-        uniperror("getsockopt SO_ORIGINAL_DST");
-        return -1;
+    if (getsockopt(val->fd, IPPROTO_IP,
+            SO_ORIGINAL_DST, &remote, &rlen) != 0)
+    {
+        if (getsockopt(val->fd, IPPROTO_IPV6,
+                IP6T_SO_ORIGINAL_DST, &remote, &rlen) != 0) {
+            uniperror("getsockopt SO_ORIGINAL_DST");
+            return -1;
+        }
     }
     if (getsockname(val->fd, &self.sa, &slen) < 0) {
         uniperror("getsockname");
