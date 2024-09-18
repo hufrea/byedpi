@@ -49,24 +49,21 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
     assert(m >= -1 && m < params.dp_count);
-    #pragma pack(push,4)
     struct key_struct {
         uint16_t port;
-        uint16_t pad0; // fill with 0 before use!
         union {
             struct in_addr i4;
             struct in6_addr i6;
         };
-    } key = { .port = dst->in.sin_port, .pad0 = 0 };
-    #pragma pack(pop)
-    #if defined(__GNUC__)
-    _Static_assert(offsetof(struct key_struct, i4) == sizeof(key.port)+sizeof(key.pad0), "key_struct");
-    #endif
-
+    } key = { 0 };
+    
+    int len = offsetof(struct key_struct, i4);
+    memset(&key, 0, len);
+    key.port = dst->in.sin_port;
+    
     time_t t = 0;
     struct elem *val = 0;
-    int len = offsetof(struct key_struct, i4);
-
+    
     if (dst->sa.sa_family == AF_INET) {
         len += sizeof(dst->in.sin_addr);
         key.i4 = dst->in.sin_addr;
