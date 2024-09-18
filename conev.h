@@ -78,8 +78,11 @@ struct eval {
         struct sockaddr_in6 in6;
     };
     ssize_t recv_count;
+    unsigned int round_count;
+    char last_round;
     int attempt;
     char cache;
+    char mark; //
 };
 
 struct poolhd {
