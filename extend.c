@@ -48,7 +48,7 @@ int set_timeout(int fd, unsigned int s)
 }
 
 
-int serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const size_t out_len)
+size_t serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const size_t out_len)
 {
     // Not a function to return on error directly
     #define serialize(raw, field, len, counter){ \
@@ -56,7 +56,7 @@ int serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const siz
         if((counter + size) <= len){ \
             memcpy(raw + counter, &(field), size); \
             counter += size; \
-        }else return (counter + size); \
+        }else return counter; \
     }
     // call order is important
     size_t c = 0;
@@ -70,7 +70,7 @@ int serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const siz
     }
     #undef serialize
 
-    return (int )c;
+    return c;
 }
 
 
