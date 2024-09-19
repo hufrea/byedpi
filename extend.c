@@ -44,27 +44,84 @@ int set_timeout(int fd, unsigned int s)
     return 0;
 }
 
+struct key_struct {
+    uint16_t port;
+    // to detect correct union in raw
+    sa_family_t family;
+    union {
+        struct in_addr i4;
+        struct in6_addr i6;
+    };
+};
 
+int serialize_key_struct(const struct key_struct* const in, uint8_t* const out, const size_t out_len){
+    
+    // Not a function to return on error directly
+    #define serialize(raw, field, len, counter){ \
+        const size_t size = sizeof(field); \
+        if((counter + size) <= len){ \
+            memcpy(raw + counter, &(field), size); \
+            counter += size; \
+        }else return (counter + size); \
+    }
+
+    // call order is important
+    size_t c = 0;
+    serialize(out, in->port, out_len, c);
+    serialize(out, in->family, out_len, c);
+    
+    if(in->family == AF_INET){
+        serialize(out, in->i4, out_len, c);
+    }else{
+        serialize(out, in->i6, out_len, c);
+    }
+    #undef serialize
+
+    return 0;
+}
+
+int deserialize_key_struct(const uint8_t* const in, const size_t in_len, struct key_struct* const out){
+    
+    #define deserialize(raw, field, len, counter){ \
+        const size_t size = sizeof(field); \
+        if((counter + size) <= len){ \
+            memcpy(&(field), raw + counter, size); \
+            counter += size; \
+        }else return (counter + size); \
+    }
+
+    // call order is important
+    size_t c = 0;
+    deserialize(in, out->port, in_len, c);
+    deserialize(in, out->family, in_len, c);
+    
+    if(out->family == AF_INET){
+        deserialize(in, out->i4, in_len, c);
+    }else if(out->family == AF_INET6) {
+        deserialize(in, out->i6, in_len, c);
+    }else{
+        // incorrect family
+        return c;
+    }
+    #undef deserialize
+
+    return 0;
+}
 int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
     assert(m >= -1 && m < params.dp_count);
-    struct key_struct {
-        uint16_t port;
-        union {
-            struct in_addr i4;
-            struct in6_addr i6;
-        };
-    } key = { 0 };
     
-    int len = offsetof(struct key_struct, i4);
-    memset(&key, 0, len);
+    struct key_struct key = {0};
+    
     key.port = dst->in.sin_port;
+    key.family = dst->sa.sa_family;
     
+    int len = sizeof(key.port) + sizeof(key.family);
     time_t t = 0;
     struct elem *val = 0;
     
-    if (dst->sa.sa_family == AF_INET) {
+    if (key.family == AF_INET) {
         len += sizeof(dst->in.sin_addr);
         key.i4 = dst->in.sin_addr;
     }
@@ -73,11 +130,20 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
         key.i6 = dst->in6.sin6_addr;
     }
 
+    // Arrays can't have padding
+    uint8_t key_raw[sizeof(key) + 1] = {0};
+    if(serialize_key_struct(&key, key_raw, sizeof(key_raw))){
+        return -1;
+    }
     if (m < 0) {
-        val = mem_get(params.mempool, (char *)&key, len);
+        val = mem_get(params.mempool, (char*)key_raw, len);
         if (!val) {
             return -1;
         }
+        /*
+        if(deserialize_key_struct((const uint8_t*) val->data, val->len, &key))
+            return -1;
+        */
         time(&t);
         if (t > val->time + params.cache_ttl) {
             LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
@@ -89,13 +155,14 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 
     if (m == 0) {
         LOG(LOG_S, "delete ip: %s\n", ADDR_STR);
-        mem_delete(params.mempool, (char *)&key, len);
+        mem_delete(params.mempool, (char*)key_raw, len);
         return 0;
     }
     else {
         LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
         time(&t);
-        val = mem_add(params.mempool, (char *)&key, len);
+
+        val = mem_add(params.mempool, (char*)key_raw, len);
         if (!val) {
             uniperror("mem_add");
             return -1;
