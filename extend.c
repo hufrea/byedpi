@@ -48,17 +48,16 @@ int set_timeout(int fd, unsigned int s)
 }
 
 
-size_t serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const size_t out_len)
+static ssize_t serialize_addr(const struct sockaddr_ina *dst,
+        uint8_t *const out, const size_t out_len)
 {
-    // Not a function to return on error directly
     #define serialize(raw, field, len, counter){ \
         const size_t size = sizeof(field); \
-        if((counter + size) <= len){ \
+        if ((counter + size) <= len) { \
             memcpy(raw + counter, &(field), size); \
             counter += size; \
-        }else return counter; \
+        } else return 0; \
     }
-    // call order is important
     size_t c = 0;
     serialize(out, dst->in.sin_port, out_len, c);
     serialize(out, dst->sa.sa_family, out_len, c);
@@ -74,7 +73,7 @@ size_t serialize_addr(const struct sockaddr_ina *dst, uint8_t* const out, const 
 }
 
 
-int mode_add_get(struct sockaddr_ina *dst, int m)
+static int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
     assert(m >= -1 && m < params.dp_count);
@@ -84,9 +83,8 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
     
     uint8_t key[KEY_SIZE] = { 0 };
     int len = serialize_addr(dst, key, sizeof(key));
-    if (len < 0) {
-        return -1;
-    }
+    assert(len > 0);
+    
     if (m < 0) {
         val = mem_get(params.mempool, (char *)key, len);
         if (!val) {
