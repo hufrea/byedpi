@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "13.1"
+#define VERSION "14.1"
 
 char ip_option[1] = "\0";
 
@@ -54,7 +54,8 @@ struct params params = {
     .laddr = {
         .sin6_family = AF_INET
     },
-    .debug = 0
+    .debug = 0,
+    .auto_level = 0
 };
 
 
@@ -77,6 +78,7 @@ const char help_text[] = {
     #endif
     "    -A, --auto <t,r,s,n>      Try desync params after this option\n"
     "                              Detect: torst,redirect,ssl_err,none\n"
+    "    -L, --auto-mode <0|1>     1 - handle trigger after several packets\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
@@ -131,6 +133,7 @@ const struct option options[] = {
     {"tfo ",          0, 0, 'F'},
     #endif
     {"auto",          1, 0, 'A'},
+    {"auto-mode",     1, 0, 'L'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
@@ -559,6 +562,14 @@ int main(int argc, char **argv)
         
         case 'F':
             params.tfo = 1;
+            break;
+            
+        case 'L':
+            val = strtol(optarg, &end, 0);
+            if (val < 0 || val > 1 || *end)
+                invalid = 1;
+            else
+                params.auto_level = val;
             break;
             
         case 'A':
