@@ -23,6 +23,9 @@
 #include "desync.h"
 #include "packets.h"
 
+#define KEY_SIZE sizeof(uint16_t) + \
+    sizeof(sa_family_t) + sizeof(struct sockaddr_in6)
+
 
 int set_timeout(int fd, unsigned int s)
 {
@@ -45,36 +48,45 @@ int set_timeout(int fd, unsigned int s)
 }
 
 
-int mode_add_get(struct sockaddr_ina *dst, int m)
+static ssize_t serialize_addr(const struct sockaddr_ina *dst,
+        uint8_t *const out, const size_t out_len)
+{
+    #define serialize(raw, field, len, counter){ \
+        const size_t size = sizeof(field); \
+        if ((counter + size) <= len) { \
+            memcpy(raw + counter, &(field), size); \
+            counter += size; \
+        } else return 0; \
+    }
+    size_t c = 0;
+    serialize(out, dst->in.sin_port, out_len, c);
+    serialize(out, dst->sa.sa_family, out_len, c);
+    
+    if (dst->sa.sa_family == AF_INET) {
+        serialize(out, dst->in.sin_addr, out_len, c);
+    } else {
+        serialize(out, dst->in6.sin6_addr, out_len, c);
+    }
+    #undef serialize
+
+    return c;
+}
+
+
+static int mode_add_get(struct sockaddr_ina *dst, int m)
 {
     // m < 0: get, m > 0: set, m == 0: delete
     assert(m >= -1 && m < params.dp_count);
-    struct key_struct {
-        uint16_t port;
-        union {
-            struct in_addr i4;
-            struct in6_addr i6;
-        };
-    } key = { 0 };
-    
-    int len = offsetof(struct key_struct, i4);
-    memset(&key, 0, len);
-    key.port = dst->in.sin_port;
     
     time_t t = 0;
     struct elem *val = 0;
     
-    if (dst->sa.sa_family == AF_INET) {
-        len += sizeof(dst->in.sin_addr);
-        key.i4 = dst->in.sin_addr;
-    }
-    else {
-        len += sizeof(dst->in6.sin6_addr);
-        key.i6 = dst->in6.sin6_addr;
-    }
-
+    uint8_t key[KEY_SIZE] = { 0 };
+    int len = serialize_addr(dst, key, sizeof(key));
+    assert(len > 0);
+    
     if (m < 0) {
-        val = mem_get(params.mempool, (char *)&key, len);
+        val = mem_get(params.mempool, (char *)key, len);
         if (!val) {
             return -1;
         }
@@ -89,13 +101,14 @@ int mode_add_get(struct sockaddr_ina *dst, int m)
 
     if (m == 0) {
         LOG(LOG_S, "delete ip: %s\n", ADDR_STR);
-        mem_delete(params.mempool, (char *)&key, len);
+        mem_delete(params.mempool, (char *)key, len);
         return 0;
     }
     else {
         LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
         time(&t);
-        val = mem_add(params.mempool, (char *)&key, len);
+
+        val = mem_add(params.mempool, (char *)key, len);
         if (!val) {
             uniperror("mem_add");
             return -1;
