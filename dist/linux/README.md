@@ -18,10 +18,12 @@ systemctl --user enable byedpi.service
 systemctl --user start byedpi.service
 ```
 
-Optionally, create a config file with command line arguments:
+Optionally, create a config file at `/etc/default/byedpi` with command line
+arguments:
 
 ```sh
-OPTIONS=--split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s
+# Options to pass to `ciadpi`
+BYEDPI_OPTS="--split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s"
 ```
 
 You should see the service now marked as "active":

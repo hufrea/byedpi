@@ -4,7 +4,7 @@ Documentation=https://github.com/hufrea/byedpi
 
 [Service]
 EnvironmentFile=/etc/default/byedpi
-ExecStart=ciadpi $OPTIONS
+ExecStart=ciadpi $BYEDPI_OPTS
 TimeoutStopSec=5s
 LimitNOFILE=1048576
 LimitNPROC=512
