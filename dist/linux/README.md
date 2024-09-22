@@ -18,6 +18,12 @@ systemctl --user enable byedpi.service
 systemctl --user start byedpi.service
 ```
 
+Optionally, create a config file with command line arguments:
+
+```sh
+OPTIONS=--split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s
+```
+
 You should see the service now marked as "active":
 ```sh
 systemctl --user status byedpi.service
