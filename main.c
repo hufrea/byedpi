@@ -479,6 +479,7 @@ int main(int argc, char **argv)
     
     long val = 0;
     char *end = 0;
+    bool all_limited = 1;
     
     struct desync_params *dp = add((void *)&params.dp,
         &params.dp_count, sizeof(struct desync_params));
@@ -573,6 +574,9 @@ int main(int argc, char **argv)
             break;
             
         case 'A':
+            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect)) {
+                all_limited = 0;
+            }
             dp = add((void *)&params.dp, &params.dp_count,
                 sizeof(struct desync_params));
             if (!dp) {
@@ -866,7 +870,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-    if (dp->hosts || dp->proto || dp->pf[0]) {
+    if (all_limited) {
         dp = add((void *)&params.dp,
             &params.dp_count, sizeof(struct desync_params));
         if (!dp) {
