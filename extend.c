@@ -24,7 +24,8 @@
 #include "packets.h"
 
 #define KEY_SIZE sizeof(uint16_t) + \
-    sizeof(sa_family_t) + sizeof(struct sockaddr_in6)
+    sizeof(((struct sockaddr){}).sa_family) + \
+    sizeof(struct sockaddr_in6)
 
 
 int set_timeout(int fd, unsigned int s)
