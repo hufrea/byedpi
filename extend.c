@@ -223,21 +223,24 @@ int on_torst(struct poolhd *pool, struct eval *val)
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
             if (!dp->detect) {
-                return -1;
+                m = 0;
+                break;
             }
             if (dp->detect & DETECT_TORST) {
                 break;
             }
         }
-        if (m >= params.dp_count) {
+        if (m == 0) {
+        }
+        else if (m >= params.dp_count) {
             if (m > 1) mode_add_get(
                 (struct sockaddr_ina *)&val->in6, 0);
         }
-        else if (can_reconn)
+        else if (can_reconn) {
             return reconnect(pool, val, m);
-        else 
-            mode_add_get(
-                (struct sockaddr_ina *)&val->in6, m);
+        }
+        else mode_add_get(
+            (struct sockaddr_ina *)&val->in6, m);
     }
     struct linger l = { .l_onoff = 1 };
     if (setsockopt(val->pair->fd, SOL_SOCKET,
