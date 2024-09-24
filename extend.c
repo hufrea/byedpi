@@ -23,9 +23,7 @@
 #include "desync.h"
 #include "packets.h"
 
-#define KEY_SIZE sizeof(uint16_t) + \
-    sizeof(((struct sockaddr){}).sa_family) + \
-    sizeof(struct sockaddr_in6)
+#define KEY_SIZE sizeof(struct sockaddr_ina)
 
 
 int set_timeout(int fd, unsigned int s)
