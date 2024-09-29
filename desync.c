@@ -249,7 +249,9 @@ ssize_t send_fake(int sfd, char *buffer,
     close(fds[1]);
     return len;
 }
-#else
+#endif
+
+#ifdef _WIN32
 OVERLAPPED ov = {};
 
 ssize_t send_fake(int sfd, char *buffer,
