@@ -361,6 +361,17 @@ int get_default_ttl()
 }
 
 
+bool ipv6_support()
+{
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 0;
+    }
+    close(fd);
+    return 1;
+}
+
+
 int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
@@ -879,6 +890,9 @@ int main(int argc, char **argv)
         }
     }
     
+    if (!ipv6_support()) {
+        params.baddr.sin6_family = AF_INET;
+    }
     if (params.baddr.sin6_family != AF_INET6) {
         params.ipv6 = 0;
     }
