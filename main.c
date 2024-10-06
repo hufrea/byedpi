@@ -484,6 +484,9 @@ int main(int argc, char **argv)
     }
 
     params.laddr.sin6_port = htons(1080);
+    if (!ipv6_support()) {
+        params.baddr.sin6_family = AF_INET;
+    }
     
     int rez;
     int invalid = 0;
@@ -890,9 +893,6 @@ int main(int argc, char **argv)
         }
     }
     
-    if (!ipv6_support()) {
-        params.baddr.sin6_family = AF_INET;
-    }
     if (params.baddr.sin6_family != AF_INET6) {
         params.ipv6 = 0;
     }
