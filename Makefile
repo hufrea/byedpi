@@ -1,6 +1,6 @@
-TARGET = ciadpi
+TARGET ?= ciadpi
 
-CPPFLAGS = -D_DEFAULT_SOURCE
+CPPFLAGS ?= -D_DEFAULT_SOURCE
 CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
@@ -10,8 +10,8 @@ WIN_SRC = win_service.c
 OBJ = $(SRC:.c=.o)
 WIN_OBJ = $(WIN_SRC:.c=.o)
 
-PREFIX := /usr/local
-INSTALL_DIR := $(DESTDIR)$(PREFIX)/bin/
+PREFIX ?= /usr/local
+INSTALL_DIR ?= $(DESTDIR)$(PREFIX)/bin/
 
 all: $(TARGET)
 
