@@ -4,18 +4,20 @@
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
+#include "error.h"
 
 
 struct poolhd *init_pool(int count)
 {
     struct poolhd *pool = calloc(sizeof(struct poolhd), 1);
     if (!pool) {
+        uniperror("init pool");
         return 0;
     }
     pool->max = count;
     pool->count = 0;
     pool->iters = 0;
-    
+
     #ifndef NOEPOLL
     int efd = epoll_create(count);
     if (efd < 0) {
@@ -27,8 +29,9 @@ struct poolhd *init_pool(int count)
     pool->pevents = malloc(sizeof(*pool->pevents) * count);
     pool->links = malloc(sizeof(*pool->links) * count);
     pool->items = malloc(sizeof(*pool->items) * count);
-    
+
     if (!pool->pevents || !pool->links || !pool->items) {
+        uniperror("init pool");
         destroy_pool(pool);
         return 0;
     }
@@ -45,19 +48,21 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
 {
     assert(fd > 0);
     if (pool->count >= pool->max) {
+        LOG(LOG_E, "add_event: pool is full\n");
         return 0;
     }
     struct eval *val = pool->links[pool->count];
     memset(val, 0, sizeof(*val));
-    
+
     val->mod_iter = pool->iters;
     val->fd = fd;
     val->index = pool->count;
     val->type = type;
-    
+
     #ifndef NOEPOLL
     struct epoll_event ev = { .events = EPOLLRDHUP | e, .data = {val} };
     if (epoll_ctl(pool->efd, EPOLL_CTL_ADD, fd, &ev)) {
+        uniperror("add event");
         return 0;
     }
     #else
@@ -67,7 +72,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     pfd->events = POLLRDHUP | e;
     pfd->revents = 0;
     #endif
-    
+
     pool->count++;
     return val;
 }
@@ -153,9 +158,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type)
             if (i < 0) {
                 return 0;
             }
-            if (pool->iters == UINT_MAX) {
-                pool->iters = 0;
-            }
             pool->iters++;
         }
         struct eval *val = pool->pevents[i].data.ptr;
@@ -188,9 +190,6 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel)
                 return 0;
             }
             i = pool->count - 1;
-            if (pool->iters == UINT_MAX) {
-                pool->iters = 0;
-            }
             pool->iters++;
         }
         short type = pool->pevents[i].revents;
