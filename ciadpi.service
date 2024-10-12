@@ -1,0 +1,18 @@
+[Unit]
+Description=ciadpi (byedpi)
+After=network-online.target
+
+[Service]
+User=openvpn
+Group=openvpn
+EnvironmentFile=-/etc/default/ciadpi
+ExecStart=/usr/local/bin/ciadpi $CIADPI_OPTS
+ExecReload=/usr/bin/kill -s HUP $MAINPID
+ExecStop=/usr/bin/kill -s TERM $MAINPID
+RuntimeDirectory=ciadpi
+PIDFile=/run/ciadpi/pid
+Restart=on-failure
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

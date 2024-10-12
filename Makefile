@@ -30,3 +30,14 @@ clean:
 install: $(TARGET)
 	mkdir -p $(INSTALL_DIR)
 	install -m 755 $(TARGET) $(INSTALL_DIR)
+
+service_install:
+	install -DZv ciadpi.service -t /etc/systemd/system
+	install -DZv ciadpi -t /usr/local/bin
+	systemctl daemon-reload
+
+service_uninstall:
+	systemctl disable --now ciadpi.service
+	rm -fv /etc/systemd/system/ciadpi.service
+	rm -fv /usr/local/bin/ciadpi
+	systemctl daemon-reload
