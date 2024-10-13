@@ -1,12 +1,17 @@
 [Unit]
-Description=byedpi
+Description=ByeDPI
 Documentation=https://github.com/hufrea/byedpi
+Wants=network-online.target
+After=network-online.target nss-lookup.target
 
 [Service]
-ExecStart=ciadpi --split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s
+NoNewPrivileges=yes
+StandardOutput=null
+StandardError=journal
+EnvironmentFile=-/etc/byedpi.conf
+EnvironmentFile=-%h/.config/byedpi.conf
+ExecStart=ciadpi $BYEDPI_OPTIONS
 TimeoutStopSec=5s
-LimitNOFILE=1048576
-LimitNPROC=512
 PrivateTmp=true
 ProtectSystem=full
 

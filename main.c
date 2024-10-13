@@ -361,6 +361,17 @@ int get_default_ttl()
 }
 
 
+bool ipv6_support()
+{
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 0;
+    }
+    close(fd);
+    return 1;
+}
+
+
 int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
@@ -473,12 +484,16 @@ int main(int argc, char **argv)
     }
 
     params.laddr.sin6_port = htons(1080);
+    if (!ipv6_support()) {
+        params.baddr.sin6_family = AF_INET;
+    }
     
     int rez;
     int invalid = 0;
     
     long val = 0;
     char *end = 0;
+    bool all_limited = 1;
     
     struct desync_params *dp = add((void *)&params.dp,
         &params.dp_count, sizeof(struct desync_params));
@@ -573,6 +588,9 @@ int main(int argc, char **argv)
             break;
             
         case 'A':
+            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect)) {
+                all_limited = 0;
+            }
             dp = add((void *)&params.dp, &params.dp_count,
                 sizeof(struct desync_params));
             if (!dp) {
@@ -866,7 +884,7 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-    if (dp->hosts || dp->proto || dp->pf[0]) {
+    if (all_limited) {
         dp = add((void *)&params.dp,
             &params.dp_count, sizeof(struct desync_params));
         if (!dp) {
