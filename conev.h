@@ -37,9 +37,7 @@ enum eid {
     EV_CONNECT,
     EV_IGNORE,
     EV_TUNNEL,
-    EV_PRE_TUNNEL,
-    EV_UDP_TUNNEL,
-    EV_DESYNC
+    EV_UDP_TUNNEL
 };
 
 #define FLAG_S4 1
@@ -53,9 +51,7 @@ char *eid_name[] = {
     "EV_CONNECT",
     "EV_IGNORE",
     "EV_TUNNEL",
-    "EV_PRE_TUNNEL",
-    "EV_UDP_TUNNEL",
-    "EV_DESYNC"
+    "EV_UDP_TUNNEL"
 };
 #endif
 
@@ -63,6 +59,7 @@ struct buffer {
     ssize_t size;
     int offset;
     char *data;
+    char locked;
 };
 
 struct eval {

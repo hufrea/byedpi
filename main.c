@@ -54,8 +54,9 @@ struct params params = {
     .laddr = {
         .sin6_family = AF_INET
     },
+    .repeats = 1,
     .debug = 0,
-    .auto_level = 0
+    .auto_level = -1
 };
 
 
@@ -80,6 +81,7 @@ const char help_text[] = {
     "                              Detect: torst,redirect,ssl_err,none\n"
     "    -L, --auto-mode <0|1>     1 - handle trigger after several packets\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
+    "    -R, --repeats <num>       Number of requests to which desync will be applied\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
@@ -134,6 +136,7 @@ const struct option options[] = {
     #endif
     {"auto",          1, 0, 'A'},
     {"auto-mode",     1, 0, 'L'},
+    {"repeats",       1, 0, 'R'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
     {"timeout",       1, 0, 'T'},
@@ -616,6 +619,14 @@ int main(int argc, char **argv)
                 params.auto_level = val;
             break;
             
+        case 'R':
+            val = strtol(optarg, &end, 0);
+            if (val < 1 || val > INT_MAX || *end)
+                invalid = 1;
+            else
+                params.repeats = val;
+            break;
+            
         case 'A':
             if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect)) {
                 all_limited = 0;
@@ -647,6 +658,9 @@ int main(int argc, char **argv)
                 }
                 end = strchr(end, ',');
                 if (end) end++;
+            }
+            if (dp->detect && params.auto_level == -1) {
+                params.auto_level = 0;
             }
             break;
             

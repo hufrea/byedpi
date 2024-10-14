@@ -114,6 +114,8 @@ struct params {
     struct mphdr *mempool;
     
     char *protect_path;
+    
+    int repeats;
 };
 
 extern struct params params;
