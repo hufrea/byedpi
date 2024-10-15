@@ -481,13 +481,13 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         for (int i = 0; i < dp.tlsrec_n; i++) {
             struct part part = dp.tlsrec[i];
             
-            long pos = part.pos + i * 5;
-            if (pos < 0 || part.flag) {
+            long pos = i * 5;
+            pos += gen_offset(part.pos, 
+                part.flag, n - pos, lp, type, host_pos, len);
+            
+            if (part.pos < 0 || part.flag) {
                 pos -= 5;
             }
-            pos = gen_offset(pos, 
-                part.flag, n, lp, type, host_pos, len);
-            
             if (pos < lp) {
                 LOG(LOG_E, "tlsrec cancel: %ld < %ld\n", pos, lp);
                 break;
