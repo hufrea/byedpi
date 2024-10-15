@@ -31,6 +31,9 @@
 #define DETECT_TLS_ERR 2
 #define DETECT_TORST 8
 
+#define AUTO_NOBUFF -1
+#define AUTO_NOSAVE 0
+
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,

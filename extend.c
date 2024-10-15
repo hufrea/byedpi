@@ -220,7 +220,7 @@ int on_torst(struct poolhd *pool, struct eval *val)
     bool can_reconn = (
         val->pair->buff.data && !val->recv_count
     );
-    if (can_reconn || params.auto_level >= 1) {
+    if (can_reconn || params.auto_level > AUTO_NOSAVE) {
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
             if (!dp->detect) {
@@ -260,7 +260,7 @@ int on_fin(struct poolhd *pool, struct eval *val)
     bool can_reconn = (
         val->pair->buff.data && !val->recv_count
     );
-    if (!can_reconn && params.auto_level < 1) {
+    if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
     }
     bool ssl_err = 0;
@@ -338,7 +338,7 @@ static inline void free_first_req(struct eval *client)
 }
 
 
-ssize_t on_first_send(struct eval *client, char *buffer, ssize_t bfsize)
+ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsize)
 {
     int m = client->attempt;
     
@@ -354,8 +354,8 @@ ssize_t on_first_send(struct eval *client, char *buffer, ssize_t bfsize)
     if (m >= params.dp_count) {
         return -1;
     }
-    if (params.auto_level > 0 && params.dp_count > 1) {
-        client->mark = is_tls_chello(client->buff.data, client->buff.size);
+    if (params.auto_level > AUTO_NOSAVE && params.dp_count > 1) {
+        client->mark = is_tls_chello(buffer, n);
     }
     client->attempt = m;
     
@@ -363,10 +363,12 @@ ssize_t on_first_send(struct eval *client, char *buffer, ssize_t bfsize)
             && set_timeout(client->pair->fd, params.timeout)) {
         return -1;
     }
-    assert(bfsize >= client->buff.size);
-    memcpy(buffer, client->buff.data, client->buff.size);
-    
-    return client->buff.size;
+    if (client->buff.locked) {
+        assert(bfsize >= client->buff.size);
+        memcpy(buffer, client->buff.data, client->buff.size);
+        return client->buff.size;
+    }
+    return n;
 }
 
 
@@ -387,7 +389,7 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
     int m = client->attempt;
     
     if (client->recv_count == n) {
-        n = on_first_send(client, buffer, bfsize);
+        n = on_first_send(client, buffer, n, bfsize);
         if (n < 0) {
             return -1;
         }
@@ -427,7 +429,9 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
         return -1;
     }
     
-    if (val->flag != FLAG_CONN && val->pair->recv_count == 0) 
+    if (val->flag != FLAG_CONN 
+            && params.auto_level > AUTO_NOBUFF 
+            && val->pair->recv_count == 0) 
     {
         val->buff.size += n;
         
@@ -452,7 +456,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
             }
             free_first_req(val->pair);
         }
-        if (params.timeout && params.auto_level < 1 &&
+        if (params.timeout && params.auto_level <= AUTO_NOSAVE &&
                 set_timeout(val->fd, 0)) {
             return -1;
         }

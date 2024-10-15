@@ -56,7 +56,7 @@ struct params params = {
     },
     .repeats = 1,
     .debug = 0,
-    .auto_level = -1
+    .auto_level = AUTO_NOBUFF
 };
 
 
@@ -659,8 +659,8 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
-            if (dp->detect && params.auto_level == -1) {
-                params.auto_level = 0;
+            if (dp->detect && params.auto_level == AUTO_NOBUFF) {
+                params.auto_level = AUTO_NOSAVE;
             }
             break;
             
