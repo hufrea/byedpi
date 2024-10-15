@@ -376,21 +376,34 @@ int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
     long val = strtol(str, &end, 0);
-    if (*end == '+') switch (*(end + 1)) {
-        case 's': 
-            part->flag = OFFSET_SNI;
-            break;
-        case 'h': 
-            part->flag = OFFSET_HOST;
-            break;
-        case 'e':
-            part->flag = OFFSET_END;
-            break;
-        default:
-            return -1;
-    }
-    else if (*end) {
-        return -1;
+    if (*end == '+') {
+        switch (*(end + 1)) {
+            case 's':
+                part->flag = OFFSET_SNI;
+                break;
+            case 'h': 
+                part->flag = OFFSET_HOST;
+                break;
+            case 'e': //
+                part->flag = OFFSET_END;
+                break;
+            case 'n':
+                break;
+            default:
+                return -1;
+        }
+        switch (*(end + 2)) {
+            case 'e':
+                part->flag |= OFFSET_END;
+                break;
+            case 'm':
+                part->flag |= OFFSET_MID;
+                break;
+            case 'r':
+                part->flag |= OFFSET_RAND;
+                break;
+            case 's':;
+        }
     }
     part->pos = val;
     return 0;
@@ -908,7 +921,8 @@ int main(int argc, char **argv)
         clear_params();
         return -1;
     }
-
+    srand((unsigned int)time(0));
+    
     int status = run((struct sockaddr_ina *)&params.laddr);
     clear_params();
     return status;
