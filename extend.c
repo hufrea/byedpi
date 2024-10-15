@@ -172,12 +172,12 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
 }
 
 
-bool check_host(struct mphdr *hosts, struct eval *val)
+bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
 {
     char *host = 0;
     int len;
-    if (!(len = parse_tls(val->buff.data, val->buff.size, &host))) {
-        len = parse_http(val->buff.data, val->buff.size, &host, 0);
+    if (!(len = parse_tls(buffer, n, &host))) {
+        len = parse_http(buffer, n, &host, 0);
     }
     assert(len == 0 || host != 0);
     if (len <= 0) {
@@ -196,29 +196,29 @@ bool check_host(struct mphdr *hosts, struct eval *val)
 }
 
 
-bool check_proto_tcp(int proto, struct eval *val)
+bool check_proto_tcp(int proto, char *buffer, ssize_t n)
 {
     if (proto & IS_TCP) {
         return 1;
     }
     else if ((proto & IS_HTTP) && 
-            is_http(val->buff.data, val->buff.size)) {
+            is_http(buffer, n)) {
         return 1;
     }
     else if ((proto & IS_HTTPS) && 
-            is_tls_chello(val->buff.data, val->buff.size)) {
+            is_tls_chello(buffer, n)) {
         return 1;
     }
     return 0;
 }
 
-
+     
 int on_torst(struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
     bool can_reconn = (
-        val->pair->buff.data && !val->recv_count
+        val->pair->buff.locked && !val->recv_count
     );
     if (can_reconn || params.auto_level > AUTO_NOSAVE) {
         for (; m < params.dp_count; m++) {
@@ -258,7 +258,7 @@ int on_fin(struct poolhd *pool, struct eval *val)
     int m = val->pair->attempt + 1;
     
     bool can_reconn = (
-        val->pair->buff.data && !val->recv_count
+        val->pair->buff.locked && !val->recv_count
     );
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
@@ -346,12 +346,13 @@ ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsi
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect &&
                 (!dp->pf[0] || check_port(dp->pf, &client->pair->in6)) &&
-                (!dp->proto || check_proto_tcp(dp->proto, client)) &&
-                (!dp->hosts || check_host(dp->hosts, client))) {
+                (!dp->proto || check_proto_tcp(dp->proto, buffer, n)) &&
+                (!dp->hosts || check_host(dp->hosts, buffer, n))) {
             break;
         }
     }
     if (m >= params.dp_count) {
+        LOG(LOG_E, "drop connection (m=%d)\n", m);
         return -1;
     }
     if (params.auto_level > AUTO_NOSAVE && params.dp_count > 1) {
@@ -386,7 +387,6 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
         return sn;
     }
     struct eval *client = remote->pair;
-    int m = client->attempt;
     
     if (client->recv_count == n) {
         n = on_first_send(client, buffer, n, bfsize);
@@ -394,6 +394,7 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
             return -1;
         }
     }
+    int m = client->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
     
     sn = desync(remote->fd, buffer, bfsize, n,
