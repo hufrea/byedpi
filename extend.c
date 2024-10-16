@@ -72,50 +72,48 @@ static ssize_t serialize_addr(const struct sockaddr_ina *dst,
 }
 
 
-static int mode_add_get(struct sockaddr_ina *dst, int m)
+static int cache_get(struct sockaddr_ina *dst)
 {
-    // m < 0: get, m > 0: set, m == 0: delete
-    assert(m >= -1 && m < params.dp_count);
+    uint8_t key[KEY_SIZE] = { 0 };
+    int len = serialize_addr(dst, key, sizeof(key));
     
-    time_t t = 0;
-    struct elem *val = 0;
+    struct elem *val = mem_get(params.mempool, (char *)key, len);
+    if (!val) {
+        return -1;
+    }
+    time_t t = time(0);
+    if (t > val->time + params.cache_ttl) {
+        LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
+        return 0;
+    }
+    return val->m;
+}
+
+
+static int cache_add(struct sockaddr_ina *dst, int m)
+{
+    assert(m >= 0 && m < params.dp_count);
     
     uint8_t key[KEY_SIZE] = { 0 };
     int len = serialize_addr(dst, key, sizeof(key));
-    assert(len > 0);
     
-    if (m < 0) {
-        val = mem_get(params.mempool, (char *)key, len);
-        if (!val) {
-            return -1;
-        }
-        time(&t);
-        if (t > val->time + params.cache_ttl) {
-            LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
-            return 0;
-        }
-        return val->m;
-    }
     INIT_ADDR_STR((*dst));
-
     if (m == 0) {
         LOG(LOG_S, "delete ip: %s\n", ADDR_STR);
         mem_delete(params.mempool, (char *)key, len);
         return 0;
     }
-    else {
-        LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
-        time(&t);
+    LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
+    time_t t = time(0);
 
-        val = mem_add(params.mempool, (char *)key, len);
-        if (!val) {
-            uniperror("mem_add");
-            return -1;
-        }
-        val->m = m;
-        val->time = t;
-        return 0;
+    struct elem *val = mem_add(params.mempool, (char *)key, len);
+    if (!val) {
+        uniperror("mem_add");
+        return -1;
     }
+    val->m = m;
+    val->time = t;
+    return 0;
 }
 
 
@@ -129,7 +127,7 @@ static inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
 int connect_hook(struct poolhd *pool, struct eval *val, 
         struct sockaddr_ina *dst, int next)
 {
-    int m = mode_add_get(dst, -1);
+    int m = cache_get(dst);
     val->cache = (m == 0);
     val->attempt = m < 0 ? 0 : m;
     
@@ -234,12 +232,12 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
         if (can_reconn) {
             return reconnect(pool, val, m);
         }
-        mode_add_get(
+        cache_add(
             (struct sockaddr_ina *)&val->in6, m);
         break;
     }
     if (m >= params.dp_count && m > 1) {
-        mode_add_get(
+        cache_add(
             (struct sockaddr_ina *)&val->in6, 0);
     }
     return -1;
@@ -439,7 +437,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
             return -1;
         }
         if (val->pair->cache && 
-                mode_add_get((struct sockaddr_ina *)&val->in6, m) < 0) {
+                cache_add((struct sockaddr_ina *)&val->in6, m) < 0) {
             return -1;
         }
     }
