@@ -26,7 +26,7 @@
 #define KEY_SIZE sizeof(struct sockaddr_ina)
 
 
-int set_timeout(int fd, unsigned int s)
+static int set_timeout(int fd, unsigned int s)
 {
     #ifdef __linux__
     if (setsockopt(fd, IPPROTO_TCP,
@@ -151,7 +151,7 @@ int socket_mod(int fd, struct sockaddr *dst)
 }
 
 
-int reconnect(struct poolhd *pool, struct eval *val, int m)
+static int reconnect(struct poolhd *pool, struct eval *val, int m)
 {
     assert(val->flag == FLAG_CONN);
     
@@ -172,7 +172,7 @@ int reconnect(struct poolhd *pool, struct eval *val, int m)
 }
 
 
-bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
+static bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
 {
     char *host = 0;
     int len;
@@ -196,7 +196,7 @@ bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
 }
 
 
-bool check_proto_tcp(int proto, char *buffer, ssize_t n)
+static bool check_proto_tcp(int proto, char *buffer, ssize_t n)
 {
     if (proto & IS_TCP) {
         return 1;
@@ -212,46 +212,8 @@ bool check_proto_tcp(int proto, char *buffer, ssize_t n)
     return 0;
 }
 
-     
-int on_torst(struct poolhd *pool, struct eval *val)
-{
-    int m = val->pair->attempt + 1;
-    
-    bool can_reconn = (
-        val->pair->buff.locked && !val->recv_count
-    );
-    if (can_reconn || params.auto_level > AUTO_NOSAVE) {
-        for (; m < params.dp_count; m++) {
-            struct desync_params *dp = &params.dp[m];
-            if (!dp->detect) {
-                break;
-            }
-            if (!(dp->detect & DETECT_TORST)) {
-                continue;
-            }
-            if (can_reconn) {
-                return reconnect(pool, val, m);
-            }
-            mode_add_get(
-                (struct sockaddr_ina *)&val->in6, m);
-            break;
-        }
-    }
-    if (m >= params.dp_count && m > 1) {
-        mode_add_get(
-            (struct sockaddr_ina *)&val->in6, 0);
-    }
-    struct linger l = { .l_onoff = 1 };
-    if (setsockopt(val->pair->fd, SOL_SOCKET,
-            SO_LINGER, (char *)&l, sizeof(l)) < 0) {
-        uniperror("setsockopt SO_LINGER");
-        return -1;
-    }
-    return -1;
-}
 
-
-int on_fin(struct poolhd *pool, struct eval *val)
+static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
@@ -261,26 +223,22 @@ int on_fin(struct poolhd *pool, struct eval *val)
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
     }
-    
-    if (!(val->pair->mark && val->round_count <= 1)) {
-        return -1;
-    }
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect) {
-            return -1;
+            break;
         }
-        if (dp->detect & DETECT_TLS_ERR) {
-            if (can_reconn)
-                return reconnect(pool, val, m);
-            else {
-                mode_add_get(
-                    (struct sockaddr_ina *)&val->in6, m);
-                return -1;
-            }
+        if (!(dp->detect & type)) {
+            continue;
         }
+        if (can_reconn) {
+            return reconnect(pool, val, m);
+        }
+        mode_add_get(
+            (struct sockaddr_ina *)&val->in6, m);
+        break;
     }
-    if (m > 1) { // delete
+    if (m >= params.dp_count && m > 1) {
         mode_add_get(
             (struct sockaddr_ina *)&val->in6, 0);
     }
@@ -288,7 +246,33 @@ int on_fin(struct poolhd *pool, struct eval *val)
 }
 
 
-int on_response(struct poolhd *pool, struct eval *val, 
+static int on_torst(struct poolhd *pool, struct eval *val)
+{
+    if (on_trigger(DETECT_TORST, pool, val) == 0) {
+        return 0;
+    }
+    struct linger l = { .l_onoff = 1 };
+    if (setsockopt(val->pair->fd, SOL_SOCKET,
+            SO_LINGER, (char *)&l, sizeof(l)) < 0) {
+        uniperror("setsockopt SO_LINGER");
+    }
+    return -1;
+}
+
+
+static int on_fin(struct poolhd *pool, struct eval *val)
+{
+    if (!(val->pair->mark && val->round_count <= 1)) {
+        return -1;
+    }
+    if (on_trigger(DETECT_TLS_ERR, pool, val) == 0) {
+        return 0;
+    }
+    return -1;
+}
+
+
+static int on_response(struct poolhd *pool, struct eval *val, 
         char *resp, ssize_t sn)
 {
     int m = val->pair->attempt + 1;
@@ -326,7 +310,7 @@ static inline void free_first_req(struct eval *client)
 }
 
 
-ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsize)
+static ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsize)
 {
     int m = client->attempt;
     
