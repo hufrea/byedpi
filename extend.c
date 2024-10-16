@@ -224,24 +224,22 @@ int on_torst(struct poolhd *pool, struct eval *val)
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
             if (!dp->detect) {
-                m = 0;
                 break;
             }
-            if (dp->detect & DETECT_TORST) {
-                break;
+            if (!(dp->detect & DETECT_TORST)) {
+                continue;
             }
+            if (can_reconn) {
+                return reconnect(pool, val, m);
+            }
+            mode_add_get(
+                (struct sockaddr_ina *)&val->in6, m);
+            break;
         }
-        if (m == 0) {
-        }
-        else if (m >= params.dp_count) {
-            if (m > 1) mode_add_get(
-                (struct sockaddr_ina *)&val->in6, 0);
-        }
-        else if (can_reconn) {
-            return reconnect(pool, val, m);
-        }
-        else mode_add_get(
-            (struct sockaddr_ina *)&val->in6, m);
+    }
+    if (m >= params.dp_count && m > 1) {
+        mode_add_get(
+            (struct sockaddr_ina *)&val->in6, 0);
     }
     struct linger l = { .l_onoff = 1 };
     if (setsockopt(val->pair->fd, SOL_SOCKET,
@@ -263,18 +261,8 @@ int on_fin(struct poolhd *pool, struct eval *val)
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
     }
-    bool ssl_err = 0;
     
-    if (can_reconn) {
-        char *req = val->pair->buff.data;
-        ssize_t qn = val->pair->buff.size;
-    
-        ssl_err = is_tls_chello(req, qn);
-    }
-    else if (val->pair->mark && val->round_count <= 1) {
-        ssl_err = 1;
-    }
-    if (!ssl_err) {
+    if (!(val->pair->mark && val->round_count <= 1)) {
         return -1;
     }
     for (; m < params.dp_count; m++) {
@@ -355,7 +343,7 @@ ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsi
         LOG(LOG_E, "drop connection (m=%d)\n", m);
         return -1;
     }
-    if (params.auto_level > AUTO_NOSAVE && params.dp_count > 1) {
+    if (params.auto_level > AUTO_NOBUFF && params.dp_count > 1) {
         client->mark = is_tls_chello(buffer, n);
     }
     client->attempt = m;
