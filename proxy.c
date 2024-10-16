@@ -686,13 +686,13 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
             return -1;
         }
         val->recv_count += n;
-        if (!val->last_round) {
+        if (val->round_sent == 0) {
             val->round_count++;
-            val->last_round = 1;
-            pair->last_round = 0;
+            pair->round_sent = 0;
         }
         
         ssize_t sn = tcp_send_hook(pool, pair, buffer, bfsize, n);
+        val->round_sent += sn > 0 ? sn : 0;
         if (sn < n) {
             if (sn < 0) {
                 uniperror("send");

@@ -2,6 +2,7 @@
 #define CONEV_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef __linux__
     #define NOEPOLL
@@ -56,10 +57,10 @@ char *eid_name[] = {
 #endif
 
 struct buffer {
-    ssize_t size;
-    int offset;
+    size_t size;
+    unsigned int offset;
     char *data;
-    char locked;
+    bool locked;
 };
 
 struct eval {
@@ -75,11 +76,11 @@ struct eval {
         struct sockaddr_in6 in6;
     };
     ssize_t recv_count;
+    ssize_t round_sent;
     unsigned int round_count;
-    char last_round;
     int attempt;
-    char cache;
-    char mark; //
+    bool cache;
+    bool mark; //
 };
 
 struct poolhd {

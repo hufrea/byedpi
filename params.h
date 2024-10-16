@@ -26,6 +26,7 @@
 #define OFFSET_RAND 4
 #define OFFSET_SNI 8
 #define OFFSET_HOST 16
+#define OFFSET_START 32
 
 #define DETECT_HTTP_LOCAT 1
 #define DETECT_TLS_ERR 2

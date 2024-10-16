@@ -421,7 +421,8 @@ int parse_offset(struct part *part, const char *str)
             case 'r':
                 part->flag |= OFFSET_RAND;
                 break;
-            case 's':;
+            case 's':
+                part->flag |= OFFSET_START;
         }
     }
     part->pos = val;

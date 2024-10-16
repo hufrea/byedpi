@@ -367,8 +367,11 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
     int m = client->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
     
+    ssize_t offset = client->round_sent + client->buff.offset;
+    if (!offset && remote->round_count) offset = -1;
+    
     sn = desync(remote->fd, buffer, bfsize, n,
-        0, (struct sockaddr *)&remote->in6, m);
+        offset, (struct sockaddr *)&remote->in6, m);
     return sn;
 }
 
