@@ -461,7 +461,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         int i = 0, r = 0, rc = 0;
         
         for (; r > 0 || i < dp.tlsrec_n; rc++, r--) {
-            if (!r) {
+            if (r <= 0) {
                 part = dp.tlsrec[i];
                 r = part.r; i++;
             }
@@ -495,7 +495,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     int i = 0, r = 0;
     
     for (; r > 0 || i < dp.parts_n; r--) {
-        if (!r) {
+        if (r <= 0) {
             part = dp.parts[i];
             r = part.r; i++;
         }
