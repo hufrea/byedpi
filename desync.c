@@ -457,16 +457,19 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     }
     else if (type == IS_HTTPS && dp.tlsrec_n) {
         long lp = 0;
-        for (int i = 0; i < dp.tlsrec_n; i++) {
-            struct part part = dp.tlsrec[i];
-            
-            long pos = i * 5;
-            pos += gen_offset(part.pos, 
-                part.flag, n - pos, lp, type, host_pos, len);
-            
-            if (part.pos < 0 || part.flag) {
-                pos -= 5;
+        struct part part;
+        int i = 0, r = 0, rc = 0;
+        
+        for (; r > 0 || i < dp.tlsrec_n; rc++, r--) {
+            if (!r) {
+                part = dp.tlsrec[i];
+                r = part.r; i++;
             }
+            long pos = rc * 5;
+            pos += gen_offset(part.pos, 
+                part.flag, n - pos - 5, lp, type, host_pos - 5, len);
+            
+            pos += part.s * (part.r - r);
             if (pos < lp) {
                 LOG(LOG_E, "tlsrec cancel: %ld < %ld\n", pos, lp);
                 break;
@@ -488,20 +491,26 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     }
     #endif
     long lp = offset;
+    struct part part;
+    int i = 0, r = 0;
     
-    for (int i = 0; i < dp.parts_n; i++) {
-        struct part part = dp.parts[i];
-        
-        long pos = gen_offset(part.pos, 
+    for (; r > 0 || i < dp.parts_n; r--) {
+        if (!r) {
+            part = dp.parts[i];
+            r = part.r; i++;
+        }
+        long pos = gen_offset(part.pos,
             part.flag, n, lp, type, host_pos, len);
             
+        pos += part.s * (part.r - r);
+        
         // after EAGAIN
         if (offset && pos <= offset) {
             continue;
         }
         else if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
-            continue;
+            break;
         }
         // send part
         ssize_t s = 0;

@@ -55,6 +55,7 @@ struct part {
     int m;
     int flag;
     long pos;
+    int r, s;
 };
 
 struct packet {

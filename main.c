@@ -86,14 +86,14 @@ const char help_text[] = {
     "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
-    "    -s, --split <n[+s]>       Split packet at n\n"
-    "                              +s - add SNI offset\n"
-    "                              +h - add HTTP Host offset\n"
-    "    -d, --disorder <n[+s]>    Split and send reverse order\n"
-    "    -o, --oob <n[+s]>         Split and send as OOB data\n"
-    "    -q, --disoob <n[+s]>      Split and send reverse order as OOB data\n"
+    "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
+    "                              Flags: +s - SNI offset, +h - HTTP host offset\n"
+    "                              Additional flags: +e - end, +m - middle, +r - random\n"
+    "    -d, --disorder <pos_t>    Split and send reverse order\n"
+    "    -o, --oob <pos_t>         Split and send as OOB data\n"
+    "    -q, --disoob <pos_t>      Split and send reverse order as OOB data\n"
     #ifdef FAKE_SUPPORT
-    "    -f, --fake <n[+s]>        Split and send fake packet\n"
+    "    -f, --fake <pos_t>        Split and send fake packet\n"
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     #ifdef __linux__
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
@@ -105,7 +105,7 @@ const char help_text[] = {
     #endif
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
-    "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
+    "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
     #ifdef __linux__
     "    -Y, --drop-sack           Drop packets with SACK extension\n"
@@ -376,6 +376,22 @@ int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
     long val = strtol(str, &end, 0);
+    
+    while (*end == ':') {
+        long rs = strtol(end + 1, &end, 0);
+        if (rs < 0 || rs > INT_MAX) {
+            return -1;
+        }
+        if (!part->r) {
+            if (!rs) 
+                return -1;
+            part->r = rs;
+        }
+        else {
+            part->s = rs;
+            break;
+        }
+    }
     if (*end == '+') {
         switch (*(end + 1)) {
             case 's':
