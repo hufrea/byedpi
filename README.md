@@ -297,3 +297,6 @@ TCP может отсылать данные вне основного пото�
 * https://github.com/bol-van/zapret/blob/master/docs/readme.txt  
 * https://geneva.cs.umd.edu/papers/geneva_ccs19.pdf  
 * https://habr.com/ru/post/335436  
+
+#### Порт для Android
+* https://github.com/dovecoteescapee/ByeDPIAndroid
