@@ -2,6 +2,7 @@
 #define CONEV_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef __linux__
     #define NOEPOLL
@@ -37,9 +38,7 @@ enum eid {
     EV_CONNECT,
     EV_IGNORE,
     EV_TUNNEL,
-    EV_PRE_TUNNEL,
-    EV_UDP_TUNNEL,
-    EV_DESYNC
+    EV_UDP_TUNNEL
 };
 
 #define FLAG_S4 1
@@ -53,16 +52,15 @@ char *eid_name[] = {
     "EV_CONNECT",
     "EV_IGNORE",
     "EV_TUNNEL",
-    "EV_PRE_TUNNEL",
-    "EV_UDP_TUNNEL",
-    "EV_DESYNC"
+    "EV_UDP_TUNNEL"
 };
 #endif
 
 struct buffer {
-    ssize_t size;
-    int offset;
+    size_t size;
+    unsigned int offset;
     char *data;
+    bool locked;
 };
 
 struct eval {
@@ -78,11 +76,11 @@ struct eval {
         struct sockaddr_in6 in6;
     };
     ssize_t recv_count;
+    ssize_t round_sent;
     unsigned int round_count;
-    char last_round;
     int attempt;
-    char cache;
-    char mark; //
+    bool cache;
+    bool mark; //
 };
 
 struct poolhd {

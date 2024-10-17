@@ -26,10 +26,14 @@
 #define OFFSET_RAND 4
 #define OFFSET_SNI 8
 #define OFFSET_HOST 16
+#define OFFSET_START 32
 
 #define DETECT_HTTP_LOCAT 1
 #define DETECT_TLS_ERR 2
 #define DETECT_TORST 8
+
+#define AUTO_NOBUFF -1
+#define AUTO_NOSAVE 0
 
 enum demode {
     DESYNC_NONE,
@@ -114,6 +118,8 @@ struct params {
     struct mphdr *mempool;
     
     char *protect_path;
+    
+    int repeats;
 };
 
 extern struct params params;
