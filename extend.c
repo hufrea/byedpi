@@ -452,21 +452,24 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
 ssize_t udp_hook(struct eval *val, 
         char *buffer, size_t bfsize, ssize_t n, struct sockaddr_ina *dst)
 {
-    if (val->recv_count) {
+    if (val->round_count > params.repeats) {
         return send(val->fd, buffer, n, 0);
     }
     int m = val->attempt;
-    if (!m) for (; m < params.dp_count; m++) {
-        struct desync_params *dp = &params.dp[m];
-        if (!dp->detect && 
-                (!dp->proto || (dp->proto & IS_UDP)) &&
-                (!dp->pf[0] || check_port(dp->pf, &dst->in6))) {
-            break;
+    if (!m) {
+        for (; m < params.dp_count; m++) {
+            struct desync_params *dp = &params.dp[m];
+            if (!dp->detect && 
+                    (!dp->proto || (dp->proto & IS_UDP)) &&
+                    (!dp->pf[0] || check_port(dp->pf, &dst->in6))) {
+                break;
+            }
         }
+        if (m >= params.dp_count) {
+            return -1;
+        }
+        val->attempt = m;
     }
-    if (m >= params.dp_count) {
-        return -1;
-    }   
     return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, m);
 }
 

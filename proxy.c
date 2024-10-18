@@ -746,6 +746,11 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             return -1;
         }
         val->recv_count += n;
+        if (val->round_sent == 0) {
+            val->round_count++;
+            val->round_sent += n;
+            val->pair->round_sent = 0;
+        }
         ssize_t ns;
         
         if (val->flag == FLAG_CONN) {
