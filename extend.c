@@ -166,6 +166,7 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     client->attempt = m;
     client->cache = 1;
     client->buff.offset = 0;
+    client->round_sent = 0;
     return 0;
 }
 
@@ -367,7 +368,7 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
     int m = client->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
     
-    ssize_t offset = client->round_sent + client->buff.offset;
+    ssize_t offset = client->round_sent;
     if (!offset && remote->round_count) offset = -1;
     
     sn = desync(remote->fd, buffer, bfsize, n,

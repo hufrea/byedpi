@@ -489,7 +489,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         return -1;
     }
     #endif
-    long lp = offset;
+    long lp = 0;
     struct part part;
     int i = 0, r = 0;
     
@@ -504,6 +504,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         pos += part.s * (part.r - r);
         
         if (!(part.flag & OFFSET_START) && offset && pos <= offset) {
+            LOG(LOG_S, "offset: %zd, skip\n", offset);
             continue;
         }
         if (pos < 0 || pos > n || pos < lp) {

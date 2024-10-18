@@ -651,13 +651,13 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         ssize_t sn = tcp_send_hook(pool, pair, 
             val->buff.data + val->buff.offset, n, n);
             
+        if (sn < 0) {
+            uniperror("send");
+            return -1;
+        }
+        val->round_sent += sn;
         if (sn < n) {
-            if (sn < 0) {
-                uniperror("send");
-                return -1;
-            }
-            if (sn > 0)
-                val->buff.offset += sn;
+            val->buff.offset += sn;
             return 0;
         }
         if (!val->buff.locked) {
@@ -692,12 +692,12 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         }
         
         ssize_t sn = tcp_send_hook(pool, pair, buffer, bfsize, n);
-        val->round_sent += sn > 0 ? sn : 0;
+        if (sn < 0) {
+            uniperror("send");
+            return -1;
+        }
+        val->round_sent += sn;
         if (sn < n) {
-            if (sn < 0) {
-                uniperror("send");
-                return -1;
-            }
             LOG(LOG_S, "send: %zd != %zd (fd: %d)\n", sn, n, pair->fd);
             assert(val->buff.locked
                 || !(val->buff.size || val->buff.offset));
@@ -710,6 +710,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
                 }
                 memcpy(val->buff.data, buffer + sn, n - sn);
             }
+            else val->buff.offset += sn;
+            
             if (mod_etype(pool, val, 0) ||
                     mod_etype(pool, pair, POLLOUT)) {
                 uniperror("mod_etype");
