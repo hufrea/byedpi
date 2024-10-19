@@ -156,7 +156,7 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     struct eval *client = val->pair;
     
     if (create_conn(pool, client, 
-            (struct sockaddr_ina *)&val->in6, EV_TUNNEL)) {
+            (struct sockaddr_ina *)&val->in6, EV_FIRST_TUNNEL)) {
         return -1;
     }
     val->pair = 0;
@@ -217,7 +217,8 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
     int m = val->pair->attempt + 1;
     
     bool can_reconn = (
-        val->pair->buff.locked && !val->recv_count
+        val->pair->buff.data && !val->recv_count
+        && params.auto_level > AUTO_NOBUFF
     );
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
@@ -303,13 +304,16 @@ static int on_response(struct poolhd *pool, struct eval *val,
 
 static inline void free_first_req(struct eval *client)
 {
+    client->type = EV_TUNNEL;
+    client->pair->type = EV_TUNNEL;
+    
     assert(client->buff.data);
     free(client->buff.data);
     memset(&client->buff, 0, sizeof(client->buff));
 }
 
 
-static ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize_t bfsize)
+static int setup_conn(struct eval *client, char *buffer, ssize_t n)
 {
     int m = client->attempt;
     
@@ -335,16 +339,99 @@ static ssize_t on_first_send(struct eval *client, char *buffer, ssize_t n, ssize
             && set_timeout(client->pair->fd, params.timeout)) {
         return -1;
     }
-    if (client->buff.locked) {
-        assert(bfsize >= client->buff.size);
-        memcpy(buffer, client->buff.data, client->buff.size);
-        return client->buff.size;
-    }
-    return n;
+    return 0;
 }
 
 
-ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
+static int cancel_setup(struct eval *remote)
+{
+    if (params.timeout && params.auto_level <= AUTO_NOSAVE &&
+            set_timeout(remote->fd, 0)) {
+        return -1;
+    }
+    if (post_desync(remote->fd, remote->pair->attempt)) {
+        return -1;
+    }
+    return 0;
+}
+
+
+int send_saved_req(struct poolhd *pool,
+        struct eval *client, char *buffer, ssize_t bfsize)
+{
+    ssize_t offset = client->buff.offset;
+    ssize_t n = client->buff.size - offset;
+    assert(bfsize >= n);
+    memcpy(buffer, client->buff.data + offset, n);
+    
+    ssize_t sn = tcp_send_hook(client->pair, buffer, bfsize, n);
+    if (sn < 0) {
+        return -1;
+    }
+    client->buff.offset += sn;
+    if (sn < n) {
+        if (mod_etype(pool, client->pair, POLLOUT) ||
+                mod_etype(pool, client, 0)) {
+            uniperror("mod_etype");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+
+int on_first_tunnel(struct poolhd *pool,
+        struct eval *val, char *buffer, ssize_t bfsize, int etype)
+{
+    if ((etype & POLLOUT) && val->flag == FLAG_CONN) {
+        if (mod_etype(pool, val, POLLIN) ||
+                mod_etype(pool, val->pair, POLLIN)) {
+            uniperror("mod_etype");
+            return -1;
+        }
+        return send_saved_req(pool, val->pair, buffer, bfsize);
+    }
+    ssize_t n = tcp_recv_hook(pool, val, buffer, bfsize);
+    if (n < 1) {
+        return n;
+    }
+    if (val->flag != FLAG_CONN) {
+        val->buff.size += n;
+        
+        if (val->buff.size >= bfsize) {
+            free_first_req(val);
+        } 
+        else {
+            val->buff.data = realloc(val->buff.data, val->buff.size);
+            
+            if (val->buff.data == 0) {
+                uniperror("realloc");
+                return -1;
+            }
+            memcpy(val->buff.data + val->buff.size - n, buffer, n);
+            return send_saved_req(pool, val, buffer, bfsize);
+        }
+    }
+    else {
+        if (on_response(pool, val, buffer, n) == 0) {
+            return 0;
+        }
+        free_first_req(val->pair);
+        int m = val->pair->attempt;
+        
+        if (val->pair->cache && 
+                cache_add((struct sockaddr_ina *)&val->in6, m) < 0) {
+            return -1;
+        }
+    }
+    if (tcp_send_hook(val->pair, buffer, bfsize, n) < n) {
+        return -1;
+    }
+    return 0;
+}
+
+
+ssize_t tcp_send_hook(struct eval *remote,
         char *buffer, size_t bfsize, ssize_t n)
 {
     ssize_t sn = -1;
@@ -355,15 +442,14 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
+        remote->pair->round_sent += sn;
         return sn;
     }
     struct eval *client = remote->pair;
     
-    if (client->recv_count == n) {
-        n = on_first_send(client, buffer, n, bfsize);
-        if (n < 0) {
-            return -1;
-        }
+    if (client->recv_count == n 
+            && setup_conn(client, buffer, n) < 0) {
+        return -1;
     }
     int m = client->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
@@ -373,6 +459,8 @@ ssize_t tcp_send_hook(struct poolhd *pool, struct eval *remote,
     
     sn = desync(remote->fd, buffer, bfsize, n,
         offset, (struct sockaddr *)&remote->in6, m);
+        
+    remote->pair->round_sent += sn;
     return sn;
 }
 
@@ -403,47 +491,15 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
         }
         return -1;
     }
-    
-    if (val->flag != FLAG_CONN 
-            && params.auto_level > AUTO_NOBUFF 
-            && val->pair->recv_count == 0) 
-    {
-        val->buff.size += n;
-        
-        if (val->buff.size >= bfsize) {
-            free_first_req(val);
-            return n;
-        }
-        val->buff.locked = 1;
-        val->buff.data = realloc(val->buff.data, val->buff.size);
-        
-        if (val->buff.data == 0) {
-            uniperror("realloc");
-            return -1;
-        }
-        memcpy(val->buff.data + val->buff.size - n, buffer, n);
+    val->recv_count += n;
+    if (val->round_sent == 0) {
+        val->round_count++;
+        val->pair->round_sent = 0;
     }
-    else if (val->recv_count == 0 && val->flag == FLAG_CONN)
-    {
-        if (val->pair->buff.locked) {
-            if (on_response(pool, val, buffer, n) == 0) {
-                return 0;
-            }
-            free_first_req(val->pair);
-        }
-        if (params.timeout && params.auto_level <= AUTO_NOSAVE &&
-                set_timeout(val->fd, 0)) {
-            return -1;
-        }
-        int m = val->pair->attempt;
-        
-        if (post_desync(val->fd, m)) {
-            return -1;
-        }
-        if (val->pair->cache && 
-                cache_add((struct sockaddr_ina *)&val->in6, m) < 0) {
-            return -1;
-        }
+    if (val->flag == FLAG_CONN
+            && val->round_count >= params.repeats
+            && cancel_setup(val)) {
+        return -1;
     }
     return n;
 }

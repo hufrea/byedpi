@@ -641,40 +641,33 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         LOG(LOG_S, "pollout (fd=%d)\n", val->fd);
         val = pair;
         pair = val->pair;
-        assert(val->buff.data);
-        
+    }
+    if (val->buff.data) {
         if (etype & POLLHUP) {
             return -1;
         }
         n = val->buff.size - val->buff.offset;
         
-        ssize_t sn = tcp_send_hook(pool, pair, 
+        ssize_t sn = tcp_send_hook(pair, 
             val->buff.data + val->buff.offset, n, n);
-            
         if (sn < 0) {
             uniperror("send");
             return -1;
         }
-        val->round_sent += sn;
         if (sn < n) {
             val->buff.offset += sn;
             return 0;
         }
-        if (!val->buff.locked) {
-            free(val->buff.data);
-            val->buff.data = 0;
-            val->buff.size = 0;
-            val->buff.offset = 0;
-        }
+        free(val->buff.data);
+        val->buff.data = 0;
+        val->buff.size = 0;
+        val->buff.offset = 0;
         
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, pair, POLLIN)) {
             uniperror("mod_etype");
             return -1;
         }
-    }
-    if (val->buff.data && !val->buff.locked) {
-        return 0;
     }
     do {
         n = tcp_recv_hook(pool, val, buffer, bfsize);
@@ -685,32 +678,21 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
         if (n < 0) {
             return -1;
         }
-        val->recv_count += n;
-        if (val->round_sent == 0) {
-            val->round_count++;
-            pair->round_sent = 0;
-        }
-        
-        ssize_t sn = tcp_send_hook(pool, pair, buffer, bfsize, n);
+        ssize_t sn = tcp_send_hook(pair, buffer, bfsize, n);
         if (sn < 0) {
             uniperror("send");
             return -1;
         }
-        val->round_sent += sn;
         if (sn < n) {
             LOG(LOG_S, "send: %zd != %zd (fd: %d)\n", sn, n, pair->fd);
-            assert(val->buff.locked
-                || !(val->buff.size || val->buff.offset));
+            assert(!(val->buff.size || val->buff.offset));
             
-            if (!val->buff.locked) {
-                val->buff.size = n - sn;
-                if (!(val->buff.data = malloc(n - sn))) {
-                    uniperror("malloc");
-                    return -1;
-                }
-                memcpy(val->buff.data, buffer + sn, n - sn);
+            val->buff.size = n - sn;
+            if (!(val->buff.data = malloc(n - sn))) {
+                uniperror("malloc");
+                return -1;
             }
-            else val->buff.offset += sn;
+            memcpy(val->buff.data, buffer + sn, n - sn);
             
             if (mod_etype(pool, val, 0) ||
                     mod_etype(pool, pair, POLLOUT)) {
@@ -904,8 +886,10 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
             uniperror("mod_etype");
             return -1;
         }
-        val->type = EV_TUNNEL;
-        val->pair->type = EV_TUNNEL;
+        int t = params.auto_level <= AUTO_NOBUFF 
+            ? EV_TUNNEL : EV_FIRST_TUNNEL;
+        val->type = t;
+        val->pair->type = t;
     }
     if (resp_error(val->pair->fd,
             error, val->pair->flag) < 0) {
@@ -975,6 +959,11 @@ int event_loop(int srvfd)
                     close_conn(pool, val);
                 continue;
         
+            case EV_FIRST_TUNNEL:
+                if (on_first_tunnel(pool, val, buffer, bfsize, etype))
+                    close_conn(pool, val);
+                continue;
+                
             case EV_TUNNEL:
                 if (on_tunnel(pool, val, buffer, bfsize, etype))
                     close_conn(pool, val);
