@@ -20,10 +20,12 @@
 #define FAKE_SUPPORT 1
 #define TIMEOUT_SUPPORT 1
 #endif
-    
-#define OFFSET_SNI 1
-#define OFFSET_HOST 2
-#define OFFSET_END 3
+
+#define OFFSET_END 1
+#define OFFSET_MID 2
+#define OFFSET_RAND 4
+#define OFFSET_SNI 8
+#define OFFSET_HOST 16
 
 #define DETECT_HTTP_LOCAT 1
 #define DETECT_TLS_ERR 2
@@ -53,6 +55,7 @@ struct part {
     int m;
     int flag;
     long pos;
+    int r, s;
 };
 
 struct packet {

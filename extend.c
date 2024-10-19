@@ -140,7 +140,7 @@ int connect_hook(struct poolhd *pool, struct eval *val,
 int socket_mod(int fd, struct sockaddr *dst)
 {
     if (params.custom_ttl) {
-        if (setttl(fd, params.def_ttl, get_family(dst)) < 0) {
+        if (setttl(fd, params.def_ttl) < 0) {
             return -1;
         }
     }
