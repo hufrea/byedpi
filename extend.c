@@ -212,6 +212,12 @@ static bool check_proto_tcp(int proto, char *buffer, ssize_t n)
 }
 
 
+static bool check_round(int nr[2], int r)
+{
+    return (!nr[1] && r <= 1) || (r >= nr[0] && r <= nr[1]);
+}
+
+
 static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
@@ -435,31 +441,35 @@ ssize_t tcp_send_hook(struct eval *remote,
         char *buffer, size_t bfsize, ssize_t n)
 {
     ssize_t sn = -1;
+    int skip = remote->flag != FLAG_CONN; 
     
-    if (remote->flag != FLAG_CONN 
-            || remote->pair->round_count > params.repeats) {
+    if (!skip) {
+        struct eval *client = remote->pair;
+    
+        if (client->recv_count == n 
+                && setup_conn(client, buffer, n) < 0) {
+            return -1;
+        }
+        int m = client->attempt, r = client->round_count;
+        if (!check_round(params.dp[m].rounds, r)) {
+            skip = 1;
+        }
+        else {
+            LOG((m ? LOG_S : LOG_L), "desync TCP, m=%d, r=%d\n", m, r);
+            
+            ssize_t offset = remote->pair->round_sent;
+            if (!offset && remote->round_count) offset = -1;
+            
+            sn = desync(remote->fd, buffer, bfsize, n,
+                offset, (struct sockaddr *)&remote->in6, m);
+        }
+    }
+    if (skip) {
         sn = send(remote->fd, buffer, n, 0);
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
-        remote->pair->round_sent += sn;
-        return sn;
     }
-    struct eval *client = remote->pair;
-    
-    if (client->recv_count == n 
-            && setup_conn(client, buffer, n) < 0) {
-        return -1;
-    }
-    int m = client->attempt;
-    LOG((m ? LOG_S : LOG_L), "desync TCP, m=%d\n", m);
-    
-    ssize_t offset = client->round_sent;
-    if (!offset && remote->round_count) offset = -1;
-    
-    sn = desync(remote->fd, buffer, bfsize, n,
-        offset, (struct sockaddr *)&remote->in6, m);
-        
     remote->pair->round_sent += sn;
     return sn;
 }
@@ -497,7 +507,8 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
         val->pair->round_sent = 0;
     }
     if (val->flag == FLAG_CONN
-            && val->round_count >= params.repeats
+            && check_round(
+                params.dp[val->pair->attempt].rounds, val->round_count)
             && cancel_setup(val)) {
         return -1;
     }
@@ -510,10 +521,7 @@ ssize_t udp_hook(struct eval *val,
 {
     struct eval *pair = val->pair->pair;
     
-    if (pair->round_count > params.repeats) {
-        return send(val->fd, buffer, n, 0);
-    }
-    int m = val->attempt;
+    int m = pair->attempt, r = pair->round_count;
     if (!m) {
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
@@ -526,9 +534,12 @@ ssize_t udp_hook(struct eval *val,
         if (m >= params.dp_count) {
             return -1;
         }
-        val->attempt = m;
+        pair->attempt = m;
     }
-    LOG(LOG_S, "desync UDP, m=%d\n", m);
+    if (!check_round(params.dp[m].rounds, r)) {
+        return send(val->fd, buffer, n, 0);
+    }
+    LOG(LOG_S, "desync UDP, m=%d, r=%d\n", m, r);
     return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, m);
 }
 

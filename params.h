@@ -89,6 +89,7 @@ struct desync_params {
     int detect;
     struct mphdr *hosts;
     uint16_t pf[2];
+    int rounds[2];
     
     char *file_ptr;
     ssize_t file_size;
@@ -118,8 +119,6 @@ struct params {
     struct mphdr *mempool;
     
     char *protect_path;
-    
-    int repeats;
 };
 
 extern struct params params;
