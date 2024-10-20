@@ -452,7 +452,7 @@ ssize_t tcp_send_hook(struct eval *remote,
         return -1;
     }
     int m = client->attempt;
-    LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
+    LOG((m ? LOG_S : LOG_L), "desync TCP, m=%d\n", m);
     
     ssize_t offset = client->round_sent;
     if (!offset && remote->round_count) offset = -1;
@@ -508,7 +508,9 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
 ssize_t udp_hook(struct eval *val, 
         char *buffer, size_t bfsize, ssize_t n, struct sockaddr_ina *dst)
 {
-    if (val->round_count > params.repeats) {
+    struct eval *pair = val->pair->pair;
+    
+    if (pair->round_count > params.repeats) {
         return send(val->fd, buffer, n, 0);
     }
     int m = val->attempt;
@@ -526,6 +528,7 @@ ssize_t udp_hook(struct eval *val,
         }
         val->attempt = m;
     }
+    LOG(LOG_S, "desync UDP, m=%d\n", m);
     return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, m);
 }
 

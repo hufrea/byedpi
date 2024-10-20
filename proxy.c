@@ -478,11 +478,6 @@ int udp_associate(struct poolhd *pool,
         }
         pair->in6 = addr.in6;
     }
-    if (params.debug) {
-        INIT_ADDR_STR((*dst));
-        LOG(LOG_S, "udp associate: fd=%d, addr=%s:%d\n", 
-            ufd, ADDR_STR, ntohs(dst->in.sin_port));
-    }
     //
     socklen_t sz = sizeof(addr);
     
@@ -509,6 +504,11 @@ int udp_associate(struct poolhd *pool,
         del_event(pool, pair);
         close(cfd);
         return -1;
+    }
+    if (params.debug) {
+        INIT_ADDR_STR((*dst));
+        LOG(LOG_S, "udp associate: fds=%d,%d addr=%s:%d\n", 
+            ufd, cfd, ADDR_STR, ntohs(dst->in.sin_port));
     }
     val->type = EV_IGNORE;
     val->pair = client;
@@ -716,6 +716,8 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
         data_len -= S_SIZE_I6;
     }
     struct sockaddr_ina addr = {0};
+    struct eval *pair = val->flag == FLAG_CONN ?
+        val->pair : val->pair->pair;
     
     do {
         socklen_t asz = sizeof(addr);
@@ -731,7 +733,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
         if (val->round_sent == 0) {
             val->round_count++;
             val->round_sent += n;
-            val->pair->round_sent = 0;
+            pair->round_sent = 0;
         }
         ssize_t ns;
         
@@ -754,24 +756,24 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                 LOG(LOG_E, "udp parse error\n");
                 return -1;
             }
-            if (!val->pair->in6.sin6_port) {
+            if (!pair->in6.sin6_port) {
                 if (params.baddr.sin6_family == AF_INET6) {
                     map_fix(&addr, 6);
                 }
                 if (params.baddr.sin6_family != addr.sa.sa_family) {
                     return -1;
                 }
-                if (socket_mod(val->pair->fd, &addr.sa) < 0) {
+                if (socket_mod(pair->fd, &addr.sa) < 0) {
                     return -1;
                 }
-                if (connect(val->pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
+                if (connect(pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
                 }
-                val->pair->in6 = addr.in6;
+                pair->in6 = addr.in6;
             }
-            ns = udp_hook(val->pair, data + offs, bfsize - offs, n - offs, 
-                (struct sockaddr_ina *)&val->pair->in6);
+            ns = udp_hook(pair, data + offs, bfsize - offs, n - offs, 
+                (struct sockaddr_ina *)&pair->in6);
         }
         else {
             map_fix(&addr, 0);
@@ -781,7 +783,7 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
             if (offs < 0 || offs > S_SIZE_I6) {
                 return -1;
             }
-            ns = send(val->pair->pair->fd, data - offs, offs + n, 0);
+            ns = send(pair->fd, data - offs, offs + n, 0);
         }
         if (ns < 0) {
             uniperror("sendto");
@@ -902,10 +904,13 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
 
 void close_conn(struct poolhd *pool, struct eval *val)
 {
-    LOG(LOG_S, "close: fds=%d,%d, recv: %zd,%zd, rounds: %d,%d\n", 
-        val->fd, val->pair ? val->pair->fd : -1,
-        val->recv_count, val->pair ? val->pair->recv_count : 0,
-        val->round_count, val->pair ? val->pair->round_count : 0);
+    struct eval *cval = val;
+    do {
+        LOG(LOG_S, "close: fd=%d (pair=%d), recv: %zd, rounds: %d\n", 
+            cval->fd, cval->pair ? cval->pair->fd : -1, 
+            cval->recv_count, cval->round_count);
+        cval = cval->pair;
+    } while (cval && cval != val);
     del_event(pool, val);
 }
 
