@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "14.1"
+#define VERSION "15"
 
 char ip_option[1] = "\0";
 
@@ -86,7 +86,7 @@ const char help_text[] = {
     "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
-    "    -R, --round <num[-numr>   Number of request to which desync will be applied\n"
+    "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
     "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
     "                              Flags: +s - SNI offset, +h - HTTP host offset\n"
     "                              Additional flags: +e - end, +m - middle, +r - random\n"
