@@ -313,7 +313,6 @@ static inline void free_first_req(struct eval *client)
     client->type = EV_TUNNEL;
     client->pair->type = EV_TUNNEL;
     
-    assert(client->buff.data);
     free(client->buff.data);
     memset(&client->buff, 0, sizeof(client->buff));
 }
