@@ -334,30 +334,27 @@ int s5_set_addr(char *buffer, size_t n,
 }
 
 
-int create_conn(struct poolhd *pool,
-        struct eval *val, struct sockaddr_ina *dst, int next)
+static int remote_sock(struct sockaddr_ina *dst, int type)
 {
-    struct sockaddr_ina addr = *dst;
-    
     if (params.baddr.sin6_family == AF_INET6) {
-        map_fix(&addr, 6);
+        map_fix(dst, 6);
     } else {
-        map_fix(&addr, 0);
+        map_fix(dst, 0);
     }
-    if (addr.sa.sa_family != params.baddr.sin6_family) {
+    if (dst->sa.sa_family != params.baddr.sin6_family) {
         LOG(LOG_E, "different addresses family\n");
         return -1;
     }
-    int sfd = nb_socket(addr.sa.sa_family, SOCK_STREAM);
+    int sfd = nb_socket(dst->sa.sa_family, type);
     if (sfd < 0) {
         uniperror("socket");  
         return -1;
     }
-    if (socket_mod(sfd, &addr.sa) < 0) {
+    if (socket_mod(sfd, &dst->sa) < 0) {
         close(sfd);
         return -1;
     }
-    if (addr.sa.sa_family == AF_INET6) {
+    if (dst->sa.sa_family == AF_INET6) {
         int no = 0;
         if (setsockopt(sfd, IPPROTO_IPV6,
                 IPV6_V6ONLY, (char *)&no, sizeof(no))) {
@@ -370,6 +367,19 @@ int create_conn(struct poolhd *pool,
             SA_SIZE(&params.baddr)) < 0) {
         uniperror("bind");  
         close(sfd);
+        return -1;
+    }
+    return sfd;
+}
+
+
+int create_conn(struct poolhd *pool,
+        struct eval *val, struct sockaddr_ina *dst, int next)
+{
+    struct sockaddr_ina addr = *dst;
+    
+    int sfd = remote_sock(&addr, SOCK_STREAM);
+    if (sfd < 0) {
         return -1;
     }
     #ifdef __linux__
@@ -440,25 +450,8 @@ int udp_associate(struct poolhd *pool,
 {
     struct sockaddr_ina addr = *dst;
     
-    int ufd = nb_socket(params.baddr.sin6_family, SOCK_DGRAM);
+    int ufd = remote_sock(&addr, SOCK_DGRAM);
     if (ufd < 0) {
-        uniperror("socket");  
-        return -1;
-    }
-    if (params.baddr.sin6_family == AF_INET6) {
-        int no = 0;
-        if (setsockopt(ufd, IPPROTO_IPV6,
-                IPV6_V6ONLY, (char *)&no, sizeof(no))) {
-            uniperror("setsockopt IPV6_V6ONLY");
-            close(ufd);
-            return -1;
-        }
-        map_fix(&addr, 6);
-    }
-    if (bind(ufd, (struct sockaddr *)&params.baddr, 
-            SA_SIZE(&params.baddr)) < 0) {
-        uniperror("bind");  
-        close(ufd);
         return -1;
     }
     struct eval *pair = add_event(pool, EV_UDP_TUNNEL, ufd, POLLIN);
@@ -467,10 +460,6 @@ int udp_associate(struct poolhd *pool,
         return -1;
     }
     if (dst->in6.sin6_port != 0) {
-        if (socket_mod(ufd, &addr.sa) < 0) {
-            del_event(pool, pair);
-            return -1;
-        }
         if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
             uniperror("connect");
             del_event(pool, pair);
@@ -761,9 +750,6 @@ int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
                     map_fix(&addr, 6);
                 }
                 if (params.baddr.sin6_family != addr.sa.sa_family) {
-                    return -1;
-                }
-                if (socket_mod(pair->fd, &addr.sa) < 0) {
                     return -1;
                 }
                 if (connect(pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
