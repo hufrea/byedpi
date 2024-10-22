@@ -212,7 +212,7 @@ static bool check_proto_tcp(int proto, char *buffer, ssize_t n)
 }
 
 
-static bool check_round(int nr[2], int r)
+static bool check_round(int *nr, int r)
 {
     return (!nr[1] && r <= 1) || (r >= nr[0] && r <= nr[1]);
 }
@@ -505,11 +505,14 @@ ssize_t tcp_recv_hook(struct poolhd *pool, struct eval *val,
         val->round_count++;
         val->pair->round_sent = 0;
     }
-    if (val->flag == FLAG_CONN
-            && check_round(
-                params.dp[val->pair->attempt].rounds, val->round_count)
-            && cancel_setup(val)) {
-        return -1;
+    if (val->flag == FLAG_CONN && !val->round_sent) {
+        int *nr = params.dp[val->pair->attempt].rounds;
+        
+        if (check_round(nr, val->round_count)
+                && !check_round(nr, val->round_count + 1)
+                && cancel_setup(val)) {
+            return -1;
+        }
     }
     return n;
 }
