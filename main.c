@@ -88,8 +88,8 @@ const char help_text[] = {
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
     "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
     "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
-    "                              Flags: +s - SNI offset, +h - HTTP host offset\n"
-    "                              Additional flags: +e - end, +m - middle, +r - random\n"
+    "                              Flags: +s - SNI offset, +h - HTTP host offset, +n - null\n"
+    "                              Additional flags: +e - end, +m - middle\n"
     "    -d, --disorder <pos_t>    Split and send reverse order\n"
     "    -o, --oob <pos_t>         Split and send as OOB data\n"
     "    -q, --disoob <pos_t>      Split and send reverse order as OOB data\n"
@@ -142,7 +142,7 @@ const struct option options[] = {
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
-    {"repeats",       1, 0, 'R'},
+    {"round",         1, 0, 'R'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -402,9 +402,6 @@ int parse_offset(struct part *part, const char *str)
             case 'h': 
                 part->flag = OFFSET_HOST;
                 break;
-            case 'e': //
-                part->flag = OFFSET_END;
-                break;
             case 'n':
                 break;
             default:
@@ -417,10 +414,10 @@ int parse_offset(struct part *part, const char *str)
             case 'm':
                 part->flag |= OFFSET_MID;
                 break;
-            case 'r':
+            case 'r': //
                 part->flag |= OFFSET_RAND;
                 break;
-            case 's':
+            case 's': //
                 part->flag |= OFFSET_START;
         }
     }
