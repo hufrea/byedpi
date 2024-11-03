@@ -501,7 +501,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         long pos = gen_offset(part.pos,
             part.flag, n, lp, type, host_pos, len);
             
-        pos += part.s * (part.r - r);
+        pos += (long)part.s * (part.r - r);
         
         if (!(part.flag & OFFSET_START) && offset && pos <= offset) {
             LOG(LOG_S, "offset: %zd, skip\n", offset);
