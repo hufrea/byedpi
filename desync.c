@@ -469,7 +469,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             pos += gen_offset(part.pos, 
                 part.flag, n - pos - 5, lp, type, host_pos - 5, len);
             
-            pos += part.s * (part.r - r);
+            pos += (long)part.s * (part.r - r);
             if (pos < lp) {
                 LOG(LOG_E, "tlsrec cancel: %ld < %ld\n", pos, lp);
                 break;
@@ -501,7 +501,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         long pos = gen_offset(part.pos,
             part.flag, n, lp, type, host_pos, len);
             
-        pos += part.s * (part.r - r);
+        pos += (long)part.s * (part.r - r);
         
         if (!(part.flag & OFFSET_START) && offset && pos <= offset) {
             LOG(LOG_S, "offset: %zd, skip\n", offset);
