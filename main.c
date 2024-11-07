@@ -23,7 +23,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "14.1"
+#define VERSION "15"
 
 char ip_option[1] = "\0";
 
@@ -55,7 +55,7 @@ struct params params = {
         .sin6_family = AF_INET
     },
     .debug = 0,
-    .auto_level = 0
+    .auto_level = AUTO_NOBUFF
 };
 
 
@@ -86,9 +86,10 @@ const char help_text[] = {
     "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
+    "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
     "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
-    "                              Flags: +s - SNI offset, +h - HTTP host offset\n"
-    "                              Additional flags: +e - end, +m - middle, +r - random\n"
+    "                              Flags: +s - SNI offset, +h - HTTP host offset, +n - null\n"
+    "                              Additional flags: +e - end, +m - middle\n"
     "    -d, --disorder <pos_t>    Split and send reverse order\n"
     "    -o, --oob <pos_t>         Split and send as OOB data\n"
     "    -q, --disoob <pos_t>      Split and send reverse order as OOB data\n"
@@ -141,6 +142,7 @@ const struct option options[] = {
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
+    {"round",         1, 0, 'R'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
@@ -400,9 +402,6 @@ int parse_offset(struct part *part, const char *str)
             case 'h': 
                 part->flag = OFFSET_HOST;
                 break;
-            case 'e': //
-                part->flag = OFFSET_END;
-                break;
             case 'n':
                 break;
             default:
@@ -415,10 +414,11 @@ int parse_offset(struct part *part, const char *str)
             case 'm':
                 part->flag |= OFFSET_MID;
                 break;
-            case 'r':
+            case 'r': //
                 part->flag |= OFFSET_RAND;
                 break;
-            case 's':;
+            case 's': //
+                part->flag |= OFFSET_START;
         }
     }
     part->pos = val;
@@ -648,6 +648,9 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
+            if (dp->detect && params.auto_level == AUTO_NOBUFF) {
+                params.auto_level = AUTO_NOSAVE;
+            }
             break;
             
         case 'u':
@@ -863,6 +866,24 @@ int main(int argc, char **argv)
                     invalid = 1;
                 else
                     dp->pf[1] = htons(val);
+            }
+            break;
+            
+        case 'R':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > INT_MAX)
+                invalid = 1;
+            else {
+                dp->rounds[0] = val;
+                if (*end == '-') {
+                    val = strtol(end + 1, &end, 0);
+                    if (val <= 0 || val > INT_MAX)
+                        invalid = 1;
+                }
+                if (*end)
+                    invalid = 1;
+                else
+                    dp->rounds[1] = val;
             }
             break;
             

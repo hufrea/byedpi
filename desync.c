@@ -434,19 +434,19 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
     char *host = 0;
     int len = 0, type = 0, host_pos = 0;
     
-    // parse packet
-    if ((len = parse_tls(buffer, n, &host))) {
-        type = IS_HTTPS;
+    if (offset == 0) {
+        if ((len = parse_tls(buffer, n, &host))) {
+            type = IS_HTTPS;
+        }
+        else if ((len = parse_http(buffer, n, &host, 0))) {
+            type = IS_HTTP;
+        }
+        if (len && host) {
+            LOG(LOG_S, "host: %.*s (%zd)\n",
+                len, host, host - buffer);
+            host_pos = host - buffer;
+        }
     }
-    else if ((len = parse_http(buffer, n, &host, 0))) {
-        type = IS_HTTP;
-    }
-    if (len && host) {
-        LOG(LOG_S, "host: %.*s (%zd)\n",
-            len, host, host - buffer);
-        host_pos = host - buffer;
-    }
-    
     // modify packet
     if (type == IS_HTTP && dp.mod_http) {
         LOG(LOG_S, "modify HTTP: n=%zd\n", n);
@@ -469,7 +469,7 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             pos += gen_offset(part.pos, 
                 part.flag, n - pos - 5, lp, type, host_pos - 5, len);
             
-            pos += part.s * (part.r - r);
+            pos += (long)part.s * (part.r - r);
             if (pos < lp) {
                 LOG(LOG_E, "tlsrec cancel: %ld < %ld\n", pos, lp);
                 break;
@@ -484,13 +484,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             lp = pos + 5;
         }
     }
-    // desync
     #ifdef __linux__
-    if (dp.drop_sack && drop_sack(sfd)) {
+    if (!offset && dp.drop_sack && drop_sack(sfd)) {
         return -1;
     }
     #endif
-    long lp = offset;
+    long lp = 0;
     struct part part;
     int i = 0, r = 0;
     
@@ -502,17 +501,17 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
         long pos = gen_offset(part.pos,
             part.flag, n, lp, type, host_pos, len);
             
-        pos += part.s * (part.r - r);
+        pos += (long)part.s * (part.r - r);
         
-        // after EAGAIN
-        if (offset && pos <= offset) {
+        if (!(part.flag & OFFSET_START) && offset && pos <= offset) {
+            LOG(LOG_S, "offset: %zd, skip\n", offset);
             continue;
         }
-        else if (pos < 0 || pos > n || pos < lp) {
+        if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
-        // send part
+        
         ssize_t s = 0;
         switch (part.m) {
             #ifdef FAKE_SUPPORT
