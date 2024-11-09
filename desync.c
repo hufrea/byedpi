@@ -446,6 +446,14 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
                 len, host, host - buffer);
             host_pos = host - buffer;
         }
+        else {
+            size_t s = n > 16 ? 16 : n - (n % 4);
+            char hex[s * 2 + 1], *b = buffer;
+            for (size_t i = 0; i < s; i += 4)
+                snprintf(hex + i * 2, sizeof(hex) - i * 2, 
+                    "%02x%02x%02x%02x", b[i],b[i+1],b[i+2],b[i+3]);
+            LOG(LOG_S, "bytes: %s (%zd)\n", s ? hex : "", n);
+        }
     }
     // modify packet
     if (type == IS_HTTP && dp.mod_http) {

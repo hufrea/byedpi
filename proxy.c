@@ -407,6 +407,11 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
+    if (params.debug) {
+        INIT_ADDR_STR((*dst));
+        LOG(LOG_S, "new conn: fd=%d, pair=%d, addr=%s:%d\n", 
+            sfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
+    }
     int status = connect(sfd, &addr.sa, SA_SIZE(&addr));
     if (status == 0 && params.tfo) {
         LOG(LOG_S, "TFO supported!\n");
@@ -435,12 +440,6 @@ int create_conn(struct poolhd *pool,
     #endif
     pair->flag = FLAG_CONN;
     //val->type = EV_IGNORE;
-    
-    if (params.debug) {
-        INIT_ADDR_STR((*dst));
-        LOG(LOG_S, "new conn: fd=%d, addr=%s:%d\n", 
-            val->pair->fd, ADDR_STR, ntohs(dst->in.sin_port));
-    }
     return 0;
 }
 
@@ -496,8 +495,8 @@ int udp_associate(struct poolhd *pool,
     }
     if (params.debug) {
         INIT_ADDR_STR((*dst));
-        LOG(LOG_S, "udp associate: fds=%d,%d addr=%s:%d\n", 
-            ufd, cfd, ADDR_STR, ntohs(dst->in.sin_port));
+        LOG(LOG_S, "udp associate: fds=%d,%d,%d addr=%s:%d\n", 
+            ufd, cfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
     }
     val->type = EV_IGNORE;
     val->pair = client;
@@ -673,7 +672,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
             return -1;
         }
         if (sn < n) {
-            LOG(LOG_S, "send: %zd != %zd (fd: %d)\n", sn, n, pair->fd);
+            LOG(LOG_S, "send: %zd != %zd (fd=%d)\n", sn, n, pair->fd);
             assert(!(val->buff.size || val->buff.offset));
             
             val->buff.size = n - sn;

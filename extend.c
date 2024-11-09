@@ -454,7 +454,7 @@ ssize_t tcp_send_hook(struct eval *remote,
             skip = 1;
         }
         else {
-            LOG((m ? LOG_S : LOG_L), "desync TCP, m=%d, r=%d\n", m, r);
+            LOG(LOG_S, "desync TCP: group=%d, round=%d, fd=%d\n", m, r, remote->fd);
             
             ssize_t offset = remote->pair->round_sent;
             if (!offset && remote->round_count) offset = -1;
@@ -541,7 +541,7 @@ ssize_t udp_hook(struct eval *val,
     if (!check_round(params.dp[m].rounds, r)) {
         return send(val->fd, buffer, n, 0);
     }
-    LOG(LOG_S, "desync UDP, m=%d, r=%d\n", m, r);
+    LOG(LOG_S, "desync UDP: group=%d, round=%d, fd=%d\n", m, r, val->fd);
     return desync_udp(val->fd, buffer, bfsize, n, &dst->sa, m);
 }
 
