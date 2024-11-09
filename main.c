@@ -59,7 +59,7 @@ struct params params = {
 };
 
 
-const char help_text[] = {
+const static char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
     #ifdef __linux__

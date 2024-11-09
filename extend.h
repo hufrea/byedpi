@@ -5,10 +5,10 @@
 
 #include "proxy.h"
 
-int socket_mod(int fd, struct sockaddr *dst);
+int socket_mod(int fd);
 
 int connect_hook(struct poolhd *pool, struct eval *val, 
-        struct sockaddr_ina *dst, int next);
+        const struct sockaddr_ina *dst, int next);
         
 ssize_t tcp_send_hook(struct eval *val,
         char *buffer, size_t bfsize, ssize_t n);
@@ -23,7 +23,7 @@ int on_first_tunnel(struct poolhd *pool,
         struct eval *val, char *buffer, ssize_t bfsize, int etype);
         
 #ifdef __linux__
-int protect(int conn_fd, const char *path);
+static int protect(int conn_fd, const char *path);
 #else
 #define protect(fd, path) 0
 #endif

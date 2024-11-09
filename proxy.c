@@ -75,7 +75,7 @@ void map_fix(struct sockaddr_ina *addr, char f6)
 
 
 static inline char addr_equ(
-        struct sockaddr_ina *a, struct sockaddr_ina *b)
+        const struct sockaddr_ina *a, const struct sockaddr_ina *b)
 {
     if (a->sa.sa_family == AF_INET) {
         return 
@@ -121,7 +121,7 @@ static inline int nb_socket(int domain, int type)
 }
 
 
-int resolve(char *host, int len, 
+static int resolve(char *host, int len, 
         struct sockaddr_ina *addr, int type) 
 {
     struct addrinfo hints = {0}, *res = 0;
@@ -149,7 +149,7 @@ int resolve(char *host, int len,
 }
 
 
-int auth_socks5(int fd, char *buffer, ssize_t n)
+static int auth_socks5(int fd, const char *buffer, ssize_t n)
 {
     if (n <= 2 || (uint8_t)buffer[1] != (n - 2)) {
         return -1;
@@ -160,8 +160,8 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
             c = S_AUTH_NONE;
             break;
         }
-    buffer[1] = c;
-    if (send(fd, buffer, 2, 0) < 0) {
+    uint8_t a[2] = { S_VER5, c };
+    if (send(fd, a, sizeof(a), 0) < 0) {
         uniperror("send");
         return -1;
     }
@@ -169,7 +169,7 @@ int auth_socks5(int fd, char *buffer, ssize_t n)
 }
 
 
-int resp_s5_error(int fd, int e)
+static int resp_s5_error(int fd, int e)
 {
     struct s5_rep s5r = { 
         .ver = 0x05, .code = (uint8_t )e, 
@@ -179,7 +179,7 @@ int resp_s5_error(int fd, int e)
 }
 
 
-int resp_error(int fd, int e, int flag)
+static int resp_error(int fd, int e, int flag)
 {
     if (flag == FLAG_S4) {
         struct s4_req s4r = { 
@@ -220,8 +220,8 @@ int resp_error(int fd, int e, int flag)
 }
 
 
-int s4_get_addr(char *buff, size_t n,
-        struct sockaddr_ina *dst)
+static int s4_get_addr(const char *buff, 
+        size_t n, struct sockaddr_ina *dst)
 {
     if (n < sizeof(struct s4_req) + 1) {
         return -1;
@@ -257,8 +257,8 @@ int s4_get_addr(char *buff, size_t n,
 }
 
 
-int s5_get_addr(char *buffer, size_t n,
-        struct sockaddr_ina *addr, int type) 
+static int s5_get_addr(const char *buffer, 
+        size_t n, struct sockaddr_ina *addr, int type) 
 {
     if (n < S_SIZE_MIN) {
         LOG(LOG_E, "ss: request too small\n");
@@ -303,8 +303,8 @@ int s5_get_addr(char *buffer, size_t n,
 }
 
 
-int s5_set_addr(char *buffer, size_t n,
-        struct sockaddr_ina *addr, char end)
+static int s5_set_addr(char *buffer, size_t n,
+        const struct sockaddr_ina *addr, char end)
 {
     struct s5_req *r = (struct s5_req *)buffer;
     if (n < S_SIZE_I4) {
@@ -350,7 +350,7 @@ static int remote_sock(struct sockaddr_ina *dst, int type)
         uniperror("socket");  
         return -1;
     }
-    if (socket_mod(sfd, &dst->sa) < 0) {
+    if (socket_mod(sfd) < 0) {
         close(sfd);
         return -1;
     }
@@ -374,7 +374,7 @@ static int remote_sock(struct sockaddr_ina *dst, int type)
 
 
 int create_conn(struct poolhd *pool,
-        struct eval *val, struct sockaddr_ina *dst, int next)
+        struct eval *val, const struct sockaddr_ina *dst, int next)
 {
     struct sockaddr_ina addr = *dst;
     
@@ -444,8 +444,8 @@ int create_conn(struct poolhd *pool,
 }
 
 
-int udp_associate(struct poolhd *pool, 
-        struct eval *val, struct sockaddr_ina *dst)
+static int udp_associate(struct poolhd *pool, 
+        struct eval *val, const struct sockaddr_ina *dst)
 {
     struct sockaddr_ina addr = *dst;
     
@@ -563,7 +563,7 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
 }
 #endif
 
-static inline int on_accept(struct poolhd *pool, struct eval *val)
+static int on_accept(struct poolhd *pool, const struct eval *val)
 {
     struct sockaddr_ina client;
     struct eval *rval;
@@ -619,7 +619,7 @@ static inline int on_accept(struct poolhd *pool, struct eval *val)
 }
 
 
-int on_tunnel(struct poolhd *pool, struct eval *val, 
+static int on_tunnel(struct poolhd *pool, struct eval *val, 
         char *buffer, size_t bfsize, int etype)
 {
     ssize_t n = 0;
@@ -694,7 +694,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
 }
 
 
-int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
+static int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 {
     char *data = buffer;
     size_t data_len = bfsize;
@@ -887,7 +887,7 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
 }
 
 
-void close_conn(struct poolhd *pool, struct eval *val)
+static void close_conn(struct poolhd *pool, struct eval *val)
 {
     struct eval *cval = val;
     do {
@@ -986,7 +986,7 @@ int event_loop(int srvfd)
 }
 
 
-int listen_socket(struct sockaddr_ina *srv)
+int listen_socket(const struct sockaddr_ina *srv)
 {
     int srvfd = nb_socket(srv->sa.sa_family, SOCK_STREAM);
     if (srvfd < 0) {
@@ -1014,7 +1014,7 @@ int listen_socket(struct sockaddr_ina *srv)
 }
 
 
-int run(struct sockaddr_ina *srv)
+int run(const struct sockaddr_ina *srv)
 {
     #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)

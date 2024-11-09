@@ -106,18 +106,13 @@ enum s4_rep {
 
 void map_fix(struct sockaddr_ina *addr, char f6);
 
-int resp_error(int fd, int e, int flag);
-
 int create_conn(struct poolhd *pool,
-        struct eval *val, struct sockaddr_ina *dst, int next);
-
-int on_tunnel(struct poolhd *pool, struct eval *val, 
-        char *buffer, size_t bfsize, int out);
-        
-int listen_socket(struct sockaddr_ina *srv);
+        struct eval *val, const struct sockaddr_ina *dst, int next);
+ 
+int listen_socket(const struct sockaddr_ina *srv);
 
 int event_loop(int srvfd);
 
-int run(struct sockaddr_ina *srv);
+int run(const struct sockaddr_ina *srv);
 
 #endif

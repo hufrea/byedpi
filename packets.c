@@ -60,9 +60,9 @@ char http_data[43] = {
 char udp_data[64] = { 0 };
 
 
-char *strncasestr(char *a, size_t as, char *b, size_t bs)
+static const char *strncasestr(const char *a, size_t as, const char *b, size_t bs)
 {
-    for (char *p = a; ; p++) {
+    for (const char *p = a; ; p++) {
         p = memchr(p, *b, as - (p - a));
         if (!p) {
             return 0;
@@ -78,8 +78,8 @@ char *strncasestr(char *a, size_t as, char *b, size_t bs)
 }
 
 
-size_t find_tls_ext_offset(uint16_t type, 
-        char *data, size_t size, size_t skip) 
+static size_t find_tls_ext_offset(uint16_t type, 
+        const char *data, size_t size, size_t skip) 
 {
     if (size <= (skip + 2)) {
         return 0;
@@ -102,7 +102,7 @@ size_t find_tls_ext_offset(uint16_t type,
 }
 
 
-size_t chello_ext_offset(uint16_t type, char *data, size_t size)
+static size_t chello_ext_offset(uint16_t type, const char *data, size_t size)
 {
     if (size < 44) {
         return 0;
@@ -155,7 +155,7 @@ int change_tls_sni(const char *host, char *buffer, size_t bsize)
 }
 
 
-bool is_tls_chello(char *buffer, size_t bsize)
+bool is_tls_chello(const char *buffer, size_t bsize)
 {
     return (bsize > 5 &&
         ANTOHS(buffer, 0) == 0x1603 &&
@@ -163,7 +163,7 @@ bool is_tls_chello(char *buffer, size_t bsize)
 }
 
 
-int parse_tls(char *buffer, size_t bsize, char **hs)
+int parse_tls(const char *buffer, size_t bsize, char **hs)
 {
     if (!is_tls_chello(buffer, bsize)) {
         return 0;
@@ -178,12 +178,12 @@ int parse_tls(char *buffer, size_t bsize, char **hs)
     if ((sni_offs + 9 + len) > bsize) {
         return 0;
     }
-    *hs = &buffer[sni_offs + 9];
+    *hs = (char *)&buffer[sni_offs + 9];
     return len;
 }
 
 
-bool is_http(char *buffer, size_t bsize)
+bool is_http(const char *buffer, size_t bsize)
 {
     if (bsize < 16 || *buffer > 'T' || *buffer < 'C') {
         return 0;
@@ -201,10 +201,10 @@ bool is_http(char *buffer, size_t bsize)
 }
 
     
-int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
+int parse_http(const char *buffer, size_t bsize, char **hs, uint16_t *port)
 {
-    char *host = buffer, *h_end;
-    char *buff_end = buffer + bsize;
+    const char *host = buffer, *h_end;
+    const char *buff_end = buffer + bsize;
     
     if (!is_http(buffer, bsize)) {
         return 0;
@@ -218,7 +218,7 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
     while ((buff_end - host) > 0 && isblank((unsigned char) *host)) {
         host++;
     }
-    char *l_end = memchr(host, '\n', buff_end - host);
+    const char *l_end = memchr(host, '\n', buff_end - host);
     if (!l_end) {
         return 0;
     }
@@ -227,7 +227,7 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
     if (!(isdigit((unsigned char) *(l_end - 1))))
         h_end = 0;
     else {
-        char *h = host;
+        const char *h = host;
         h_end = 0;
         do {
             h = memchr(h, ':', l_end - h);
@@ -249,12 +249,12 @@ int parse_http(char *buffer, size_t bsize, char **hs, uint16_t *port)
             return 0;
         *port = i;
     }
-    *hs = host;
+    *hs = (char *)host;
     return h_end - host;
 }
 
 
-int get_http_code(char *b, size_t n)
+static int get_http_code(const char *b, size_t n)
 {
     if (n < 13) return 0;
     if (strncmp(b, "HTTP/1.", 7)) {
@@ -272,7 +272,8 @@ int get_http_code(char *b, size_t n)
 }
 
 
-bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn)
+bool is_http_redirect(
+        const char *req, size_t qn, const char *resp, size_t sn)
 {
     char *host = 0;
     int len = parse_http(req, qn, &host, 0);
@@ -284,7 +285,7 @@ bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn)
     if (code > 308 || code < 300) {
         return 0;
     }
-    char *location = strncasestr(resp, sn, "\nLocation:", 10);
+    const char *location = strncasestr(resp, sn, "\nLocation:", 10);
     if (!location) {
         return 0;
     }
@@ -329,7 +330,7 @@ bool is_http_redirect(char *req, size_t qn, char *resp, size_t sn)
 }
 
 
-bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
+bool neq_tls_sid(const char *req, size_t qn, const char *resp, size_t sn)
 {
     if (qn < 75 || sn < 75) {
         return 0;
@@ -351,7 +352,7 @@ bool neq_tls_sid(char *req, size_t qn, char *resp, size_t sn)
 }
 
 
-bool is_tls_shello(char *buffer, size_t bsize)
+bool is_tls_shello(const char *buffer, size_t bsize)
 {
     return (bsize > 5 &&
         ANTOHS(buffer, 0) == 0x1603 &&

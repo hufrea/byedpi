@@ -72,7 +72,7 @@ static ssize_t serialize_addr(const struct sockaddr_ina *dst,
 }
 
 
-static int cache_get(struct sockaddr_ina *dst)
+static int cache_get(const struct sockaddr_ina *dst)
 {
     uint8_t key[KEY_SIZE] = { 0 };
     int len = serialize_addr(dst, key, sizeof(key));
@@ -90,7 +90,7 @@ static int cache_get(struct sockaddr_ina *dst)
 }
 
 
-static int cache_add(struct sockaddr_ina *dst, int m)
+static int cache_add(const struct sockaddr_ina *dst, int m)
 {
     assert(m >= 0 && m < params.dp_count);
     
@@ -117,7 +117,7 @@ static int cache_add(struct sockaddr_ina *dst, int m)
 }
 
 
-static inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
+static inline bool check_port(const uint16_t *p, const struct sockaddr_in6 *dst)
 {
     return (dst->sin6_port >= p[0] 
             && dst->sin6_port <= p[1]);
@@ -125,7 +125,7 @@ static inline bool check_port(uint16_t *p, struct sockaddr_in6 *dst)
 
 
 int connect_hook(struct poolhd *pool, struct eval *val, 
-        struct sockaddr_ina *dst, int next)
+        const struct sockaddr_ina *dst, int next)
 {
     int m = cache_get(dst);
     val->cache = (m == 0);
@@ -135,7 +135,7 @@ int connect_hook(struct poolhd *pool, struct eval *val,
 }
 
 
-int socket_mod(int fd, struct sockaddr *dst)
+int socket_mod(int fd)
 {
     if (params.custom_ttl) {
         if (setttl(fd, params.def_ttl) < 0) {
@@ -171,7 +171,8 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
 }
 
 
-static bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
+static bool check_host(
+        struct mphdr *hosts, const char *buffer, ssize_t n)
 {
     char *host = 0;
     int len;
@@ -195,7 +196,7 @@ static bool check_host(struct mphdr *hosts, char *buffer, ssize_t n)
 }
 
 
-static bool check_proto_tcp(int proto, char *buffer, ssize_t n)
+static bool check_proto_tcp(int proto, const char *buffer, ssize_t n)
 {
     if (proto & IS_TCP) {
         return 1;
@@ -212,7 +213,7 @@ static bool check_proto_tcp(int proto, char *buffer, ssize_t n)
 }
 
 
-static bool check_round(int *nr, int r)
+static bool check_round(const int *nr, int r)
 {
     return (!nr[1] && r <= 1) || (r >= nr[0] && r <= nr[1]);
 }
@@ -279,7 +280,7 @@ static int on_fin(struct poolhd *pool, struct eval *val)
 
 
 static int on_response(struct poolhd *pool, struct eval *val, 
-        char *resp, ssize_t sn)
+        const char *resp, ssize_t sn)
 {
     int m = val->pair->attempt + 1;
     
@@ -318,7 +319,7 @@ static inline void free_first_req(struct eval *client)
 }
 
 
-static int setup_conn(struct eval *client, char *buffer, ssize_t n)
+static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
 {
     int m = client->attempt;
     
@@ -361,7 +362,7 @@ static int cancel_setup(struct eval *remote)
 }
 
 
-int send_saved_req(struct poolhd *pool,
+static int send_saved_req(struct poolhd *pool,
         struct eval *client, char *buffer, ssize_t bfsize)
 {
     ssize_t offset = client->buff.offset;
@@ -547,7 +548,7 @@ ssize_t udp_hook(struct eval *val,
 
 
 #ifdef __linux__
-int protect(int conn_fd, const char *path)
+static int protect(int conn_fd, const char *path)
 {
     struct sockaddr_un sa;
     sa.sun_family = AF_UNIX;
