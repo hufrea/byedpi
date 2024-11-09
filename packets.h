@@ -10,8 +10,9 @@
 #define IS_UDP 2
 #define IS_HTTP 4
 #define IS_HTTPS 8
-//#define IS_QUIC 16
-//#define IS_DNS 32
+#define IS_IPV4 16
+//#define IS_QUIC 64
+//#define IS_DNS 128
 
 #define MH_HMIX 1
 #define MH_SPACE 2

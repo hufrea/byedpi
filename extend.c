@@ -117,13 +117,6 @@ static int cache_add(const struct sockaddr_ina *dst, int m)
 }
 
 
-static inline bool check_port(const uint16_t *p, const struct sockaddr_in6 *dst)
-{
-    return (dst->sin6_port >= p[0] 
-            && dst->sin6_port <= p[1]);
-}
-
-
 int connect_hook(struct poolhd *pool, struct eval *val, 
         const struct sockaddr_ina *dst, int next)
 {
@@ -195,10 +188,10 @@ static bool check_host(
     return 0;
 }
 
-
+    
 static bool check_proto_tcp(int proto, const char *buffer, ssize_t n)
 {
-    if (proto & IS_TCP) {
+    if (!(proto & ~IS_IPV4)) {
         return 1;
     }
     else if ((proto & IS_HTTP) && 
@@ -210,6 +203,27 @@ static bool check_proto_tcp(int proto, const char *buffer, ssize_t n)
         return 1;
     }
     return 0;
+}
+
+
+static bool check_l34(int proto, const uint16_t *pf, int st, const struct sockaddr_in6 *dst)
+{
+    if ((proto & IS_UDP) && (st != SOCK_DGRAM)) {
+        return 0;
+    }
+    if (proto & IS_IPV4) {
+        static const char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
+        
+        if (dst->sin6_family != AF_INET 
+                && memcmp(&dst->sin6_addr, pat, 12)) {
+            return 0;
+        }
+    }
+    if (pf[0] && 
+            (dst->sin6_port < pf[0] || dst->sin6_port > pf[1])) {
+        return 0;
+    }
+    return 1;
 }
 
 
@@ -325,10 +339,10 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
     
     if (!m) for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
-        if (!dp->detect &&
-                (!dp->pf[0] || check_port(dp->pf, &client->pair->in6)) &&
-                (!dp->proto || check_proto_tcp(dp->proto, buffer, n)) &&
-                (!dp->hosts || check_host(dp->hosts, buffer, n))) {
+        if (!dp->detect 
+                && (check_l34(dp->proto, dp->pf, SOCK_STREAM, &client->pair->in6)
+                    && check_proto_tcp(dp->proto, buffer, n)) 
+                && (!dp->hosts || check_host(dp->hosts, buffer, n))) {
             break;
         }
     }
@@ -528,9 +542,8 @@ ssize_t udp_hook(struct eval *val,
     if (!m) {
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
-            if (!dp->detect && 
-                    (!dp->proto || (dp->proto & IS_UDP)) &&
-                    (!dp->pf[0] || check_port(dp->pf, &dst->in6))) {
+            if (!dp->detect 
+                    && check_l34(dp->proto, dp->pf, SOCK_DGRAM, &dst->in6)) {
                 break;
             }
         }
