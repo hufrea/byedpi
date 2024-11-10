@@ -7,26 +7,18 @@ WIN_LDFLAGS = -lws2_32 -lmswsock
 SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
 WIN_SRC = win_service.c
 
-OBJ = $(SRC:.c=.o)
-WIN_OBJ = $(WIN_SRC:.c=.o)
-
 PREFIX := /usr/local
 INSTALL_DIR := $(DESTDIR)$(PREFIX)/bin/
 
-all: $(TARGET)
+all: 
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)
 
-$(TARGET): $(OBJ)
-	$(CC) -o $(TARGET) $(OBJ) $(LDFLAGS)
-
-windows: $(OBJ) $(WIN_OBJ)
-	$(CC) -o $(TARGET).exe $(OBJ) $(WIN_OBJ) $(WIN_LDFLAGS)
-
-.c.o:
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $<
+windows: 
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(SRC) $(WIN_SRC) -o $(TARGET).exe $(WIN_LDFLAGS)
 
 clean:
 	rm -f $(TARGET) $(TARGET).exe $(OBJ) $(WIN_OBJ)
 
-install: $(TARGET)
+install: all
 	mkdir -p $(INSTALL_DIR)
 	install -m 755 $(TARGET) $(INSTALL_DIR)
