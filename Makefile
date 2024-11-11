@@ -1,9 +1,12 @@
+.POSIX:
+
 TARGET = ciadpi
 
 CPPFLAGS = -D_DEFAULT_SOURCE
 CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
+HEADERS = conev.h desync.h error.h extend.h kavl.h mpool.h packets.h params.h platform.h proxy.h win_service.h
 SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
 WIN_SRC = win_service.c
 
@@ -21,6 +24,7 @@ $(TARGET): $(OBJ)
 windows: $(OBJ) $(WIN_OBJ)
 	$(CC) -o $(TARGET).exe $(OBJ) $(WIN_OBJ) $(WIN_LDFLAGS)
 
+$(OBJ): $(HEADERS)
 .c.o:
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $<
 
