@@ -304,6 +304,6 @@ TCP может отсылать данные вне основного пото�
 
 ------
 ### Дополнительная информация о DPI, источники идей  
-* https://github.com/bol-van/zapret/blob/master/docs/readme.txt  
+* https://github.com/bol-van/zapret/blob/master/docs/readme.md  
 * https://geneva.cs.umd.edu/papers/geneva_ccs19.pdf  
 * https://habr.com/ru/post/335436  
