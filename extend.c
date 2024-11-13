@@ -409,6 +409,7 @@ int on_first_tunnel(struct poolhd *pool,
             uniperror("mod_etype");
             return -1;
         }
+        val->pair->type = EV_FIRST_TUNNEL;
         return send_saved_req(pool, val->pair, buffer, bfsize);
     }
     ssize_t n = tcp_recv_hook(pool, val, buffer, bfsize);

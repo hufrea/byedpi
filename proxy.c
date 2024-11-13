@@ -439,7 +439,7 @@ int create_conn(struct poolhd *pool,
     pair->in6 = dst->in6;
     #endif
     pair->flag = FLAG_CONN;
-    //val->type = EV_IGNORE;
+    val->type = EV_IGNORE;
     return 0;
 }
 
