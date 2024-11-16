@@ -18,4 +18,8 @@ int setttl(int fd, int ttl);
 
 int post_desync(int sfd, int dp_c);
 
+struct proto_info {
+    char init, type;
+    int host_len, host_pos;
+};
 #endif
