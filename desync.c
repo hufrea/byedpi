@@ -32,6 +32,7 @@
 #include "error.h"
 
 #define WAIT_LIMIT_MS 500
+#define DEFAULT_TTL 8
 
 
 int setttl(int fd, int ttl)
@@ -48,7 +49,19 @@ int setttl(int fd, int ttl)
     return 0;
 }
 
+
 #ifdef __linux__
+static int get_family(const struct sockaddr_in6 *dst)
+{
+    static const char map[12] = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
+    if (dst->sin6_family == AF_INET6 
+            && !memcmp(&dst->sin6_addr, map, sizeof(map))) {
+        return AF_INET;
+    }
+    return dst->sin6_family;
+}
+
+
 static int drop_sack(int fd)
 {
     struct sock_filter code[] = {
@@ -71,10 +84,8 @@ static int drop_sack(int fd)
     }
     return 0;
 }
-#endif
 
 
-#ifndef _WIN32
 static inline void delay(long ms)
 {
     struct timespec time = { 
@@ -82,9 +93,8 @@ static inline void delay(long ms)
     };
     nanosleep(&time, 0);
 }
-#endif
 
-#ifdef __linux__
+
 static void wait_send_if_support(int sfd)
 {
     int i = 0;
@@ -117,6 +127,7 @@ static void wait_send_if_support(int sfd)
 #define wait_send_if_support(sfd)
 #endif
 
+
 static struct packet get_tcp_fake(const char *buffer, size_t n,
         struct proto_info *info, const struct desync_params *opt)
 {
@@ -148,7 +159,8 @@ static ssize_t send_fake(int sfd, const char *buffer,
 {
     struct sockaddr_in6 addr = {};
     socklen_t addr_size = sizeof(addr);
-    if (opt->md5sig) {
+    
+    if (opt->md5sig || opt->ip_options) {
         if (getpeername(sfd, 
                 (struct sockaddr *)&addr, &addr_size) < 0) {
             uniperror("getpeername");
@@ -172,7 +184,7 @@ static ssize_t send_fake(int sfd, const char *buffer,
         }
         memcpy(p, pkt.data, pkt.size < pos ? pkt.size : pos);
         
-        if (setttl(sfd, opt->ttl ? opt->ttl : 8) < 0) {
+        if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
         if (opt->md5sig) {
@@ -187,11 +199,11 @@ static ssize_t send_fake(int sfd, const char *buffer,
                 break;
             }
         }
-        if (opt->ip_options 
+        if (opt->ip_options && get_family(&addr) == AF_INET 
             && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
                 opt->ip_options, opt->ip_options_len) < 0) {
             uniperror("setsockopt IP_OPTIONS");
-            //break;
+            break;
         }
         struct iovec vec = { .iov_base = p, .iov_len = pos };
         
@@ -211,11 +223,11 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, params.def_ttl) < 0) {
             break;
         }
-        if (opt->ip_options 
+        if (opt->ip_options && get_family(&addr) == AF_INET 
             && setsockopt(sfd, IPPROTO_IP,
                 IP_OPTIONS, opt->ip_options, 0) < 0) {
             uniperror("setsockopt IP_OPTIONS");
-            //break;
+            break;
         }
         if (opt->md5sig) {
             struct tcp_md5sig md5 = {
@@ -290,7 +302,7 @@ static ssize_t send_fake(int sfd, const char *buffer,
             uniperror("SetFilePointer");
             break;
         }
-        if (setttl(sfd, opt->ttl ? opt->ttl : 8) < 0) {
+        if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
         if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
@@ -626,7 +638,7 @@ ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
             }
             else pkt.size = 0;
         }
-        int bttl = dp->ttl ? dp->ttl : 8;
+        int bttl = dp->ttl ? dp->ttl : DEFAULT_TTL;
         if (setttl(sfd, bttl) < 0) {
             return -1;
         }
