@@ -31,6 +31,8 @@
 #include "packets.h"
 #include "error.h"
 
+#define WAIT_LIMIT_MS 500
+
 
 int setttl(int fd, int ttl)
 {
@@ -80,15 +82,14 @@ static inline void delay(long ms)
     };
     nanosleep(&time, 0);
 }
-#else
-#define delay(ms) Sleep(ms)
 #endif
 
 #ifdef __linux__
-static void wait_send(int sfd)
+static void wait_send_if_support(int sfd)
 {
-    for (int i = 0; params.wait_send && i < 500; i++) {
-        struct tcp_info tcpi = {};
+    int i = 0;
+    for (; params.wait_send && i < WAIT_LIMIT_MS; i++) {
+        struct tcp_info tcpi;
         socklen_t ts = sizeof(tcpi);
         
         if (getsockopt(sfd, IPPROTO_TCP,
@@ -98,27 +99,22 @@ static void wait_send(int sfd)
         }
         if (tcpi.tcpi_state != 1) {
             LOG(LOG_E, "state: %d\n", tcpi.tcpi_state);
-            return;
+            break;
         }
-        size_t s = (char *)&tcpi.tcpi_notsent_bytes - (char *)&tcpi.tcpi_state;
-        if (ts < s) {
+        if (ts <= offsetof(struct tcp_info, tcpi_notsent_bytes)) {
             LOG(LOG_E, "tcpi_notsent_bytes not provided\n");
             params.wait_send = 0;
             break;
         }
         if (tcpi.tcpi_notsent_bytes == 0) {
-            return;
+            break;
         }
-        LOG(LOG_S, "not sent after %d ms\n", i);
         delay(1);
     }
-    delay(params.sfdelay);
+    if (i) LOG(LOG_S, "waiting for send: %d ms\n", i);
 }
-#define wait_send_if_support(sfd) \
-    if (params.wait_send) wait_send(sfd)
 #else
-#define wait_send(sfd) delay(params.sfdelay)
-#define wait_send_if_support(sfd) // :(
+#define wait_send_if_support(sfd)
 #endif
 
 static struct packet get_tcp_fake(const char *buffer, size_t n,
@@ -209,7 +205,7 @@ static ssize_t send_fake(int sfd, const char *buffer,
             uniperror("splice");
             break;
         }
-        wait_send(sfd);
+        wait_send_if_support(sfd);
         memcpy(p, buffer, pos);
         
         if (setttl(sfd, params.def_ttl) < 0) {
@@ -305,7 +301,7 @@ static ssize_t send_fake(int sfd, const char *buffer,
                 break;
             }
         }
-        wait_send(sfd);
+        //Sleep(3);
         
         if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
             uniperror("SetFilePointer");

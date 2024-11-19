@@ -39,7 +39,6 @@ fake_udp = {
 
 
 struct params params = {
-    .sfdelay = 3,
     .wait_send = 1,
     
     .cache_ttl = 100800,
@@ -163,7 +162,6 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
-    {"delay",         1, 0, 'w'}, //
     {"not-wait-send", 0, 0, 'W'}, //
     #ifdef __linux__
     {"drop-sack",     0, 0, 'Y'},
@@ -902,13 +900,6 @@ int main(int argc, char **argv)
             
         case 'Y':
             dp->drop_sack = 1;
-            break;
-            
-        case 'w': //
-            params.sfdelay = strtol(optarg, &end, 0);
-            if (params.sfdelay < 0 || optarg == end 
-                    || params.sfdelay >= 1000 || *end)
-                invalid = 1;
             break;
         
         case 'W':
