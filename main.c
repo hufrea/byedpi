@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
 #include <limits.h>
 
 #include "params.h"
@@ -15,12 +16,11 @@
     #include <fcntl.h>
     #include <netinet/in.h>
     #include <netinet/tcp.h>
-    #include <getopt.h>
+    #include <errno.h>
     #include <signal.h>
     #include <sys/socket.h>
     #include <sys/stat.h>
     #include <sys/types.h>
-    #include <errno.h>
 #else
     #include <ws2tcpip.h>
     #include "win_service.h"
