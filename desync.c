@@ -474,7 +474,7 @@ static ssize_t tamp(char *buffer, size_t bfsize, ssize_t n,
             pos += gen_offset(part.pos, 
                 part.flag, buffer, n - pos, lp, info);
                 
-            if (part.pos != pos) {
+            if (part.pos < 0 || part.flag) {
                 pos -= 5;
             }
             pos += (long )part.s * (part.r - r);
