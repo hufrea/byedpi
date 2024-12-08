@@ -17,6 +17,8 @@
     #include <netinet/in.h>
     #include <netinet/tcp.h>
     #include <sys/socket.h>
+    
+    #define DAEMON
 #else
     #include <ws2tcpip.h>
     #include "win_service.h"
@@ -61,6 +63,10 @@ struct params params = {
 const static char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
+    #ifdef DAEMON
+    "    -D, --daemon              Daemonize\n"
+    "    -w, --pidfile <filename>  Write PID to file\n"
+    #endif
     #ifdef __linux__
     "    -E, --transparent         Transparent proxy mode\n"
     #endif
@@ -114,6 +120,10 @@ const static char help_text[] = {
 
 
 const struct option options[] = {
+    #ifdef DAEMON
+    {"daemon",        0, 0, 'D'},
+    {"pidfile",       1, 0, 'w'},
+    #endif
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
@@ -439,10 +449,39 @@ void *add(void **root, int *n, size_t ss)
 }
 
 
+#ifdef DAEMON
+int init_pid_file(const char *fname)
+{
+    params.pid_fd = open(fname, O_RDWR | O_CREAT, 0640);
+    if (params.pid_fd < 0) {
+        return -1;
+    }
+    if (lockf(params.pid_fd, F_TLOCK, 0) < 0) {
+        return -1;
+    }
+    params.pid_file = fname;
+    char pid_str[21];
+    snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+    
+    write(params.pid_fd, pid_str, strlen(pid_str));
+    return 0;
+}
+#endif
+
+
 void clear_params(void)
 {
     #ifdef _WIN32
     WSACleanup();
+    #endif
+    #ifdef DAEMON
+    if (params.pid_fd > 0) {
+        lockf(params.pid_fd, F_ULOCK, 0);
+        close(params.pid_fd);
+    }
+    if (params.pid_file) {
+        unlink(params.pid_file);
+    }
     #endif
     if (params.mempool) {
         mem_destroy(params.mempool);
@@ -515,6 +554,9 @@ int main(int argc, char **argv)
         params.baddr.sin6_family = AF_INET;
     }
     
+    char *pid_file = 0;
+    bool daemonize = 0;
+    
     int rez;
     int invalid = 0;
     
@@ -548,7 +590,16 @@ int main(int argc, char **argv)
             params.transparent = 1;
             break;
         #endif
+        
+        #ifdef DAEMON
+        case 'D':
+            daemonize = 1;
+            break;
             
+        case 'w':
+            pid_file = optarg;
+            break;
+        #endif
         case 'h':
             printf(help_text);
             clear_params();
@@ -954,6 +1005,16 @@ int main(int argc, char **argv)
     }
     srand((unsigned int)time(0));
     
+    #ifdef DAEMON
+    if (daemonize && daemon(0, 0) < 0) {
+        clear_params();
+        return -1;
+    }
+    if (pid_file && init_pid_file(pid_file) < 0) {
+        clear_params();
+        return -1;
+    }
+    #endif
     int status = run((struct sockaddr_ina *)&params.laddr);
     clear_params();
     return status;

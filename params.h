@@ -117,7 +117,9 @@ struct params {
     bool transparent;
     struct mphdr *mempool;
     
-    char *protect_path;
+    const char *protect_path;
+    const char *pid_file;
+    int pid_fd;
 };
 
 extern struct params params;
