@@ -15,68 +15,70 @@ static inline int scmp(const struct elem *p, const struct elem *q)
 KAVL_INIT(my, struct elem, head, scmp)
 
 
-struct mphdr *mem_pool(bool cst)
+struct mphdr *mem_pool(bool is_static)
 {
     struct mphdr *hdr = calloc(sizeof(struct mphdr), 1);
     if (hdr) {
-        hdr->stat = cst;
+        hdr->static_data = is_static;
     }
     return hdr;
 }
 
 
-struct elem *mem_get(struct mphdr *hdr, char *str, int len)
+struct elem *mem_get(const struct mphdr *hdr, const char *str, int len)
 {
     struct {
         int len;
-        char *data;
+        const char *data;
     } temp = { .len = len, .data = str };
     
     return kavl_find(my, hdr->root, (struct elem *)&temp, 0);
 }
 
 
-struct elem *mem_add(struct mphdr *hdr, char *str, int len)
+struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t struct_size)
 {
-    struct elem *v, *e = calloc(sizeof(struct elem), 1);
+    struct elem *v, *e = calloc(struct_size, 1);
     if (!e) {
         return 0;
     }
     e->len = len;
-    if (!hdr->stat) {
-        e->data = malloc(len);
-        if (!e->data) {
-            free(e);
-            return 0;
+    while (1) {
+        if (!hdr->static_data) {
+            e->data = malloc(len);
+            if (!e->data) {
+                break;
+            }
+            memcpy(e->data, str, len);
         }
-        memcpy(e->data, str, len);
-    }
-    else {
-        e->data = str;
-    }
-    v = kavl_insert(my, &hdr->root, e, 0);
-    if (e != v) {
-        if (!hdr->stat) {
-            free(e->data);
+        else {
+            e->data = str;
         }
-        free(e);
+        v = kavl_insert(my, &hdr->root, e, 0);
+        if (e != v) {
+            if (!hdr->static_data)
+                free(e->data);
+            break;
+        }
+        return v;
     }
-    return v;
+    free(e);
+    return 0;
 }
 
 
-void mem_delete(struct mphdr *hdr, char *str, int len)
+void mem_delete(struct mphdr *hdr, const char *str, int len)
 {
     struct {
         int len;
-        char *data;
+        const char *data;
     } temp = { .len = len, .data = str };
     
     struct elem *e = kavl_erase(my, &hdr->root, (struct elem *)&temp, 0);
     if (!e) {
         return;
     }
-    if (!hdr->stat) {
+    if (!hdr->static_data) {
         free(e->data);
         e->data = 0;
     }
@@ -91,7 +93,7 @@ void mem_destroy(struct mphdr *hdr)
         if (!e) {
             break;
         }
-        if (!hdr->stat && e->data) {
+        if (!hdr->static_data) {
             free(e->data);
         }
         e->data = 0;

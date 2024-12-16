@@ -77,7 +77,7 @@ static int cache_get(const struct sockaddr_ina *dst)
     uint8_t key[KEY_SIZE] = { 0 };
     int len = serialize_addr(dst, key, sizeof(key));
     
-    struct elem *val = mem_get(params.mempool, (char *)key, len);
+    struct elem_i *val = (struct elem_i *)mem_get(params.mempool, (char *)key, len);
     if (!val) {
         return -1;
     }
@@ -106,7 +106,7 @@ static int cache_add(const struct sockaddr_ina *dst, int m)
     LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
     time_t t = time(0);
 
-    struct elem *val = mem_add(params.mempool, (char *)key, len);
+    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, (char *)key, len, sizeof(struct elem_i));
     if (!val) {
         uniperror("mem_add");
         return -1;

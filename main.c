@@ -306,7 +306,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
             s++;
             continue;
         }
-        if (mem_add(hdr, s, e - s) == 0) {
+        if (mem_add(hdr, s, e - s, sizeof(struct elem)) == 0) {
             free(hdr);
             return 0;
         }
