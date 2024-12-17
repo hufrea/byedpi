@@ -84,6 +84,7 @@ const static char help_text[] = {
     #endif
     "    -K, --proto <t,h,u,i>     Protocol whitelist: tls,http,udp,ipv4\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
+    "    -j, --ipset <file|:str>   IP whitelist\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
     "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
     "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
@@ -167,6 +168,7 @@ const struct option options[] = {
     {"drop-sack",     0, 0, 'Y'},
     {"protect-path",  1, 0, 'P'}, //
     #endif
+    {"ipset",         1, 0, 'j'},
     {0}
 };
     
@@ -312,6 +314,73 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
         }
         num++;
         s = e + 1;
+    }
+    return hdr;
+}
+
+
+static int parse_ip(char *out, char *str, size_t size)
+{
+    long bits = 0;
+    char *sep = memchr(str, '/', size);
+    if (sep) {
+        bits = strtol(sep + 1, 0, 10);
+        if (bits <= 0) {
+            return 0;
+        }
+        *sep = 0;
+    }
+    int len = 4;
+    
+    if (inet_pton(AF_INET, str, out) <= 0) {
+        if (inet_pton(AF_INET6, str, out) <= 0) {
+            return 0;
+        }
+        else len = 16;
+    }
+    if (!bits || bits > len * 8) bits = len * 8;
+    return (int )bits;
+}
+
+
+struct mphdr *parse_ipset(char *buffer, size_t size)
+{
+    struct mphdr *hdr = mem_pool(0);
+    if (!hdr) {
+        return 0;
+    }
+    size_t num = 0;
+    char *end = buffer + size;
+    char *e = buffer, *s = buffer;
+    
+    for (; e <= end; e++) {
+        if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
+            continue;
+        }
+        if (s == e) {
+            s++;
+            continue;
+        }
+        char ip[e - s + 1];
+        ip[e - s] = 0;
+        memcpy(ip, s, e - s);
+        
+        num++;
+        s = e + 1;
+        
+        char ip_raw[16];
+        int bits = parse_ip(ip_raw, ip, sizeof(ip));
+        if (bits <= 0) {
+            LOG(LOG_E, "invalid ip: num: %zd\n", num + 1);
+            continue;
+        }
+        struct elem *elem = mem_add(hdr, ip_raw, bits / 8 + (bits % 8 ? 1 : 0), sizeof(struct elem));
+        if (!elem) {
+            free(hdr);
+            return 0;
+        }
+        elem->len = bits;
+        elem->cmp_type = CMP_BITS;
     }
     return hdr;
 }
@@ -475,6 +544,10 @@ void clear_params(void)
                 mem_destroy(s.hosts);
                 s.hosts = 0;
             }
+            if (s.ipset != 0) {
+                mem_destroy(s.ipset);
+                s.hosts = 0;
+            }
         }
         free(params.dp);
         params.dp = 0;
@@ -615,7 +688,7 @@ int main(int argc, char **argv)
             break;
             
         case 'A':
-            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect)) {
+            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect || dp->ipset)) {
                 all_limited = 0;
             }
             dp = add((void *)&params.dp, &params.dp_count,
@@ -713,6 +786,25 @@ int main(int argc, char **argv)
                 clear_params();
                 return -1;
             }
+            break;
+            
+        case 'j':;
+            if (dp->ipset) {
+                continue;
+            }
+            ssize_t size;
+            char *data = ftob(optarg, &size);
+            if (!data) {
+                uniperror("read/parse");
+                invalid = 1;
+                continue;
+            }
+            dp->ipset = parse_ipset(data, size);
+            if (!dp->ipset) {
+                perror("parse_ipset");
+                invalid = 1;
+            }
+            free(data);
             break;
             
         case 's':

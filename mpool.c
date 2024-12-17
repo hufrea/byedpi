@@ -1,17 +1,47 @@
 #include "mpool.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 
-static inline int scmp(const struct elem *p, const struct elem *q)
+static int bit_cmp(const struct elem *p, const struct elem *q)
 {
-    if (p->len != q ->len) {
+    if (p->len < q->len) {
+        return -1;
+    }
+    int df = q->len % 8, bytes = q->len / 8;
+    int cmp = memcmp(p->data, q->data, bytes);
+    
+    if (cmp || !df) {
+        return cmp;
+    }
+    uint8_t c1 = p->data[bytes] >> (8 - df);
+    uint8_t c2 = q->data[bytes] >> (8 - df);
+    if (c1 != c2) {
+        if (c1 < c2) return -1;
+        else return 1;
+    }
+    return 0;
+}
+
+static int byte_cmp(const struct elem *p, const struct elem *q)
+{
+    if (p->len != q->len) {
         return p->len < q->len ? -1 : 1;
     }
     return memcmp(p->data, q->data, p->len);
 }
-    
+
+
+static int scmp(const struct elem *p, const struct elem *q)
+{
+    if (q->cmp_type == CMP_BITS)
+        return bit_cmp(p, q);
+        
+    return byte_cmp(p, q);
+}
+
 KAVL_INIT(my, struct elem, head, scmp)
 
 

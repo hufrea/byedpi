@@ -5,9 +5,13 @@
 #include <time.h>
 #include "kavl.h"
 
+#define CMP_BYTES 0
+#define CMP_BITS 1
+
 struct elem {
     int len;
     char *data;
+    char cmp_type;
     KAVL_HEAD(struct elem) head;
 };
 
