@@ -289,18 +289,19 @@ static inline int lower_char(char *cl)
 
 struct mphdr *parse_hosts(char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(1);
+    struct mphdr *hdr = mem_pool(1, CMP_HOST);
     if (!hdr) {
         return 0;
     }
     size_t num = 0;
+    bool drop = 0;
     char *end = buffer + size;
     char *e = buffer, *s = buffer;
     
     for (; e <= end; e++) {
         if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
             if (lower_char(e)) {
-                LOG(LOG_E, "invalid host: num: %zd (%.*s)\n", num + 1, (int )(e - s + 1), s);
+                drop = 1;
             }
             continue;
         }
@@ -308,13 +309,20 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
             s++;
             continue;
         }
-        if (mem_add(hdr, s, e - s, sizeof(struct elem)) == 0) {
-            free(hdr);
-            return 0;
+        if (!drop) {
+            if (!mem_add(hdr, s, e - s, sizeof(struct elem))) {
+                mem_destroy(hdr);
+                return 0;
+            }
+        } 
+        else {
+            LOG(LOG_E, "invalid host: num: %zd \"%.*s\"\n", num + 1, (int )(e - s), s);
+            drop = 0;
         }
         num++;
         s = e + 1;
     }
+    LOG(LOG_S, "hosts count: %zd\n", hdr->count);
     return hdr;
 }
 
@@ -345,7 +353,7 @@ static int parse_ip(char *out, char *str, size_t size)
 
 struct mphdr *parse_ipset(char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(0);
+    struct mphdr *hdr = mem_pool(0, CMP_BITS);
     if (!hdr) {
         return 0;
     }
@@ -368,20 +376,21 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
         num++;
         s = e + 1;
         
-        char ip_raw[16];
+        char *ip_raw = malloc(16);
         int bits = parse_ip(ip_raw, ip, sizeof(ip));
         if (bits <= 0) {
-            LOG(LOG_E, "invalid ip: num: %zd\n", num + 1);
+            LOG(LOG_E, "invalid ip: num: %zd\n", num);
+            free(ip_raw);
             continue;
         }
-        struct elem *elem = mem_add(hdr, ip_raw, bits / 8 + (bits % 8 ? 1 : 0), sizeof(struct elem));
+        struct elem *elem = mem_add(hdr, ip_raw, bits, sizeof(struct elem));
         if (!elem) {
-            free(hdr);
+            free(ip_raw);
+            mem_destroy(hdr);
             return 0;
         }
-        elem->len = bits;
-        elem->cmp_type = CMP_BITS;
     }
+    LOG(LOG_S, "ip count: %zd\n", hdr->count);
     return hdr;
 }
 
@@ -1038,7 +1047,7 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    params.mempool = mem_pool(0);
+    params.mempool = mem_pool(0, CMP_BYTES);
     if (!params.mempool) {
         uniperror("mem_pool");
         clear_params();

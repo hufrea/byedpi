@@ -105,10 +105,17 @@ static int cache_add(const struct sockaddr_ina *dst, int m)
     }
     LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
     time_t t = time(0);
-
-    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, (char *)key, len, sizeof(struct elem_i));
+    
+    char *key_d = malloc(len);
+    if (!key_d) {
+        return -1;
+    }
+    memcpy(key_d, key, len);
+    
+    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, key_d, len, sizeof(struct elem_i));
     if (!val) {
         uniperror("mem_add");
+        free(key_d);
         return -1;
     }
     val->m = m;
@@ -177,16 +184,8 @@ static bool check_host(
     if (len <= 0) {
         return 0;
     }
-    char *e = host + len;
-    for (; host < e; host++) {
-        if (mem_get(hosts, host, e - host)) {
-            return 1;
-        }
-        if (!(host = memchr(host, '.', e - host))) {
-            return 0;
-        }
-    }
-    return 0;
+    struct elem *v = mem_get(hosts, host, len);
+    return v && v->len <= len;
 }
 
 

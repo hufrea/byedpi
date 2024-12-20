@@ -7,11 +7,12 @@
 
 #define CMP_BYTES 0
 #define CMP_BITS 1
+#define CMP_HOST 2
 
 struct elem {
     int len;
     char *data;
-    char cmp_type;
+    unsigned char cmp_type;
     KAVL_HEAD(struct elem) head;
 };
 
@@ -23,10 +24,12 @@ struct elem_i {
 
 struct mphdr {
     bool static_data;
+    unsigned char cmp_type;
+    size_t count;
     struct elem *root;
 };
 
-struct mphdr *mem_pool(bool is_static);
+struct mphdr *mem_pool(bool is_static, unsigned char cmp_type);
 
 struct elem *mem_get(const struct mphdr *hdr, const char *str, int len);
 
