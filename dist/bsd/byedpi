@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# PROVIDE: byedpi
+# REQUIRE: DAEMON
+# BEFORE: LOGIN
+# KEYWORD: shutdown
+
+# Define these byedpi_* variables in one of these files:
+#	/etc/rc.conf
+#	/etc/rc.conf.local
+#	/etc/rc.conf.d/byedpi
+#
+# DO NOT CHANGE THESE DEFAULT VALUES HERE
+
+byedpi_enable=${byedpi_enable-"NO"}
+byedpi_flags=${byedpi_flags-"--daemon --pidfile /var/run/ciadpi.pid -split 1 --disorder 3+s --mod-http=h,d --auto=torst --tlsrec 1+s"}
+
+. /etc/rc.subr
+
+name="byedpi"
+rcvar=byedpi_enable
+command="/usr/local/bin/ciadpi"
+
+load_rc_config $name
+
+start_cmd="echo \"Starting ${name}.\";	${command}  ${byedpi_flags}"
+
+run_rc_command "$1"
