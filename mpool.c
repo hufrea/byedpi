@@ -45,7 +45,7 @@ static int host_cmp(const struct elem *p, const struct elem *q)
             || (p->len > q->len ? pd[-1] : qd[-1]) == '.')
         return 0;
     
-    return 1;
+    return p->len > q->len ? 1 : -1;
 }
 
 static int scmp(const struct elem *p, const struct elem *q)
