@@ -77,7 +77,7 @@ static int cache_get(const struct sockaddr_ina *dst)
     uint8_t key[KEY_SIZE] = { 0 };
     int len = serialize_addr(dst, key, sizeof(key));
     
-    struct elem *val = mem_get(params.mempool, (char *)key, len);
+    struct elem_i *val = (struct elem_i *)mem_get(params.mempool, (char *)key, len);
     if (!val) {
         return -1;
     }
@@ -105,10 +105,17 @@ static int cache_add(const struct sockaddr_ina *dst, int m)
     }
     LOG(LOG_S, "save ip: %s, m=%d\n", ADDR_STR, m);
     time_t t = time(0);
-
-    struct elem *val = mem_add(params.mempool, (char *)key, len);
+    
+    char *key_d = malloc(len);
+    if (!key_d) {
+        return -1;
+    }
+    memcpy(key_d, key, len);
+    
+    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, key_d, len, sizeof(struct elem_i));
     if (!val) {
         uniperror("mem_add");
+        free(key_d);
         return -1;
     }
     val->m = m;
@@ -116,6 +123,7 @@ static int cache_add(const struct sockaddr_ina *dst, int m)
     return 0;
 }
 
+static bool check_l34(struct desync_params *dp, int st, const struct sockaddr_in6 *dst);
 
 int connect_hook(struct poolhd *pool, struct eval *val, 
         const struct sockaddr_ina *dst, int next)
@@ -176,19 +184,30 @@ static bool check_host(
     if (len <= 0) {
         return 0;
     }
-    char *e = host + len;
-    for (; host < e; host++) {
-        if (mem_get(hosts, host, e - host)) {
-            return 1;
-        }
-        if (!(host = memchr(host, '.', e - host))) {
-            return 0;
-        }
+    struct elem *v = mem_get(hosts, host, len);
+    return v && v->len <= len;
+}
+
+
+static bool check_ip(
+        struct mphdr *ipset, const struct sockaddr_in6 *addr)
+{
+    const struct sockaddr_ina *dst = (const struct sockaddr_ina *)addr;
+    
+    int len = sizeof(dst->in.sin_addr);
+    char *data = (char *)&dst->in.sin_addr;
+    
+    if (dst->sa.sa_family == AF_INET6) {
+        len = sizeof(dst->in6.sin6_addr);
+        data = (char *)&dst->in6.sin6_addr;
+    }
+    if (mem_get(ipset, data, len * 8)) {
+        return 1;
     }
     return 0;
 }
 
-    
+
 static bool check_proto_tcp(int proto, const char *buffer, ssize_t n)
 {
     if (!(proto & ~IS_IPV4)) {
@@ -206,12 +225,12 @@ static bool check_proto_tcp(int proto, const char *buffer, ssize_t n)
 }
 
 
-static bool check_l34(int proto, const uint16_t *pf, int st, const struct sockaddr_in6 *dst)
+static bool check_l34(struct desync_params *dp, int st, const struct sockaddr_in6 *dst)
 {
-    if ((proto & IS_UDP) && (st != SOCK_DGRAM)) {
+    if ((dp->proto & IS_UDP) && (st != SOCK_DGRAM)) {
         return 0;
     }
-    if (proto & IS_IPV4) {
+    if (dp->proto & IS_IPV4) {
         static const char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
         
         if (dst->sin6_family != AF_INET 
@@ -219,8 +238,11 @@ static bool check_l34(int proto, const uint16_t *pf, int st, const struct sockad
             return 0;
         }
     }
-    if (pf[0] && 
-            (dst->sin6_port < pf[0] || dst->sin6_port > pf[1])) {
+    if (dp->pf[0] && 
+            (dst->sin6_port < dp->pf[0] || dst->sin6_port > dp->pf[1])) {
+        return 0;
+    }
+    if (dp->ipset && !check_ip(dp->ipset, dst)) {
         return 0;
     }
     return 1;
@@ -340,8 +362,8 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
     if (!m) for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
         if (!dp->detect 
-                && (check_l34(dp->proto, dp->pf, SOCK_STREAM, &client->pair->in6)
-                    && check_proto_tcp(dp->proto, buffer, n)) 
+                && check_l34(dp, SOCK_STREAM, &client->pair->in6)
+                && check_proto_tcp(dp->proto, buffer, n) 
                 && (!dp->hosts || check_host(dp->hosts, buffer, n))) {
             break;
         }
@@ -544,7 +566,7 @@ ssize_t udp_hook(struct eval *val,
         for (; m < params.dp_count; m++) {
             struct desync_params *dp = &params.dp[m];
             if (!dp->detect 
-                    && check_l34(dp->proto, dp->pf, SOCK_DGRAM, &dst->in6)) {
+                    && check_l34(dp, SOCK_DGRAM, &dst->in6)) {
                 break;
             }
         }
