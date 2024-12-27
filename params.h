@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "mpool.h"
 
@@ -131,7 +132,6 @@ extern struct packet fake_udp;
 
 extern char ip_option[1];
 
-#define ASSERT_SIZE(stc, len) \
-    static char t[-(int)sizeof(stc) + len]; \
-    static char tt[(int)sizeof(t) * -1];
+#define ASSERT(exp) \
+    char t[(exp) ? 1 : -1];
 #endif

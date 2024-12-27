@@ -27,8 +27,9 @@
 
 #define VERSION "15"
 
-ASSERT_SIZE(struct in_addr, 4)
-ASSERT_SIZE(struct in6_addr, 16)
+ASSERT(sizeof(struct in_addr) == 4)
+ASSERT(sizeof(struct in6_addr) == 16)
+
 
 char ip_option[1] = "\0";
 
