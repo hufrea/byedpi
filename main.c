@@ -27,6 +27,9 @@
 
 #define VERSION "15"
 
+ASSERT_SIZE(struct in_addr, 4)
+ASSERT_SIZE(struct in6_addr, 16)
+
 char ip_option[1] = "\0";
 
 struct packet fake_tls = { 
@@ -348,13 +351,13 @@ static int parse_ip(char *out, char *str, size_t size)
         }
         *sep = 0;
     }
-    int len = 4;
+    int len = sizeof(struct in_addr);
     
     if (inet_pton(AF_INET, str, out) <= 0) {
         if (inet_pton(AF_INET6, str, out) <= 0) {
             return 0;
         }
-        else len = 16;
+        else len = sizeof(struct in6_addr);
     }
     if (!bits || bits > len * 8) bits = len * 8;
     return (int )bits;
@@ -386,13 +389,16 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
         num++;
         s = e + 1;
         
-        char *ip_raw = malloc(16);
-        int bits = parse_ip(ip_raw, ip, sizeof(ip));
+        char ip_stack[sizeof(struct in6_addr)];
+        int bits = parse_ip(ip_stack, ip, sizeof(ip));
         if (bits <= 0) {
             LOG(LOG_E, "invalid ip: num: %zd\n", num);
-            free(ip_raw);
             continue;
         }
+        int len = bits / 8 + (bits % 8 ? 1 : 0);
+        char *ip_raw = malloc(len);
+        memcpy(ip_raw, ip_stack, len);
+        
         struct elem *elem = mem_add(hdr, ip_raw, bits, sizeof(struct elem));
         if (!elem) {
             free(ip_raw);

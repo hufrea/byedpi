@@ -130,4 +130,8 @@ extern struct packet fake_http;
 extern struct packet fake_udp;
 
 extern char ip_option[1];
+
+#define ASSERT_SIZE(stc, len) \
+    static char t[-(int)sizeof(stc) + len]; \
+    static char tt[(int)sizeof(t) * -1];
 #endif
