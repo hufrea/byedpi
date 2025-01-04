@@ -132,6 +132,7 @@ const struct option options[] = {
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
+    {"allow-http",    0, 0, 'G'},
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
@@ -673,6 +674,9 @@ int main(int argc, char **argv)
             break;
         case 'U':
             params.udp = 0;
+            break;
+        case 'G':
+            params.http_connect = 1;
             break;
         #ifdef __linux__
         case 'E':

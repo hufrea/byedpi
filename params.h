@@ -111,12 +111,13 @@ struct params {
     bool ipv6;
     bool resolve;
     bool udp;
+    bool transparent;
+    bool http_connect;
     int max_open;
     int debug;
     size_t bfsize;
     struct sockaddr_in6 baddr;
     struct sockaddr_in6 laddr;
-    bool transparent;
     struct mphdr *mempool;
     
     const char *protect_path;
