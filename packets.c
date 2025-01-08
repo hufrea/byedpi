@@ -60,7 +60,7 @@ char http_data[43] = {
 char udp_data[64] = { 0 };
 
 
-static const char *strncasestr(const char *a, size_t as, const char *b, size_t bs)
+static char *strncasestr(const char *a, size_t as, const char *b, size_t bs)
 {
     for (const char *p = a; ; p++) {
         p = memchr(p, *b, as - (p - a));
@@ -71,7 +71,7 @@ static const char *strncasestr(const char *a, size_t as, const char *b, size_t b
             return 0;
         }
         if (!strncasecmp(p, b, bs)) {
-            return p;
+            return (char *)p;
         }
     }
     return 0;
@@ -203,42 +203,27 @@ bool is_http(const char *buffer, size_t bsize)
     
 int parse_http(const char *buffer, size_t bsize, char **hs, uint16_t *port)
 {
-    const char *host = buffer, *h_end;
+    const char *host = buffer, *l_end;
     const char *buff_end = buffer + bsize;
     
     if (!is_http(buffer, bsize)) {
         return 0;
     }
-    host = strncasestr(buffer, bsize, "\nHost:", 6);
-    if (!host) {
+    if (!(host = strncasestr(buffer, bsize, "\nHost:", 6))) {
         return 0;
     }
     host += 6;
+    for (; host < buff_end && *host == ' '; host++);
     
-    while ((buff_end - host) > 0 && isblank((unsigned char) *host)) {
-        host++;
-    }
-    const char *l_end = memchr(host, '\n', buff_end - host);
-    if (!l_end) {
+    if (!(l_end = memchr(host, '\n', buff_end - host))) {
         return 0;
     }
-    for (; isspace((unsigned char) *(l_end - 1)); l_end--) {}
+    for (; isspace((unsigned char) *(l_end - 1)); l_end--);
     
-    if (!(isdigit((unsigned char) *(l_end - 1))))
-        h_end = 0;
-    else {
-        const char *h = host;
-        h_end = 0;
-        do {
-            h = memchr(h, ':', l_end - h);
-            if (h) {
-                h_end = h;
-                h++;
-            }
-        } while (h && h < l_end);
-    }
+    const char *h_end = l_end - 1;
+    while (isdigit((unsigned char) *--h_end));
     
-    if (!h_end) {
+    if (*h_end != ':') {
         if (port) *port = 80;
         h_end = l_end;
     }
@@ -249,6 +234,11 @@ int parse_http(const char *buffer, size_t bsize, char **hs, uint16_t *port)
             return 0;
         *port = i;
     }
+    if (*host == '[') {
+        if (*--h_end != ']')
+            return 0;
+        host++; 
+    }
     *hs = (char *)host;
     return h_end - host;
 }
@@ -256,11 +246,10 @@ int parse_http(const char *buffer, size_t bsize, char **hs, uint16_t *port)
 
 static int get_http_code(const char *b, size_t n)
 {
-    if (n < 13) return 0;
-    if (strncmp(b, "HTTP/1.", 7)) {
+    if (n < 13 || strncmp(b, "HTTP/1.", 7)) {
         return 0;
     }
-    if (!memchr(b + 13, '\n', n)) {
+    if (!memchr(b + 12, '\n', n - 12)) {
         return 0;
     }
     char *e;
@@ -275,7 +264,7 @@ static int get_http_code(const char *b, size_t n)
 bool is_http_redirect(
         const char *req, size_t qn, const char *resp, size_t sn)
 {
-    char *host = 0;
+    char *host = 0, *location;
     int len = parse_http(req, qn, &host, 0);
     
     if (len <= 0 || sn < 29) {
@@ -285,20 +274,15 @@ bool is_http_redirect(
     if (code > 308 || code < 300) {
         return 0;
     }
-    const char *location = strncasestr(resp, sn, "\nLocation:", 10);
-    if (!location) {
-        return 0;
-    }
-    location += 11;
-    
-    if ((location + 8) >= (resp + sn)) {
+    if (!(location = strncasestr(resp, sn, "\nLocation:", 10))
+            || ((location += 11) + 8) >= (resp + sn)) {
         return 0;
     }
     char *l_end = memchr(location, '\n', sn - (location - resp));
     if (!l_end) {
         return 0;
     }
-    for (; isspace((unsigned char) *(l_end - 1)); l_end--) {}
+    for (; isspace((unsigned char) *(l_end - 1)); l_end--);
     
     if ((l_end - location) > 7) {
         if (!strncmp(location, "http://", 7)) {
@@ -308,25 +292,15 @@ bool is_http_redirect(
             location += 8;
         }
     }
-    char *e = memchr(location, '/', l_end - location);
-    if (!e) e = l_end;
+    char *le = memchr(location, '/', l_end - location);
+    if (!le) le = l_end;
+    char *he = host + len, *h = he;
     
-    for (; (e - location) > len; location++) {
-        location = memchr(location, '.', e - location);
-        if (!location) {
-            return 1;
-        }
-    }
-    for (; len > (e - location); host++) {
-        char *p = memchr(host, '.', len);
-        if (!p) {
-            return 1;
-        }
-        len -= (host - p) + 1;
-        host = p;
-    }
-    return (((e - location) != len) 
-        || strncmp(host, location, len));
+    while (h != host && *(--h - 1) != '.');
+    while (h != host && *(--h - 1) != '.');
+    
+    return ((le - location) < (he - h)) 
+        || memcmp(le - (he - h), h, he - h) != 0;
 }
 
 
