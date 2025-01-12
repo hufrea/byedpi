@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 
+
 static int bit_cmp(const struct elem *p, const struct elem *q)
 {
     int len = q->len < p->len ? q->len : p->len;
@@ -23,6 +24,7 @@ static int bit_cmp(const struct elem *p, const struct elem *q)
     return 0;
 }
 
+
 static int byte_cmp(const struct elem *p, const struct elem *q)
 {
     if (p->len != q->len) {
@@ -30,6 +32,7 @@ static int byte_cmp(const struct elem *p, const struct elem *q)
     }
     return memcmp(p->data, q->data, p->len);
 }
+
 
 static int host_cmp(const struct elem *p, const struct elem *q)
 {
@@ -48,6 +51,7 @@ static int host_cmp(const struct elem *p, const struct elem *q)
     return p->len > q->len ? 1 : -1;
 }
 
+
 static int scmp(const struct elem *p, const struct elem *q)
 {
     switch (p->cmp_type) {
@@ -65,7 +69,7 @@ KAVL_INIT(my, struct elem, head, scmp)
 
 struct mphdr *mem_pool(bool is_static, unsigned char cmp_type)
 {
-    struct mphdr *hdr = calloc(sizeof(struct mphdr), 1);
+    struct mphdr *hdr = calloc(1, sizeof(struct mphdr));
     if (hdr) {
         hdr->static_data = is_static;
         hdr->cmp_type = cmp_type;
@@ -86,7 +90,7 @@ struct elem *mem_get(const struct mphdr *hdr, const char *str, int len)
 
 struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t struct_size)
 {
-    struct elem *v, *e = calloc(struct_size, 1);
+    struct elem *v, *e = calloc(1, struct_size);
     if (!e) {
         return 0;
     }

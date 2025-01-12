@@ -124,7 +124,7 @@ static void wait_send_if_support(int sfd)
     if (i) LOG(LOG_S, "waiting for send: %d ms\n", i);
 }
 #else
-#define wait_send_if_support(sfd)
+#define wait_send_if_support(sfd) {}
 #endif
 
 
@@ -157,7 +157,7 @@ static struct packet get_tcp_fake(const char *buffer, size_t n,
 static ssize_t send_fake(int sfd, const char *buffer,
         long pos, const struct desync_params *opt, struct packet pkt)
 {
-    struct sockaddr_in6 addr = {};
+    struct sockaddr_in6 addr;
     socklen_t addr_size = sizeof(addr);
     
     if (opt->md5sig || opt->ip_options) {
@@ -251,7 +251,7 @@ static ssize_t send_fake(int sfd, const char *buffer,
 #endif
 
 #ifdef _WIN32
-OVERLAPPED ov = {};
+OVERLAPPED ov = { 0 };
 
 static ssize_t send_fake(int sfd, const char *buffer,
         long pos, const struct desync_params *opt, struct packet pkt)
@@ -341,6 +341,9 @@ static ssize_t send_fake(int sfd, const char *buffer,
 static ssize_t send_oob(int sfd, char *buffer,
         ssize_t n, long pos, const char *c)
 {
+    if (n <= pos) {
+        return -1;
+    }
     char rchar = buffer[pos];
     buffer[pos] = c[1] ? c[0] : 'a';
     
@@ -497,7 +500,7 @@ static ssize_t tamp(char *buffer, size_t bfsize, ssize_t n,
 
 
 ssize_t desync(int sfd, char *buffer, size_t bfsize,
-        ssize_t n, ssize_t offset, const struct sockaddr *dst, int dp_c)
+        ssize_t n, ssize_t offset, int dp_c)
 {
     struct desync_params dp = params.dp[dp_c];
     struct proto_info info = { 0 };
@@ -555,12 +558,12 @@ ssize_t desync(int sfd, char *buffer, size_t bfsize,
             
             case DESYNC_OOB:
                 s = send_oob(sfd, 
-                    buffer + lp, n - lp, pos - lp, dp.oob_char);
+                    buffer + lp, bfsize - lp, pos - lp, dp.oob_char);
                 break;
                 
             case DESYNC_DISOOB:
                 s = send_late_oob(sfd, 
-                    buffer + lp, n - lp, pos - lp, dp.oob_char);
+                    buffer + lp, bfsize - lp, pos - lp, dp.oob_char);
                 break;
                 
             case DESYNC_SPLIT:
@@ -618,7 +621,7 @@ int post_desync(int sfd, int dp_c)
 }
 
 
-ssize_t desync_udp(int sfd, char *buffer, size_t bfsize,
+ssize_t desync_udp(int sfd, char *buffer, 
         ssize_t n, const struct sockaddr *dst, int dp_c)
 {
     struct desync_params *dp = &params.dp[dp_c];

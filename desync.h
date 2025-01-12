@@ -10,9 +10,9 @@
     #include <sys/socket.h>
 #endif
 
-ssize_t desync(int sfd, char *buffer, size_t bfsize, ssize_t n, ssize_t offset, const struct sockaddr *dst, int dp_c);
+ssize_t desync(int sfd, char *buffer, size_t bfsize, ssize_t n, ssize_t offset, int dp_c);
 
-ssize_t desync_udp(int sfd, char *buffer, size_t bfsize, ssize_t n, const struct sockaddr *dst, int dp_c);
+ssize_t desync_udp(int sfd, char *buffer, ssize_t n, const struct sockaddr *dst, int dp_c);
 
 int setttl(int fd, int ttl);
 

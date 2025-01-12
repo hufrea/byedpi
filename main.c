@@ -54,17 +54,17 @@ struct params params = {
     .max_open = 512,
     .bfsize = 16384,
     .baddr = {
-        .sin6_family = AF_INET6
+        .in6 = { .sin6_family = AF_INET6 }
     },
     .laddr = {
-        .sin6_family = AF_INET
+        .in = { .sin_family = AF_INET }
     },
     .debug = 0,
     .auto_level = AUTO_NOBUFF
 };
 
 
-const static char help_text[] = {
+static const char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
     #ifdef DAEMON
@@ -187,15 +187,15 @@ const struct option options[] = {
 };
     
 
-size_t parse_cform(char *buffer, size_t blen, 
+ssize_t parse_cform(char *buffer, size_t blen, 
         const char *str, size_t slen)
 {
     static char esca[] = {
         'r','\r','n','\n','t','\t','\\','\\',
         'f','\f','b','\b','v','\v','a','\a', 0
     };
-    ssize_t i = 0, p = 0;
-    for (; p < slen && i < blen; ++p && ++i) {
+    size_t i = 0, p = 0;
+    for (; p < slen && i < blen; ++p, ++i) {
         if (str[p] != '\\') {
             buffer[i] = str[p];
             continue;
@@ -212,8 +212,8 @@ size_t parse_cform(char *buffer, size_t blen,
             continue;
         }
         int n = 0;
-        if (sscanf(&str[p], "x%2hhx%n", &buffer[i], &n) == 1
-              || sscanf(&str[p], "%3hho%n", &buffer[i], &n) == 1) {
+        if (sscanf(&str[p], "x%2hhx%n", (uint8_t *)&buffer[i], &n) == 1
+              || sscanf(&str[p], "%3hho%n", (uint8_t *)&buffer[i], &n) == 1) {
             p += (n - 1);
             continue;
         }
@@ -233,7 +233,7 @@ char *data_from_str(const char *str, ssize_t *size)
     if (!d) {
         return 0;
     }
-    size_t i = parse_cform(d, len, str, len);
+    ssize_t i = parse_cform(d, len, str, len);
     
     char *m = len != i ? realloc(d, i) : 0;
     if (i == 0) {
@@ -270,7 +270,8 @@ char *ftob(const char *str, ssize_t *sl)
         if (!(buffer = malloc(size))) {
             break;
         }
-        if (fread(buffer, 1, size, file) != size) {
+        size_t rs = fread(buffer, 1, size, file);
+        if (rs != (size_t )size) {
             free(buffer);
             buffer = 0;
         }
@@ -330,7 +331,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
             }
         } 
         else {
-            LOG(LOG_E, "invalid host: num: %zd \"%.*s\"\n", num + 1, (int )(e - s), s);
+            LOG(LOG_E, "invalid host: num: %zd \"%.*s\"\n", num + 1, ((int )(e - s)), s);
             drop = 0;
         }
         num++;
@@ -412,7 +413,7 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
 }
 
 
-int get_addr(const char *str, struct sockaddr_ina *addr)
+int get_addr(const char *str, union sockaddr_u *addr)
 {
     struct addrinfo hints = {0}, *res = 0;
     
@@ -438,7 +439,7 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
 }
 
 
-int get_default_ttl()
+int get_default_ttl(void)
 {
     int orig_ttl = -1, fd;
     socklen_t tsize = sizeof(orig_ttl);
@@ -456,7 +457,7 @@ int get_default_ttl()
 }
 
 
-bool ipv6_support()
+bool ipv6_support(void)
 {
     int fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -637,10 +638,10 @@ int main(int argc, char **argv)
             opt[o] = ':';
         }
     }
-
-    params.laddr.sin6_port = htons(1080);
+    //
+    params.laddr.in.sin_port = htons(1080);
     if (!ipv6_support()) {
-        params.baddr.sin6_family = AF_INET;
+        params.baddr.sa.sa_family = AF_INET;
     }
     
     char *pid_file = 0;
@@ -699,8 +700,7 @@ int main(int argc, char **argv)
             return 0;
         
         case 'i':
-            if (get_addr(optarg, 
-                    (struct sockaddr_ina *)&params.laddr) < 0)
+            if (get_addr(optarg, &params.laddr) < 0)
                 invalid = 1;
             break;
             
@@ -709,12 +709,11 @@ int main(int argc, char **argv)
             if (val <= 0 || val > 0xffff || *end)
                 invalid = 1;
             else
-                params.laddr.sin6_port = htons(val);
+                params.laddr.in.sin_port = htons(val);
             break;
             
         case 'I':
-            if (get_addr(optarg, 
-                    (struct sockaddr_ina *)&params.baddr) < 0)
+            if (get_addr(optarg, &params.baddr) < 0)
                 invalid = 1;
             break;
             
@@ -1096,7 +1095,7 @@ int main(int argc, char **argv)
         }
     }
     
-    if (params.baddr.sin6_family != AF_INET6) {
+    if (params.baddr.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }
     if (!params.def_ttl) {
@@ -1123,7 +1122,7 @@ int main(int argc, char **argv)
         return -1;
     }
     #endif
-    int status = run((struct sockaddr_ina *)&params.laddr);
+    int status = run(&params.laddr);
     clear_params();
     return status;
 }

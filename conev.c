@@ -9,7 +9,7 @@
 
 struct poolhd *init_pool(int count)
 {
-    struct poolhd *pool = calloc(sizeof(struct poolhd), 1);
+    struct poolhd *pool = calloc(1, sizeof(struct poolhd));
     if (!pool) {
         uniperror("init pool");
         return 0;

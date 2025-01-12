@@ -1,8 +1,7 @@
-
 TARGET = ciadpi
 
 CPPFLAGS = -D_DEFAULT_SOURCE
-CFLAGS += -I. -std=c99 -Wall -Wno-unused -O2
+CFLAGS += -I. -std=c99 -O2 -Wall -Wno-unused -Wextra -pedantic
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
 HEADERS = conev.h desync.h error.h extend.h kavl.h mpool.h packets.h params.h proxy.h win_service.h

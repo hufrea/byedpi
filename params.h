@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "mpool.h"
+#include "conev.h"
 
 #ifdef _WIN32
     #include <ws2tcpip.h>
@@ -114,8 +115,8 @@ struct params {
     int max_open;
     int debug;
     size_t bfsize;
-    struct sockaddr_in6 baddr;
-    struct sockaddr_in6 laddr;
+    union sockaddr_u baddr;
+    union sockaddr_u laddr;
     bool transparent;
     struct mphdr *mempool;
     
