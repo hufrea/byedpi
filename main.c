@@ -805,7 +805,7 @@ int main(int argc, char **argv)
             #else
             val = strtol(optarg, &end, 0);
             #endif
-            if (val <= 0 || val > UINT_MAX || *end)
+            if (val <= 0 || val > (long)UINT_MAX || *end)
                 invalid = 1;
             else
                 params.timeout = val;
