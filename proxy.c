@@ -13,6 +13,7 @@
 #include "conev.h"
 #include "extend.h"
 #include "error.h"
+#include "packets.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -125,6 +126,8 @@ static int resolve(char *host, int len,
     
     hints.ai_socktype = type;
     hints.ai_flags = AI_ADDRCONFIG;
+    if (!params.resolve)
+        hints.ai_flags |= AI_NUMERICHOST;
     hints.ai_family = params.ipv6 ? AF_UNSPEC : AF_INET;
     
     char rchar = host[len];
@@ -201,6 +204,14 @@ static int resp_error(int fd, int e, int flag)
             default: e = S_ER_GEN;
         }
         return resp_s5_error(fd, e);
+    }
+    else if (flag == FLAG_HTTP) {
+        if (!e) {
+            static const char r[] = "HTTP/1.1 200 OK\r\n\r\n";
+            return send(fd, r, sizeof(r) - 1, 0);
+        }
+        static const char r[] = "HTTP/1.1 503 Fail\r\n\r\n";
+        return send(fd, r, sizeof(r) - 1, 0);
     }
     #ifdef __linux__
     if (params.transparent &&
@@ -327,6 +338,25 @@ static int s5_set_addr(char *buffer, size_t n,
         r->dst.i6.port = addr->in6.sin6_port;
         return S_SIZE_I6;
     }
+    return 0;
+}
+
+
+static int http_get_addr(
+        const char *buff, size_t n, union sockaddr_u *dst)
+{
+    char *host = 0;
+    uint16_t port = 0;
+    int host_len = parse_http(buff, n, &host, &port);
+    
+    if (host_len < 3 || host_len > 255) {
+        return -1;
+    }
+    if (resolve(host, host_len, dst, SOCK_STREAM)) {
+        LOG(LOG_E, "not resolved: %.*s\n", host_len, host);
+        return -1;
+    }
+    dst->in.sin_port = htons(port);
     return 0;
 }
 
@@ -834,6 +864,15 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         if (error) {
             if (resp_error(val->fd, error, FLAG_S4) < 0)
                 uniperror("send");
+            return -1;
+        }
+        error = connect_hook(pool, val, &dst, EV_CONNECT);
+    }
+    else if (params.http_connect
+            && n > 7 && !memcmp(buffer, "CONNECT", 7)) {
+        val->flag = FLAG_HTTP;
+        
+        if (http_get_addr(buffer, n, &dst)) {
             return -1;
         }
         error = connect_hook(pool, val, &dst, EV_CONNECT);
