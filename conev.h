@@ -14,6 +14,7 @@
     #define close(fd) closesocket(fd)
 #else
     #include <netinet/in.h>
+    #include <sys/socket.h>
     #include <unistd.h>
     
     #ifndef NOEPOLL
