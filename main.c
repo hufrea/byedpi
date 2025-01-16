@@ -18,6 +18,9 @@
     #include <netinet/tcp.h>
     #include <sys/socket.h>
     
+    #ifndef F_TLOCK
+    #define lockf(x, y, z) 0
+    #endif
     #define DAEMON
 #else
     #include <ws2tcpip.h>
