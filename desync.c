@@ -338,6 +338,61 @@ static ssize_t send_fake(int sfd, const char *buffer,
 }
 #endif
 
+#ifdef __FreeBSD__
+static ssize_t send_fake(int sfd, const char *buffer,
+        long pos, const struct desync_params *opt, struct packet pkt)
+{
+    int ffd = memfd_create("name", 0);
+    if (ffd < 0) {
+        uniperror("memfd_create");
+        return -1;
+    }
+    char *p = 0;
+    ssize_t len = -1;
+    
+    while (1) {
+        if (ftruncate(ffd, pos) < 0) {
+            uniperror("ftruncate");
+            break;
+        }
+        p = mmap(0, pos, PROT_WRITE, MAP_SHARED, ffd, 0);
+        if (p == MAP_FAILED) {
+            uniperror("mmap");
+            p = 0;
+            break;
+        }
+        memcpy(p, pkt.data, pkt.size < pos ? pkt.size : pos);
+        
+        if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
+            break;
+        }
+        int s = sendfile(ffd, sfd, 0, pos, 0, 0, SF_FLAGS(16, SF_NOCACHE));
+        if (s < 0) {
+            uniperror("sendfile");
+            if (errno != EAGAIN) break;
+        }
+        struct timespec time = { 
+            .tv_nsec = 5 * 1e6
+        };
+        nanosleep(&time, 0);
+        
+        memcpy(p, buffer, pos);
+        if (msync(p, pos, MS_ASYNC) < 0) {
+            uniperror("msync");
+            break;
+        }
+        if (setttl(sfd, params.def_ttl) < 0) {
+            break;
+        }
+        len = pos;
+        break;
+    }
+    if (p) munmap(p, pos);
+    close(ffd);
+    return len;
+}
+#endif
+
 static ssize_t send_oob(int sfd, char *buffer,
         ssize_t n, long pos, const char *c)
 {

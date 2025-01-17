@@ -23,6 +23,10 @@
 #define TIMEOUT_SUPPORT 1
 #endif
 
+#ifdef __FreeBSD__
+#define FAKE_SUPPORT 1
+#endif
+
 #define OFFSET_END 1
 #define OFFSET_MID 2
 #define OFFSET_RAND 4
