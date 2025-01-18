@@ -226,6 +226,9 @@ static bool check_l34(struct desync_params *dp, int st, const union sockaddr_u *
     if ((dp->proto & IS_UDP) && (st != SOCK_DGRAM)) {
         return 0;
     }
+    if ((dp->proto & IS_TCP) && (st != SOCK_STREAM)) {
+        return 0;
+    }
     if (dp->proto & IS_IPV4) {
         static const char *pat = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
         

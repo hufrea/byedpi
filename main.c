@@ -823,10 +823,10 @@ int main(int argc, char **argv)
             while (end && !invalid) {
                 switch (*end) {
                     case 't': 
-                        dp->proto |= IS_HTTPS;
+                        dp->proto |= IS_TCP | IS_HTTPS;
                         break;
                     case 'h': 
-                        dp->proto |= IS_HTTP;
+                        dp->proto |= IS_TCP | IS_HTTP;
                         break;
                     case 'u': 
                         dp->proto |= IS_UDP;
