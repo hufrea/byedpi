@@ -253,36 +253,58 @@ static ssize_t send_fake(int sfd, const char *buffer,
 #ifdef _WIN32
 OVERLAPPED ov = { 0 };
 
-static ssize_t send_fake(int sfd, const char *buffer,
-        long pos, const struct desync_params *opt, struct packet pkt)
+#define MAX_TFILES 32
+int tfiles_count = 0;
+HANDLE tfiles[MAX_TFILES] = { 0 };
+
+static HANDLE openTFile(void)
 {
+    if (tfiles_count == MAX_TFILES) {
+        tfiles_count = 0;
+    }
+    HANDLE *p = &tfiles[tfiles_count];
+    if (*p) {
+        if (!CloseHandle(*p)) {
+            uniperror("CloseHandle");
+            *p = 0;
+            return 0;
+        }
+        *p = 0;
+    }
     char path[MAX_PATH], temp[MAX_PATH + 1];
     int ps = GetTempPath(sizeof(temp), temp);
     if (!ps) {
         uniperror("GetTempPath");
-        return -1;
+        return 0;
     }
     if (!GetTempFileName(temp, "t", 0, path)) {
         uniperror("GetTempFileName");
-        return -1;
+        return 0;
     }
     LOG(LOG_L, "temp file: %s\n", path);
     
     HANDLE hfile = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 
         FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, 
-        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
     if (hfile == INVALID_HANDLE_VALUE) {
         uniperror("CreateFileA");
+        return 0;
+    }
+    *p = hfile;
+    tfiles_count++;
+    return hfile;
+}
+    
+static ssize_t send_fake(int sfd, const char *buffer,
+        long pos, const struct desync_params *opt, struct packet pkt)
+{
+    HANDLE hfile = openTFile();
+    if (!hfile) {
         return -1;
     }
     ssize_t len = -1;
     
     while (1) {
-        ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-        if (!ov.hEvent) {
-            uniperror("CreateEvent");
-             break;
-        }
         DWORD wrtcnt = 0;
         if (!WriteFile(hfile, pkt.data, pkt.size < pos ? pkt.size : pos, &wrtcnt, 0)) {
             uniperror("WriteFile");
@@ -305,6 +327,8 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
+        memset(&ov, 0, sizeof(ov));
+        
         if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
                 NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
             if ((GetLastError() != ERROR_IO_PENDING) 
@@ -328,11 +352,6 @@ static ssize_t send_fake(int sfd, const char *buffer,
         }
         len = pos;
         break;
-    }
-    if (!CloseHandle(hfile)
-            || (ov.hEvent && !CloseHandle(ov.hEvent))) {
-        uniperror("CloseHandle");
-        return -1;
     }
     return len;
 }
