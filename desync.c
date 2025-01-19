@@ -251,11 +251,12 @@ static ssize_t send_fake(int sfd, const char *buffer,
 #endif
 
 #ifdef _WIN32
-OVERLAPPED ov = { 0 };
-
 #define MAX_TFILES 32
+
 int tfiles_count = 0;
 HANDLE tfiles[MAX_TFILES] = { 0 };
+OVERLAPPED ov[MAX_TFILES] = { 0 };
+
 
 static HANDLE openTFile(void)
 {
@@ -266,14 +267,11 @@ static HANDLE openTFile(void)
     if (*p) {
         if (!CloseHandle(*p)) {
             uniperror("CloseHandle");
-            *p = 0;
-            return 0;
         }
         *p = 0;
     }
     char path[MAX_PATH], temp[MAX_PATH + 1];
-    int ps = GetTempPath(sizeof(temp), temp);
-    if (!ps) {
+    if (!GetTempPath(sizeof(temp), temp)) {
         uniperror("GetTempPath");
         return 0;
     }
@@ -294,6 +292,7 @@ static HANDLE openTFile(void)
     tfiles_count++;
     return hfile;
 }
+
     
 static ssize_t send_fake(int sfd, const char *buffer,
         long pos, const struct desync_params *opt, struct packet pkt)
@@ -327,9 +326,10 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
-        memset(&ov, 0, sizeof(ov));
+        OVERLAPPED *op = &ov[tfiles_count - 1];
+        memset(op, 0, sizeof(*op));
         
-        if (!TransmitFile(sfd, hfile, pos, pos, &ov, 
+        if (!TransmitFile(sfd, hfile, pos, pos, op, 
                 NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
             if ((GetLastError() != ERROR_IO_PENDING) 
                         && (WSAGetLastError() != WSA_IO_PENDING)) {
@@ -337,8 +337,6 @@ static ssize_t send_fake(int sfd, const char *buffer,
                 break;
             }
         }
-        //Sleep(3);
-        
         if (SetFilePointer(hfile, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
             uniperror("SetFilePointer");
             break;
