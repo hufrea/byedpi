@@ -251,25 +251,42 @@ static ssize_t send_fake(int sfd, const char *buffer,
 #endif
 
 #ifdef _WIN32
-#define MAX_TFILES 32
+#define MAX_TF 2
 
-int tfiles_count = 0;
-HANDLE tfiles[MAX_TFILES] = { 0 };
-OVERLAPPED ov[MAX_TFILES] = { 0 };
+struct tf_s {
+    HANDLE tfile;
+    OVERLAPPED ov;
+};
+
+int tf_count = 0;
+struct tf_s tf_exems[MAX_TF] = { 0 };
 
 
-static HANDLE openTFile(void)
+static struct tf_s *getTFE(void)
 {
-    if (tfiles_count == MAX_TFILES) {
-        tfiles_count = 0;
-    }
-    HANDLE *p = &tfiles[tfiles_count];
-    if (*p) {
-        if (!CloseHandle(*p)) {
-            uniperror("CloseHandle");
+    struct tf_s *s = 0;
+    if (tf_count < MAX_TF) 
+        s = &tf_exems[tf_count];
+    else {
+        HANDLE events[MAX_TF];
+        for (int i = 0; i < MAX_TF; i++) {
+            events[i] = tf_exems[i].ov.hEvent;
         }
-        *p = 0;
+        DWORD ret = WaitForMultipleObjects(MAX_TF, events, FALSE, INFINITE);
+        
+        if (ret >= WAIT_OBJECT_0 && ret < WAIT_OBJECT_0 + MAX_TF) {
+            s = &tf_exems[ret - WAIT_OBJECT_0];
+            CloseHandle(s->ov.hEvent);
+            CloseHandle(s->tfile);
+        }
     }
+    if (s) memset(s, 0, sizeof(*s));
+    return s;
+}
+
+
+static HANDLE openTempFile(void)
+{
     char path[MAX_PATH], temp[MAX_PATH + 1];
     if (!GetTempPath(sizeof(temp), temp)) {
         uniperror("GetTempPath");
@@ -288,8 +305,6 @@ static HANDLE openTFile(void)
         uniperror("CreateFileA");
         return 0;
     }
-    *p = hfile;
-    tfiles_count++;
     return hfile;
 }
 
@@ -297,10 +312,15 @@ static HANDLE openTFile(void)
 static ssize_t send_fake(int sfd, const char *buffer,
         long pos, const struct desync_params *opt, struct packet pkt)
 {
-    HANDLE hfile = openTFile();
+    struct tf_s *s = getTFE();
+    if (!s) {
+        return -1;
+    }
+    HANDLE hfile = openTempFile();
     if (!hfile) {
         return -1;
     }
+    s->tfile = hfile;
     ssize_t len = -1;
     
     while (1) {
@@ -326,10 +346,12 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
-        OVERLAPPED *op = &ov[tfiles_count - 1];
-        memset(op, 0, sizeof(*op));
-        
-        if (!TransmitFile(sfd, hfile, pos, pos, op, 
+        s->ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (!s->ov.hEvent) {
+            uniperror("CreateEvent");
+            break;
+        }
+        if (!TransmitFile(sfd, s->tfile, pos, pos, &s->ov, 
                 NULL, TF_USE_KERNEL_APC | TF_WRITE_BEHIND)) {
             if ((GetLastError() != ERROR_IO_PENDING) 
                         && (WSAGetLastError() != WSA_IO_PENDING)) {
@@ -349,7 +371,12 @@ static ssize_t send_fake(int sfd, const char *buffer,
             break;
         }
         len = pos;
+        if (tf_count < MAX_TF) tf_count++;
         break;
+    }
+    if (len < 0) {
+        CloseHandle(s->tfile);
+        if (s->ov.hEvent) CloseHandle(s->ov.hEvent);
     }
     return len;
 }
