@@ -67,7 +67,7 @@ static int unie(int e)
     #define LOG_E -1
     #define LOG_S 1
     #define LOG_L 2
-    static void LOG(int s, char *str, ...) {
+    static void LOG(int s, const char *str, ...) {
         if (params.debug >= s) {
             va_list args;
             va_start(args, str);

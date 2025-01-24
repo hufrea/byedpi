@@ -47,7 +47,7 @@ enum demode {
 };
 
 #ifdef STR_MODE
-char *demode_str[] = {
+static const char *demode_str[] = {
     "DESYNC_NONE",
     "DESYNC_SPLIT",
     "DESYNC_DISORDER",

@@ -218,11 +218,11 @@ static bool check_ip(
         struct mphdr *ipset, const union sockaddr_u *dst)
 {
     int len = sizeof(dst->in.sin_addr);
-    char *data = (char *)&dst->in.sin_addr;
+    const char *data = (const char *)&dst->in.sin_addr;
     
     if (dst->sa.sa_family == AF_INET6) {
         len = sizeof(dst->in6.sin6_addr);
-        data = (char *)&dst->in6.sin6_addr;
+        data = (const char *)&dst->in6.sin6_addr;
     }
     if (mem_get(ipset, data, len * 8)) {
         return 1;
