@@ -25,7 +25,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "16.1"
+#define VERSION "16.2"
 
 ASSERT(sizeof(struct in_addr) == 4)
 ASSERT(sizeof(struct in6_addr) == 16)
@@ -812,7 +812,7 @@ int main(int argc, char **argv)
             #else
             val = strtol(optarg, &end, 0);
             #endif
-            if (val <= 0 || val > (long)UINT_MAX || *end)
+            if (val <= 0 || (unsigned long)val > UINT_MAX || *end)
                 invalid = 1;
             else
                 params.timeout = val;
