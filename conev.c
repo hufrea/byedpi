@@ -89,10 +89,9 @@ void del_event(struct poolhd *pool, struct eval *val)
     #else
     epoll_ctl(pool->efd, EPOLL_CTL_DEL, val->fd, 0);
     #endif
-    if (val->buff.data) {
-        assert(val->buff.size);
-        free(val->buff.data);
-        val->buff.data = 0;
+    if (val->buff && val->buff->lock) {
+        val->buff->lock = 0;
+        val->buff->offset = 0;
     }
     close(val->fd);
     val->fd = -1;
@@ -130,10 +129,6 @@ void destroy_pool(struct poolhd *pool)
             close(val->fd);
             val->fd = 0;
         }
-        if (val->buff.data) {
-            free(val->buff.data);
-            val->buff.data = 0;
-        }
     }
     free(pool->items);
     free(pool->links);
@@ -142,6 +137,7 @@ void destroy_pool(struct poolhd *pool)
     if (pool->efd)
         close(pool->efd);
     #endif
+    buff_destroy(pool->root_buff);
     memset(pool, 0, sizeof(*pool));
     free(pool);
 }
@@ -216,3 +212,43 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type)
    return 0;
 }
 #endif
+
+
+struct buffer *buff_get(struct buffer *root, size_t size)
+{
+    struct buffer *prev = root;
+    
+    while (root) {
+        if (!root->lock) {
+            return root;
+        }
+        prev = root;
+        root = root->next;
+    }
+    struct buffer *buff = malloc(sizeof(struct buffer) + size);
+    if (!buff) {
+        uniperror("malloc");
+        return 0;
+    }
+    LOG(LOG_S, "alloc new buffer\n");
+    
+    memset(buff, 0, sizeof(struct buffer));
+    buff->data = (char *)buff + sizeof(struct buffer);
+    buff->size = size;
+    
+    if (prev) {
+        prev->next = buff;
+    }
+    return buff;
+}
+
+
+void buff_destroy(struct buffer *root)
+{
+    while (root) {
+        struct buffer *c = root;
+        root = root->next;
+        free(c);
+    }
+}
+

@@ -646,8 +646,7 @@ static int on_accept(struct poolhd *pool, const struct eval *val)
 }
 
 
-static int on_tunnel(struct poolhd *pool, struct eval *val, 
-        char *buffer, size_t bfsize, int etype)
+static int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
 {
     ssize_t n = 0;
     struct eval *pair = val->pair;
@@ -657,26 +656,23 @@ static int on_tunnel(struct poolhd *pool, struct eval *val,
         val = pair;
         pair = val->pair;
     }
-    if (val->buff.data) {
+    if (val->buff && val->buff->lock) {
         if (etype & POLLHUP) {
             return -1;
         }
-        n = val->buff.size - val->buff.offset;
+        n = val->buff->lock - val->buff->offset;
         
-        ssize_t sn = tcp_send_hook(pair, 
-            val->buff.data + val->buff.offset, n, n);
+        ssize_t sn = tcp_send_hook(pool, pair, val->buff, n);
         if (sn < 0) {
             uniperror("send");
             return -1;
         }
         if (sn < n) {
-            val->buff.offset += sn;
+            val->buff->offset += sn;
             return 0;
         }
-        free(val->buff.data);
-        val->buff.data = 0;
-        val->buff.size = 0;
-        val->buff.offset = 0;
+        val->buff->lock = 0;
+        val->buff->offset = 0;
         
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, pair, POLLIN)) {
@@ -684,8 +680,9 @@ static int on_tunnel(struct poolhd *pool, struct eval *val,
             return -1;
         }
     }
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
     do {
-        n = tcp_recv_hook(pool, val, buffer, bfsize);
+        n = tcp_recv_hook(pool, val, buff);
         //if (n < 0 && get_e() == EAGAIN) {
         if (n == 0) {
             break;
@@ -693,21 +690,17 @@ static int on_tunnel(struct poolhd *pool, struct eval *val,
         if (n < 0) {
             return -1;
         }
-        ssize_t sn = tcp_send_hook(pair, buffer, bfsize, n);
+        ssize_t sn = tcp_send_hook(pool, pair, buff, n);
         if (sn < 0) {
             uniperror("send");
             return -1;
         }
         if (sn < n) {
             LOG(LOG_S, "send: %zd != %zd (fd=%d)\n", sn, n, pair->fd);
-            assert(!(val->buff.size || val->buff.offset));
             
-            val->buff.size = n - sn;
-            if (!(val->buff.data = malloc(n - sn))) {
-                uniperror("malloc");
-                return -1;
-            }
-            memcpy(val->buff.data, buffer + sn, n - sn);
+            val->buff = buff;
+            buff->lock = n;
+            buff->offset = sn;
             
             if (mod_etype(pool, val, 0) ||
                     mod_etype(pool, pair, POLLOUT)) {
@@ -716,15 +709,17 @@ static int on_tunnel(struct poolhd *pool, struct eval *val,
             }
             break;
         }
-    } while (n == (ssize_t )bfsize);
+    } while (n == (ssize_t )buff->size);
     return 0;
 }
 
 
-static int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
+static int on_udp_tunnel(struct poolhd *pool, struct eval *val)
 {
-    char *data = buffer;
-    size_t data_len = bfsize;
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
+    
+    char *data = buff->data;
+    size_t data_len = buff->size;
     
     if (val->flag != FLAG_CONN) {
         data += S_SIZE_I6;
@@ -788,7 +783,7 @@ static int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
         }
         else {
             map_fix(&addr, 0);
-            memset(buffer, 0, S_SIZE_I6);
+            memset(buff->data, 0, S_SIZE_I6);
             
             int offs = s5_set_addr(data, S_SIZE_I6, &addr, 1);
             if (offs < 0 || offs > S_SIZE_I6) {
@@ -805,21 +800,21 @@ static int on_udp_tunnel(struct eval *val, char *buffer, size_t bfsize)
 }
 
 
-static inline int on_request(struct poolhd *pool, struct eval *val,
-        char *buffer, size_t bfsize)
+static inline int on_request(struct poolhd *pool, struct eval *val)
 {
     union sockaddr_u dst = {0};
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
     
-    ssize_t n = recv(val->fd, buffer, bfsize, 0);
+    ssize_t n = recv(val->fd, buff->data, buff->size, 0);
     if (n < 1) {
         if (n) uniperror("ss recv");
         return -1;
     }
     int error = 0;
     
-    if (*buffer == S_VER5) {
+    if (*buff->data == S_VER5) {
         if (val->flag != FLAG_S5) {
-            if (auth_socks5(val->fd, buffer, n)) {
+            if (auth_socks5(val->fd, buff->data, n)) {
                 return -1;
             }
             val->flag = FLAG_S5;
@@ -829,18 +824,18 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             LOG(LOG_E, "ss: request too small (%zd)\n", n);
             return -1;
         }
-        struct s5_req *r = (struct s5_req *)buffer;
+        struct s5_req *r = (struct s5_req *)buff->data;
         int s5e = 0;
         switch (r->cmd) {
             case S_CMD_CONN:
-                s5e = s5_get_addr(buffer, n, &dst, SOCK_STREAM);
+                s5e = s5_get_addr(buff->data, n, &dst, SOCK_STREAM);
                 if (s5e >= 0) {
                     error = connect_hook(pool, val, &dst, EV_CONNECT);
                 }
                 break;
             case S_CMD_AUDP:
                 if (params.udp) {
-                    s5e = s5_get_addr(buffer, n, &dst, SOCK_DGRAM);
+                    s5e = s5_get_addr(buff->data, n, &dst, SOCK_DGRAM);
                     if (s5e >= 0) {
                         error = udp_associate(pool, val, &dst);
                     }
@@ -857,10 +852,10 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
             return -1;
         }
     }
-    else if (*buffer == S_VER4) {
+    else if (*buff->data == S_VER4) {
         val->flag = FLAG_S4;
         
-        error = s4_get_addr(buffer, n, &dst);
+        error = s4_get_addr(buff->data, n, &dst);
         if (error) {
             if (resp_error(val->fd, error, FLAG_S4) < 0)
                 uniperror("send");
@@ -869,16 +864,16 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
         error = connect_hook(pool, val, &dst, EV_CONNECT);
     }
     else if (params.http_connect
-            && n > 7 && !memcmp(buffer, "CONNECT", 7)) {
+            && n > 7 && !memcmp(buff->data, "CONNECT", 7)) {
         val->flag = FLAG_HTTP;
         
-        if (http_get_addr(buffer, n, &dst)) {
+        if (http_get_addr(buff->data, n, &dst)) {
             return -1;
         }
         error = connect_hook(pool, val, &dst, EV_CONNECT);
     }
     else {
-        LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buffer, n);
+        LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buff->data, n);
         return -1;
     }
     if (error) {
@@ -950,9 +945,8 @@ int event_loop(int srvfd)
         close(srvfd);
         return -1;
     }
-    char *buffer = malloc(params.bfsize);
-    if (!buffer) {
-        uniperror("malloc");
+    pool->root_buff = buff_get(0, params.bfsize);
+    if (!pool->root_buff) {
         destroy_pool(pool);
         return -1;
     }
@@ -981,22 +975,22 @@ int event_loop(int srvfd)
             
             case EV_REQUEST:
                 if ((etype & POLLHUP) || 
-                        on_request(pool, val, buffer, bfsize))
+                        on_request(pool, val))
                     close_conn(pool, val);
                 continue;
         
             case EV_FIRST_TUNNEL:
-                if (on_first_tunnel(pool, val, buffer, bfsize, etype))
+                if (on_first_tunnel(pool, val, etype))
                     close_conn(pool, val);
                 continue;
                 
             case EV_TUNNEL:
-                if (on_tunnel(pool, val, buffer, bfsize, etype))
+                if (on_tunnel(pool, val, etype))
                     close_conn(pool, val);
                 continue;
         
             case EV_UDP_TUNNEL:
-                if (on_udp_tunnel(val, buffer, bfsize))
+                if (on_udp_tunnel(pool, val))
                     close_conn(pool, val);
                 continue;
                 
@@ -1016,7 +1010,6 @@ int event_loop(int srvfd)
         }
     }
     LOG(LOG_S, "exit\n");
-    free(buffer);
     destroy_pool(pool);
     return 0;
 }

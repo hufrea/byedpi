@@ -70,6 +70,8 @@ struct buffer {
     size_t size;
     unsigned int offset;
     char *data;
+    size_t lock;
+    struct buffer *next;
 };
 
 struct eval {
@@ -78,7 +80,7 @@ struct eval {
     unsigned long long mod_iter;
     enum eid type;
     struct eval *pair;
-    struct buffer buff;
+    struct buffer *buff;
     int flag;
     union sockaddr_u addr;
     ssize_t recv_count;
@@ -101,6 +103,7 @@ struct poolhd {
     struct pollfd *pevents;
 #endif
     unsigned long long iters;
+    struct buffer *root_buff;
 };
 
 struct poolhd *init_pool(int count);
@@ -117,4 +120,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type);
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type);
 
+struct buffer *buff_get(struct buffer *root, size_t size);
+
+void buff_destroy(struct buffer *root);
 #endif

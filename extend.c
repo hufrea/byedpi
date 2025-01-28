@@ -164,7 +164,7 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     //client->type = EV_IGNORE;
     client->attempt = m;
     client->cache = 1;
-    client->buff.offset = 0;
+    client->buff->offset = 0;
     client->round_sent = 0;
     return 0;
 }
@@ -258,8 +258,9 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
+    struct buffer *pair_buff = val->pair->buff;
     bool can_reconn = (
-        val->pair->buff.data && !val->recv_count
+        pair_buff && pair_buff->lock && !val->recv_count
         && params.auto_level > AUTO_NOBUFF
     );
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
@@ -317,8 +318,8 @@ static int on_response(struct poolhd *pool, struct eval *val,
 {
     int m = val->pair->attempt + 1;
     
-    char *req = val->pair->buff.data;
-    ssize_t qn = val->pair->buff.size;
+    char *req = val->pair->buff->data;
+    ssize_t qn = val->pair->buff->size;
     
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
@@ -346,9 +347,8 @@ static inline void free_first_req(struct eval *client)
 {
     client->type = EV_TUNNEL;
     client->pair->type = EV_TUNNEL;
-    
-    free(client->buff.data);
-    memset(&client->buff, 0, sizeof(client->buff));
+    client->buff->lock = 0;
+    client->buff->offset = 0;
 }
 
 
@@ -395,19 +395,19 @@ static int cancel_setup(struct eval *remote)
 }
 
 
-static int send_saved_req(struct poolhd *pool,
-        struct eval *client, char *buffer, ssize_t bfsize)
+static int send_saved_req(struct poolhd *pool, struct eval *client)
 {
-    ssize_t offset = client->buff.offset;
-    ssize_t n = client->buff.size - offset;
-    assert(bfsize >= n);
-    memcpy(buffer, client->buff.data + offset, n);
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
     
-    ssize_t sn = tcp_send_hook(client->pair, buffer, bfsize, n);
+    ssize_t offset = client->buff->offset;
+    ssize_t n = client->buff->lock - offset;
+    memcpy(buff->data, client->buff->data + offset, n);
+    
+    ssize_t sn = tcp_send_hook(pool, client->pair, buff, n);
     if (sn < 0) {
         return -1;
     }
-    client->buff.offset += sn;
+    client->buff->offset += sn;
     if (sn < n) {
         if (mod_etype(pool, client->pair, POLLOUT) ||
                 mod_etype(pool, client, 0)) {
@@ -419,9 +419,10 @@ static int send_saved_req(struct poolhd *pool,
 }
 
 
-int on_first_tunnel(struct poolhd *pool,
-        struct eval *val, char *buffer, size_t bfsize, int etype)
+int on_first_tunnel(struct poolhd *pool, struct eval *val, int etype)
 {
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
+    
     if ((etype & POLLOUT) && val->flag == FLAG_CONN) {
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, val->pair, POLLIN)) {
@@ -429,31 +430,28 @@ int on_first_tunnel(struct poolhd *pool,
             return -1;
         }
         val->pair->type = EV_FIRST_TUNNEL;
-        return send_saved_req(pool, val->pair, buffer, bfsize);
+        return send_saved_req(pool, val->pair);
     }
-    ssize_t n = tcp_recv_hook(pool, val, buffer, bfsize);
+    ssize_t n = tcp_recv_hook(pool, val, buff);
     if (n < 1) {
         return n;
     }
     if (val->flag != FLAG_CONN) {
-        val->buff.size += n;
-        
-        if (val->buff.size >= bfsize) {
+        if (!val->buff) {
+            val->buff = buff;
+        }
+        val->buff->lock += n;
+        if (val->buff->lock >= val->buff->size) {
             free_first_req(val);
-        } 
+        }
         else {
-            val->buff.data = realloc(val->buff.data, val->buff.size);
-            
-            if (val->buff.data == 0) {
-                uniperror("realloc");
-                return -1;
-            }
-            memcpy(val->buff.data + val->buff.size - n, buffer, n);
-            return send_saved_req(pool, val, buffer, bfsize);
+            if (buff != val->buff)
+                memcpy(val->buff->data + val->buff->lock - n, buff->data, n);
+            return send_saved_req(pool, val);
         }
     }
     else {
-        if (on_response(pool, val, buffer, n) == 0) {
+        if (on_response(pool, val, buff->data, n) == 0) {
             return 0;
         }
         free_first_req(val->pair);
@@ -463,24 +461,25 @@ int on_first_tunnel(struct poolhd *pool,
             return -1;
         }
     }
-    if (tcp_send_hook(val->pair, buffer, bfsize, n) < n) {
+    if (tcp_send_hook(pool, val->pair, buff, n) < n) {
         return -1;
     }
     return 0;
 }
 
 
-ssize_t tcp_send_hook(struct eval *remote,
-        char *buffer, size_t bfsize, ssize_t n)
+ssize_t tcp_send_hook(struct poolhd *pool, 
+        struct eval *remote, struct buffer *buff, ssize_t n)
 {
     ssize_t sn = -1;
     int skip = remote->flag != FLAG_CONN; 
+    size_t off = buff->offset;
     
     if (!skip) {
         struct eval *client = remote->pair;
     
         if (client->recv_count == n 
-                && setup_conn(client, buffer, n) < 0) {
+                && setup_conn(client, buff->data, n) < 0) {
             return -1;
         }
         int m = client->attempt, r = client->round_count;
@@ -494,11 +493,11 @@ ssize_t tcp_send_hook(struct eval *remote,
             if (!offset && remote->round_count) offset = -1;
             
             sn = desync(remote->fd, 
-                buffer, bfsize, n, offset, m);
+                buff->data + off, buff->size - off, n, offset, m);
         }
     }
     if (skip) {
-        sn = send(remote->fd, buffer, n, 0);
+        sn = send(remote->fd, buff->data + off, n, 0);
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
@@ -509,9 +508,9 @@ ssize_t tcp_send_hook(struct eval *remote,
 
 
 ssize_t tcp_recv_hook(struct poolhd *pool, 
-        struct eval *val, char *buffer, size_t bfsize)
+        struct eval *val, struct buffer *buff)
 {
-    ssize_t n = recv(val->fd, buffer, bfsize, 0);
+    ssize_t n = recv(val->fd, buff->data, buff->size, 0);
     if (n < 1) {
         if (!n) {
             if (val->flag != FLAG_CONN) {
