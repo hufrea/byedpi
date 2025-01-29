@@ -8,7 +8,7 @@
 int socket_mod(int fd);
 
 int connect_hook(struct poolhd *pool, struct eval *val, 
-        const union sockaddr_u *dst, int next);
+        const union sockaddr_u *dst, evcb_t next);
         
 ssize_t tcp_send_hook(struct poolhd *pool, 
         struct eval *remote, struct buffer *buff, ssize_t n);

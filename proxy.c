@@ -1,5 +1,3 @@
-#define EID_STR
-
 #include "proxy.h"
 
 #include <stdint.h>
@@ -43,10 +41,10 @@
 #endif
 
 
-int NOT_EXIT = 1;
+int server_fd;
 
 static void on_cancel(int sig) {
-    if (sig) NOT_EXIT = 0;
+    shutdown(server_fd, SHUT_RDWR);
 }
 
 
@@ -401,7 +399,7 @@ static int remote_sock(union sockaddr_u *dst, int type)
 
 
 int create_conn(struct poolhd *pool,
-        struct eval *val, const union sockaddr_u *dst, int next)
+        struct eval *val, const union sockaddr_u *dst, evcb_t next)
 {
     union sockaddr_u addr = *dst;
     
@@ -466,7 +464,7 @@ int create_conn(struct poolhd *pool,
     pair->addr = *dst;
     #endif
     pair->flag = FLAG_CONN;
-    val->type = EV_IGNORE;
+    val->cb = &on_ignore;
     return 0;
 }
 
@@ -480,7 +478,7 @@ static int udp_associate(struct poolhd *pool,
     if (ufd < 0) {
         return -1;
     }
-    struct eval *pair = add_event(pool, EV_UDP_TUNNEL, ufd, POLLIN);
+    struct eval *pair = add_event(pool, &on_udp_tunnel, ufd, POLLIN);
     if (!pair) {
         close(ufd);
         return -1;
@@ -514,7 +512,7 @@ static int udp_associate(struct poolhd *pool,
         close(cfd);
         return -1;
     }
-    struct eval *client = add_event(pool, EV_UDP_TUNNEL, cfd, POLLIN);
+    struct eval *client = add_event(pool, &on_udp_tunnel, cfd, POLLIN);
     if (!client) {
         del_event(pool, pair);
         close(cfd);
@@ -525,7 +523,7 @@ static int udp_associate(struct poolhd *pool,
         LOG(LOG_S, "udp associate: fds=%d,%d,%d addr=%s:%d\n", 
             ufd, cfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
     }
-    val->type = EV_IGNORE;
+    val->cb = &on_ignore;
     val->pair = client;
     client->pair = pair;
     pair->pair = val;
@@ -581,7 +579,7 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
         LOG(LOG_E, "connect to self, ignore\n");
         return -1;
     }
-    int error = connect_hook(pool, val, &remote, EV_CONNECT);
+    int error = connect_hook(pool, val, &remote, &on_connect);
     if (error) {
         uniperror("connect_hook");
         return -1;
@@ -590,7 +588,7 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
 }
 #endif
 
-static int on_accept(struct poolhd *pool, const struct eval *val)
+static int on_accept(struct poolhd *pool, struct eval *val, int et)
 {
     union sockaddr_u client;
     struct eval *rval;
@@ -607,6 +605,7 @@ static int on_accept(struct poolhd *pool, const struct eval *val)
                     get_e() == EINPROGRESS)
                 break;
             uniperror("accept");
+            pool->brk = 1;
             return -1;
         }
         LOG(LOG_S, "accept: fd=%d\n", c);
@@ -630,7 +629,7 @@ static int on_accept(struct poolhd *pool, const struct eval *val)
             close(c);
             continue;
         }
-        if (!(rval = add_event(pool, EV_REQUEST, c, POLLIN))) {
+        if (!(rval = add_event(pool, &on_request, c, POLLIN))) {
             close(c);
             continue;
         }
@@ -646,7 +645,7 @@ static int on_accept(struct poolhd *pool, const struct eval *val)
 }
 
 
-static int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
+int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
 {
     ssize_t n = 0;
     struct eval *pair = val->pair;
@@ -714,7 +713,7 @@ static int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
 }
 
 
-static int on_udp_tunnel(struct poolhd *pool, struct eval *val)
+int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
 {
     struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
     
@@ -800,7 +799,7 @@ static int on_udp_tunnel(struct poolhd *pool, struct eval *val)
 }
 
 
-static inline int on_request(struct poolhd *pool, struct eval *val)
+int on_request(struct poolhd *pool, struct eval *val, int et)
 {
     union sockaddr_u dst = {0};
     struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
@@ -830,7 +829,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val)
             case S_CMD_CONN:
                 s5e = s5_get_addr(buff->data, n, &dst, SOCK_STREAM);
                 if (s5e >= 0) {
-                    error = connect_hook(pool, val, &dst, EV_CONNECT);
+                    error = connect_hook(pool, val, &dst, &on_connect);
                 }
                 break;
             case S_CMD_AUDP:
@@ -861,7 +860,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val)
                 uniperror("send");
             return -1;
         }
-        error = connect_hook(pool, val, &dst, EV_CONNECT);
+        error = connect_hook(pool, val, &dst, &on_connect);
     }
     else if (params.http_connect
             && n > 7 && !memcmp(buff->data, "CONNECT", 7)) {
@@ -870,7 +869,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val)
         if (http_get_addr(buff->data, n, &dst)) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, EV_CONNECT);
+        error = connect_hook(pool, val, &dst, &on_connect);
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buff->data, n);
@@ -887,11 +886,11 @@ static inline int on_request(struct poolhd *pool, struct eval *val)
 }
 
 
-static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
+int on_connect(struct poolhd *pool, struct eval *val, int et)
 {
     int error = 0;
     socklen_t len = sizeof(error);
-    if (e) {
+    if (et & POLLERR) {
         if (getsockopt(val->fd, SOL_SOCKET, 
                 SO_ERROR, (char *)&error, &len)) {
             uniperror("getsockopt SO_ERROR");
@@ -904,43 +903,36 @@ static inline int on_connect(struct poolhd *pool, struct eval *val, int e)
             uniperror("mod_etype");
             return -1;
         }
-        int t = params.auto_level <= AUTO_NOBUFF 
-            ? EV_TUNNEL : EV_FIRST_TUNNEL;
-        val->type = t;
-        val->pair->type = t;
+        evcb_t t = params.auto_level <= AUTO_NOBUFF 
+            ? &on_tunnel : &on_first_tunnel;
+        val->cb = t;
+        val->pair->cb = t;
     }
     if (resp_error(val->pair->fd,
             error, val->pair->flag) < 0) {
         uniperror("send");
         return -1;
     }
-    return e ? -1 : 0;
+    return error ? -1 : 0;
 }
 
 
-static void close_conn(struct poolhd *pool, struct eval *val)
+int on_ignore(struct poolhd *pool, struct eval *val, int etype)
 {
-    struct eval *cval = val;
-    do {
-        LOG(LOG_S, "close: fd=%d (pair=%d), recv: %zd, rounds: %d\n", 
-            cval->fd, cval->pair ? cval->pair->fd : -1, 
-            cval->recv_count, cval->round_count);
-        cval = cval->pair;
-    } while (cval && cval != val);
-    del_event(pool, val);
+    return (etype & (POLLHUP | POLLERR)) ? -1 : 0;
 }
 
 
-int event_loop(int srvfd)
+int start_event_loop(int srvfd)
 {
-    size_t bfsize = params.bfsize;
+    server_fd = srvfd;
     
     struct poolhd *pool = init_pool(params.max_open * 2 + 1);
     if (!pool) {
         close(srvfd);
         return -1;
     }
-    if (!add_event(pool, EV_ACCEPT, srvfd, POLLIN)) {
+    if (!add_event(pool, &on_accept, srvfd, POLLIN)) {
         destroy_pool(pool);
         close(srvfd);
         return -1;
@@ -950,65 +942,8 @@ int event_loop(int srvfd)
         destroy_pool(pool);
         return -1;
     }
+    loop_event(pool);
     
-    struct eval *val;
-    int i = -1, etype;
-    
-    while (NOT_EXIT) {
-        val = next_event(pool, &i, &etype);
-        if (!val) {
-            if (get_e() == EINTR) 
-                continue;
-            uniperror("(e)poll");
-            break;
-        }
-        assert(val->type >= 0
-            && val->type < sizeof(eid_name)/sizeof(*eid_name));
-        LOG(LOG_L, "new event: fd: %d, evt: %s, mod_iter: %llu\n", val->fd, eid_name[val->type], val->mod_iter);
-        
-        switch (val->type) {
-            case EV_ACCEPT:
-                if ((etype & POLLHUP) ||
-                        on_accept(pool, val))
-                    NOT_EXIT = 0;
-                continue;
-            
-            case EV_REQUEST:
-                if ((etype & POLLHUP) || 
-                        on_request(pool, val))
-                    close_conn(pool, val);
-                continue;
-        
-            case EV_FIRST_TUNNEL:
-                if (on_first_tunnel(pool, val, etype))
-                    close_conn(pool, val);
-                continue;
-                
-            case EV_TUNNEL:
-                if (on_tunnel(pool, val, etype))
-                    close_conn(pool, val);
-                continue;
-        
-            case EV_UDP_TUNNEL:
-                if (on_udp_tunnel(pool, val))
-                    close_conn(pool, val);
-                continue;
-                
-            case EV_CONNECT:
-                if (on_connect(pool, val, etype & POLLERR))
-                    close_conn(pool, val);
-                continue;
-                
-            case EV_IGNORE:
-                if (etype & (POLLHUP | POLLERR | POLLRDHUP))
-                    close_conn(pool, val);
-                continue;
-            
-            default:
-                LOG(LOG_E, "???\n");
-                NOT_EXIT = 0;
-        }
-    }
     LOG(LOG_S, "exit\n");
     destroy_pool(pool);
     return 0;
@@ -1056,5 +991,5 @@ int run(const union sockaddr_u *srv)
     if (fd < 0) {
         return -1;
     }
-    return event_loop(fd);
+    return start_event_loop(fd);
 }

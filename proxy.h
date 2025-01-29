@@ -87,11 +87,21 @@ struct s5_rep {
 void map_fix(union sockaddr_u *addr, char f6);
 
 int create_conn(struct poolhd *pool,
-        struct eval *val, const union sockaddr_u *dst, int next);
+        struct eval *val, const union sockaddr_u *dst, evcb_t next);
  
 int listen_socket(const union sockaddr_u *srv);
 
-int event_loop(int srvfd);
+int on_tunnel(struct poolhd *pool, struct eval *val, int etype);
+
+int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et);
+
+int on_request(struct poolhd *pool, struct eval *val, int et);
+
+int on_connect(struct poolhd *pool, struct eval *val, int et);
+
+int on_ignore(struct poolhd *pool, struct eval *val, int etype);
+
+int start_event_loop(int srvfd);
 
 int run(const union sockaddr_u *srv);
 

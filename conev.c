@@ -43,7 +43,7 @@ struct poolhd *init_pool(int count)
 }
 
 
-struct eval *add_event(struct poolhd *pool, enum eid type,
+struct eval *add_event(struct poolhd *pool, evcb_t cb,
         int fd, int e)
 {
     assert(fd > 0);
@@ -57,7 +57,7 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
     val->mod_iter = pool->iters;
     val->fd = fd;
     val->index = pool->count;
-    val->type = type;
+    val->cb = cb;
 
     #ifndef NOEPOLL
     struct epoll_event ev = { .events = EPOLLRDHUP | e, .data = {val} };
@@ -81,6 +81,9 @@ struct eval *add_event(struct poolhd *pool, enum eid type,
 void del_event(struct poolhd *pool, struct eval *val) 
 {
     assert(val->fd >= -1 && val->mod_iter <= pool->iters);
+    LOG(LOG_S, "close: fd=%d (pair=%d), recv: %zd, rounds: %d\n", 
+        val->fd, val->pair ? val->pair->fd : -1, 
+        val->recv_count, val->round_count);
     if (val->fd == -1) {
         return;
     }
@@ -117,7 +120,7 @@ void del_event(struct poolhd *pool, struct eval *val)
         val->pair = 0;
         del_event(pool, e);
     }
-    assert(pool->count > 0);
+    assert(pool->count >= 0);
 }
 
 
@@ -213,6 +216,26 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type)
 }
 #endif
 
+
+void loop_event(struct poolhd *pool)
+{
+    struct eval *val;
+    int i = -1, etype;
+    
+    while (!pool->brk) {
+        val = next_event(pool, &i, &etype);
+        if (!val) {
+            if (get_e() == EINTR) 
+                continue;
+            uniperror("(e)poll");
+            break;
+        }
+        int ret = (*val->cb)(pool, val, etype);
+        if (ret < 0) {
+            del_event(pool, val);
+        }
+    }
+}
 
 struct buffer *buff_get(struct buffer *root, size_t size)
 {

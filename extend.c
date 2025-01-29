@@ -125,7 +125,7 @@ static int cache_add(const union sockaddr_u *dst, int m)
 
 
 int connect_hook(struct poolhd *pool, struct eval *val, 
-        const union sockaddr_u *dst, int next)
+        const union sockaddr_u *dst, evcb_t next)
 {
     int m = cache_get(dst);
     val->cache = (m == 0);
@@ -155,7 +155,7 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     
     struct eval *client = val->pair;
     
-    if (create_conn(pool, client, &val->addr, EV_FIRST_TUNNEL)) {
+    if (create_conn(pool, client, &val->addr, &on_first_tunnel)) {
         return -1;
     }
     val->pair = 0;
@@ -345,8 +345,8 @@ static int on_response(struct poolhd *pool, struct eval *val,
 
 static inline void free_first_req(struct eval *client)
 {
-    client->type = EV_TUNNEL;
-    client->pair->type = EV_TUNNEL;
+    client->cb = &on_tunnel;
+    client->pair->cb = &on_tunnel;
     client->buff->lock = 0;
     client->buff->offset = 0;
 }
@@ -429,7 +429,7 @@ int on_first_tunnel(struct poolhd *pool, struct eval *val, int etype)
             uniperror("mod_etype");
             return -1;
         }
-        val->pair->type = EV_FIRST_TUNNEL;
+        val->pair->cb = &on_first_tunnel;
         return send_saved_req(pool, val->pair);
     }
     ssize_t n = tcp_recv_hook(pool, val, buff);
