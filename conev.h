@@ -16,6 +16,7 @@
     #include <netinet/in.h>
     #include <sys/socket.h>
     #include <unistd.h>
+    #include <time.h>
     
     #ifndef NOEPOLL
         #include <sys/epoll.h>
@@ -32,6 +33,7 @@
 #ifndef POLLRDHUP
     #define POLLRDHUP 0
 #endif
+#define POLLTIMEOUT 0
 
 struct poolhd;
 struct eval;
@@ -51,9 +53,9 @@ union sockaddr_u {
 struct buffer {
     size_t size;
     unsigned int offset;
-    char *data;
     size_t lock;
     struct buffer *next;
+    char data[];
 };
 
 struct eval {
@@ -61,6 +63,10 @@ struct eval {
     int index;
     unsigned long long mod_iter;
     evcb_t cb;
+    
+    long tv_ms;
+    struct eval *tv_next, *tv_prev;
+    
     struct eval *pair;
     struct buffer *buff;
     int flag;
@@ -87,6 +93,7 @@ struct poolhd {
     unsigned long long iters;
     bool brk;
     
+    struct eval *tv_start, *tv_end;
     struct buffer *root_buff;
 };
 
@@ -100,13 +107,23 @@ void del_event(struct poolhd *pool, struct eval *val);
 
 void destroy_pool(struct poolhd *pool);
 
-struct eval *next_event(struct poolhd *pool, int *offs, int *type);
+struct eval *next_event(struct poolhd *pool, int *offs, int *type, int ms);
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type);
+
+void set_timer(struct poolhd *pool, struct eval *val, long ms);
+
+void remove_timer(struct poolhd *pool, struct eval *val);
 
 void loop_event(struct poolhd *pool);
 
 struct buffer *buff_get(struct buffer *root, size_t size);
 
 void buff_destroy(struct buffer *root);
+
+#define buff_unlock(val) \
+    val->buff->lock = 0; \
+    val->buff->offset = 0; \
+    val->buff = 0;
+    
 #endif

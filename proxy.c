@@ -18,6 +18,7 @@
     #include <ws2tcpip.h>
     
     #define close(fd) closesocket(fd)
+    #define SHUT_RDWR SD_BOTH
 #else
     #include <errno.h>
     #include <unistd.h>
@@ -650,7 +651,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
     ssize_t n = 0;
     struct eval *pair = val->pair;
     
-    if (etype & POLLOUT) {
+    if (etype & POLLOUT || etype == POLLTIMEOUT) {
         LOG(LOG_S, "pollout (fd=%d)\n", val->fd);
         val = pair;
         pair = val->pair;
@@ -661,7 +662,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         }
         n = val->buff->lock - val->buff->offset;
         
-        ssize_t sn = tcp_send_hook(pool, pair, val->buff, n);
+        ssize_t sn = tcp_send_hook(pool, pair, val->buff, val->buff->lock);
         if (sn < 0) {
             uniperror("send");
             return -1;
@@ -670,8 +671,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             val->buff->offset += sn;
             return 0;
         }
-        val->buff->lock = 0;
-        val->buff->offset = 0;
+        buff_unlock(val);
         
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, pair, POLLIN)) {
@@ -702,7 +702,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             buff->offset = sn;
             
             if (mod_etype(pool, val, 0) ||
-                    mod_etype(pool, pair, POLLOUT)) {
+                    mod_etype(pool, pair, !pair->tv_ms ? POLLOUT : 0)) {
                 uniperror("mod_etype");
                 return -1;
             }

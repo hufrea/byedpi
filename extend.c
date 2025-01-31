@@ -161,7 +161,6 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     val->pair = 0;
     del_event(pool, val);
     
-    //client->type = EV_IGNORE;
     client->attempt = m;
     client->cache = 1;
     client->buff->offset = 0;
@@ -347,8 +346,7 @@ static inline void free_first_req(struct eval *client)
 {
     client->cb = &on_tunnel;
     client->pair->cb = &on_tunnel;
-    client->buff->lock = 0;
-    client->buff->offset = 0;
+    buff_unlock(client);
 }
 
 
@@ -378,6 +376,9 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
             && set_timeout(client->pair->fd, params.timeout)) {
         return -1;
     }
+    if (pre_desync(client->pair->fd, client->attempt)) {
+        return -1;
+    }
     return 0;
 }
 
@@ -397,24 +398,26 @@ static int cancel_setup(struct eval *remote)
 
 static int send_saved_req(struct poolhd *pool, struct eval *client)
 {
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
+    struct buffer *buff = buff_get(pool->root_buff, params.bfsize),
+        *cb = client->buff;
+        
+    ssize_t n = cb->lock - cb->offset;
+    memcpy(buff->data, cb->data, cb->lock);
+    buff->offset = cb->offset;
     
-    ssize_t offset = client->buff->offset;
-    ssize_t n = client->buff->lock - offset;
-    memcpy(buff->data, client->buff->data + offset, n);
-    
-    ssize_t sn = tcp_send_hook(pool, client->pair, buff, n);
+    ssize_t sn = tcp_send_hook(pool, client->pair, buff, cb->lock);
     if (sn < 0) {
         return -1;
     }
-    client->buff->offset += sn;
+    cb->offset += sn;
     if (sn < n) {
-        if (mod_etype(pool, client->pair, POLLOUT) ||
+        if (mod_etype(pool, client->pair, !client->pair->tv_ms ? POLLOUT : 0) ||
                 mod_etype(pool, client, 0)) {
             uniperror("mod_etype");
             return -1;
         }
     }
+    buff->offset = 0;
     return 0;
 }
 
@@ -423,7 +426,8 @@ int on_first_tunnel(struct poolhd *pool, struct eval *val, int etype)
 {
     struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
     
-    if ((etype & POLLOUT) && val->flag == FLAG_CONN) {
+    if (val->flag == FLAG_CONN 
+            && ((etype & POLLOUT) || etype == POLLTIMEOUT)) {
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, val->pair, POLLIN)) {
             uniperror("mod_etype");
@@ -488,16 +492,11 @@ ssize_t tcp_send_hook(struct poolhd *pool,
         }
         else {
             LOG(LOG_S, "desync TCP: group=%d, round=%d, fd=%d\n", m, r, remote->fd);
-            
-            ssize_t offset = remote->pair->round_sent;
-            if (!offset && remote->round_count) offset = -1;
-            
-            sn = desync(remote->fd, 
-                buff->data + off, buff->size - off, n, offset, m);
+            sn = desync(pool, remote, buff, n);
         }
     }
     if (skip) {
-        sn = send(remote->fd, buff->data + off, n, 0);
+        sn = send(remote->fd, buff->data + off, n - off, 0);
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
