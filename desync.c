@@ -31,9 +31,9 @@
 #include "packets.h"
 #include "error.h"
 
-#define WAIT_LIMIT_MS 500
 #define DEFAULT_TTL 8
 #define ERR_WAIT -12
+
 
 int setttl(int fd, int ttl)
 {
