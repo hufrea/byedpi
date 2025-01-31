@@ -105,15 +105,15 @@ static const char help_text[] = {
     "    -q, --disoob <pos_t>      Split and send reverse order as OOB data\n"
     #ifdef FAKE_SUPPORT
     "    -f, --fake <pos_t>        Split and send fake packet\n"
-    "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     #ifdef __linux__
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
-    "    -O, --fake-offset <n>     Fake data start offset\n"
-    "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
+    "    -t, --ttl <num>           TTL of fake packets, default 8\n"
+    "    -O, --fake-offset <n>     Fake data start offset\n"
+    "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
@@ -164,15 +164,15 @@ const struct option options[] = {
     {"disoob",        1, 0, 'q'},
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
-    {"ttl",           1, 0, 't'},
     #ifdef __linux__
     {"ip-opt",        2, 0, 'k'},
     {"md5sig",        0, 0, 'S'},
     #endif
-    {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
-    {"fake-offset",   1, 0, 'O'},
     #endif
+    {"ttl",           1, 0, 't'},
+    {"fake-data",     1, 0, 'l'},
+    {"fake-offset",   1, 0, 'O'},
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
