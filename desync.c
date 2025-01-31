@@ -688,8 +688,7 @@ ssize_t desync_udp(int sfd, char *buffer,
             return -1;
         }
         for (int i = 0; i < dp->udp_fake_count; i++) {
-            ssize_t len = sendto(sfd, pkt.data, 
-                pkt.size, 0, dst, sizeof(struct sockaddr_in6));
+            ssize_t len = send(sfd, pkt.data, pkt.size, 0);
             if (len < 0) {
                 uniperror("send");
                 return -1;
@@ -699,6 +698,5 @@ ssize_t desync_udp(int sfd, char *buffer,
             return -1;
         }
     }
-    return sendto(sfd, buffer, n, 0, 
-        dst, sizeof(struct sockaddr_in6));
+    return send(sfd, buffer, n, 0);
 }
