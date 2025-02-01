@@ -224,7 +224,7 @@ static long time_ms(void)
 {
     #ifndef _WIN32
     struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &t);
+    clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec * 1e3 + (t.tv_nsec / 1e6);
     #else
     FILETIME st;
