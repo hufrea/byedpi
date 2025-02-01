@@ -106,6 +106,8 @@ static bool sock_has_notsent(int sfd)
     }
     return tcpi.tcpi_notsent_bytes != 0;
 }
+#else
+#define sock_has_notsent(sfd) 0
 #endif
 
 static struct packet get_tcp_fake(const char *buffer, size_t n,
@@ -230,7 +232,6 @@ static ssize_t send_fake(int sfd, const char *buffer,
 #endif
 
 #ifdef _WIN32
-#define sock_has_notsent(sfd) 0
 #define MAX_TF 2
 
 struct tf_s {
