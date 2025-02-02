@@ -101,7 +101,7 @@ struct desync_params {
 struct params {
     int dp_count;
     struct desync_params *dp;
-    bool wait_send;
+    int await_int;
     int def_ttl;
     bool custom_ttl;
     

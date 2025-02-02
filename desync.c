@@ -601,7 +601,7 @@ ssize_t desync(struct poolhd *pool,
         LOG(LOG_S, "split: pos=%ld-%ld (%zd), m: %s\n", lp, pos, s, demode_str[part.m]);
         
         if (s == ERR_WAIT) {
-            set_timer(pool, val, 10);
+            set_timer(pool, val, params.await_int);
             return lp - offset;
         }
         if (s < 0) {

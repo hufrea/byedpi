@@ -45,7 +45,7 @@ fake_udp = {
 
 
 struct params params = {
-    .wait_send = 1,
+    .await_int = 10,
     
     .cache_ttl = 100800,
     .ipv6 = 1,
@@ -178,7 +178,7 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
-    {"not-wait-send", 0, 0, 'W'}, //
+    {"await-int",     1, 0, 'W'}, //
     #ifdef __linux__
     {"drop-sack",     0, 0, 'Y'},
     {"protect-path",  1, 0, 'P'}, //
@@ -1068,8 +1068,9 @@ int main(int argc, char **argv)
             break;
         
         case 'W':
-            params.wait_send = 0;
+            params.await_int = atoi(optarg);
             break;
+            
         #ifdef __linux__
         case 'P':
             params.protect_path = optarg;
