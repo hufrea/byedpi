@@ -919,7 +919,7 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
 
 int on_ignore(struct poolhd *pool, struct eval *val, int etype)
 {
-    return (etype & (POLLHUP | POLLERR)) ? -1 : 0;
+    return (etype & (POLLHUP | POLLERR | POLLRDHUP)) ? -1 : 0;
 }
 
 
