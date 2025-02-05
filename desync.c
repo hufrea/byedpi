@@ -531,6 +531,7 @@ ssize_t desync(struct poolhd *pool,
     char *buffer = buff->data;
     size_t bfsize = buff->size;
     ssize_t offset = buff->offset;
+    ssize_t skip = val->pair->round_sent;
     
     if (!val->recv_count && params.debug) {
         init_proto_info(buffer, n, &info);
@@ -557,6 +558,9 @@ ssize_t desync(struct poolhd *pool,
         long pos = gen_offset(part.pos, part.flag, buffer, n, lp, &info);
         pos += (long )part.s * (part.r - r);
         
+        if (skip && pos <= skip && !(part.flag & OFFSET_START)) {
+            continue;
+        }
         if (offset && pos <= offset) {
             continue;
         }
