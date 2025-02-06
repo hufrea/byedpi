@@ -12,7 +12,7 @@
     #include <sys/socket.h>
 #endif
 
-ssize_t desync(struct poolhd *pool, struct eval *val, struct buffer *buff, ssize_t n);
+ssize_t desync(struct poolhd *pool, struct eval *val, struct buffer *buff, ssize_t *n);
 
 ssize_t desync_udp(int sfd, char *buffer, ssize_t n, const struct sockaddr *dst, int dp_c);
 

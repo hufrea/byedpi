@@ -93,7 +93,12 @@ void del_event(struct poolhd *pool, struct eval *val)
     epoll_ctl(pool->efd, EPOLL_CTL_DEL, val->fd, 0);
     #endif
     if (val->buff) {
-        buff_unlock(val);
+        buff_unlock(val->buff);
+        val->buff = 0;
+    }
+    if (val->sq_buff) {
+        buff_unlock(val->sq_buff);
+        val->sq_buff = 0;
     }
     close(val->fd);
     val->fd = -1;

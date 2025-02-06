@@ -662,7 +662,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         }
         n = val->buff->lock - val->buff->offset;
         
-        ssize_t sn = tcp_send_hook(pool, pair, val->buff, val->buff->lock);
+        ssize_t sn = tcp_send_hook(pool, pair, val->buff, &val->buff->lock);
         if (sn < 0) {
             uniperror("send");
             return -1;
@@ -671,7 +671,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             val->buff->offset += sn;
             return 0;
         }
-        buff_unlock(val);
+        buff_unlock(val->buff);
+        val->buff = 0;
         
         if (mod_etype(pool, val, POLLIN) ||
                 mod_etype(pool, pair, POLLIN)) {
@@ -689,7 +690,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         if (n < 0) {
             return -1;
         }
-        ssize_t sn = tcp_send_hook(pool, pair, buff, n);
+        ssize_t sn = tcp_send_hook(pool, pair, buff, &n);
         if (sn < 0) {
             uniperror("send");
             return -1;
@@ -903,10 +904,8 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
             uniperror("mod_etype");
             return -1;
         }
-        evcb_t t = params.auto_level <= AUTO_NOBUFF 
-            ? &on_tunnel : &on_first_tunnel;
-        val->cb = t;
-        val->pair->cb = t;
+        val->cb = &on_tunnel;
+        val->pair->cb = &on_tunnel;
     }
     if (resp_error(val->pair->fd,
             error, val->pair->flag) < 0) {

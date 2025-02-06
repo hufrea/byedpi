@@ -53,7 +53,7 @@ union sockaddr_u {
 struct buffer {
     size_t size;
     unsigned int offset;
-    size_t lock;
+    ssize_t lock;
     struct buffer *next;
     char data[];
 };
@@ -68,7 +68,7 @@ struct eval {
     struct eval *tv_next, *tv_prev;
     
     struct eval *pair;
-    struct buffer *buff;
+    struct buffer *buff, *sq_buff;
     int flag;
     union sockaddr_u addr;
     ssize_t recv_count;
@@ -121,9 +121,8 @@ struct buffer *buff_get(struct buffer *root, size_t size);
 
 void buff_destroy(struct buffer *root);
 
-#define buff_unlock(val) \
-    val->buff->lock = 0; \
-    val->buff->offset = 0; \
-    val->buff = 0;
+#define buff_unlock(buff) \
+    buff->lock = 0; \
+    buff->offset = 0; 
     
 #endif

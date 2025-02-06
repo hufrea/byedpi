@@ -476,16 +476,16 @@ static long gen_offset(long pos, int flag,
 }
 
 
-static ssize_t tamp(char *buffer, size_t bfsize, ssize_t n, 
+static void tamp(char *buffer, size_t bfsize, ssize_t *n, 
         const struct desync_params *dp, struct proto_info *info)
 {
-    if (dp->mod_http && is_http(buffer, n)) {
-        LOG(LOG_S, "modify HTTP: n=%zd\n", n);
-        if (mod_http(buffer, n, dp->mod_http)) {
+    if (dp->mod_http && is_http(buffer, *n)) {
+        LOG(LOG_S, "modify HTTP: n=%zd\n", *n);
+        if (mod_http(buffer, *n, dp->mod_http)) {
             LOG(LOG_E, "mod http error\n");
         }
     }
-    else if (dp->tlsrec_n && is_tls_chello(buffer, n)) {
+    else if (dp->tlsrec_n && is_tls_chello(buffer, *n)) {
         long lp = 0;
         struct part part;
         int i = 0, r = 0, rc = 0;
@@ -497,7 +497,7 @@ static ssize_t tamp(char *buffer, size_t bfsize, ssize_t n,
             }
             long pos = rc * 5;
             pos += gen_offset(part.pos, 
-                part.flag, buffer, n - pos, lp, info);
+                part.flag, buffer, *n - pos, lp, info);
                 
             if (part.pos < 0 || part.flag) {
                 pos -= 5;
@@ -508,21 +508,20 @@ static ssize_t tamp(char *buffer, size_t bfsize, ssize_t n,
                 break;
             }
             if (!part_tls(buffer + lp, 
-                    bfsize - lp, n - lp, pos - lp)) {
-                LOG(LOG_E, "tlsrec error: pos=%ld, n=%zd\n", pos, n);
+                    bfsize - lp, *n - lp, pos - lp)) {
+                LOG(LOG_E, "tlsrec error: pos=%ld, n=%zd\n", pos, *n);
                 break;
             }
-            LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, n);
-            n += 5;
+            LOG(LOG_S, "tlsrec: pos=%ld, n=%zd\n", pos, *n);
+            *n += 5;
             lp = pos + 5;
         }
     }
-    return n;
 }
 
 
 ssize_t desync(struct poolhd *pool, 
-        struct eval *val, struct buffer *buff, ssize_t n)
+        struct eval *val, struct buffer *buff, ssize_t *np)
 {
     struct desync_params dp = params.dp[val->pair->attempt];
     struct proto_info info = { 0 };
@@ -533,18 +532,21 @@ ssize_t desync(struct poolhd *pool,
     ssize_t offset = buff->offset;
     ssize_t skip = val->pair->round_sent;
     
-    if (!val->recv_count && params.debug) {
-        init_proto_info(buffer, n, &info);
+    if (!skip && params.debug) {
+        init_proto_info(buffer, *np, &info);
         
         if (info.host_pos) {
             LOG(LOG_S, "host: %.*s (%d)\n",
                 info.host_len, buffer + info.host_pos, info.host_pos);
         } else {
-            INIT_HEX_STR(buffer, (n > 16 ? 16 : n));
-            LOG(LOG_S, "bytes: %s (%zd)\n", HEX_STR, n);
+            INIT_HEX_STR(buffer, (*np > 16 ? 16 : *np));
+            LOG(LOG_S, "bytes: %s (%zd)\n", HEX_STR, *np);
         }
     }
-    n = tamp(buffer, bfsize, n, &dp, &info);
+    if (!skip) {
+        tamp(buffer, bfsize, np, &dp, &info);
+    }
+    ssize_t n = *np;
     
     long lp = offset;
     struct part part;

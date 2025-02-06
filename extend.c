@@ -155,14 +155,21 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     
     struct eval *client = val->pair;
     
-    if (create_conn(pool, client, &val->addr, &on_first_tunnel)) {
+    if (create_conn(pool, client, &val->addr, &on_tunnel)) {
         return -1;
     }
     val->pair = 0;
     del_event(pool, val);
     
+    client->cb = &on_tunnel;
     client->attempt = m;
     client->cache = 1;
+    
+    struct buffer *buff = buff_get(pool->root_buff, client->sq_buff->size);
+    buff->lock = client->sq_buff->lock;
+    memcpy(buff->data, client->sq_buff->data, buff->lock);
+    
+    client->buff = buff;
     client->buff->offset = 0;
     client->round_sent = 0;
     return 0;
@@ -257,7 +264,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     int m = val->pair->attempt + 1;
     
-    struct buffer *pair_buff = val->pair->buff;
+    struct buffer *pair_buff = val->pair->sq_buff;
     bool can_reconn = (
         pair_buff && pair_buff->lock && !val->recv_count
         && params.auto_level > AUTO_NOBUFF
@@ -317,8 +324,8 @@ static int on_response(struct poolhd *pool, struct eval *val,
 {
     int m = val->pair->attempt + 1;
     
-    char *req = val->pair->buff->data;
-    ssize_t qn = val->pair->buff->size;
+    char *req = val->pair->sq_buff->data;
+    ssize_t qn = val->pair->sq_buff->size;
     
     for (; m < params.dp_count; m++) {
         struct desync_params *dp = &params.dp[m];
@@ -344,9 +351,8 @@ static int on_response(struct poolhd *pool, struct eval *val,
 
 static inline void free_first_req(struct eval *client)
 {
-    client->cb = &on_tunnel;
-    client->pair->cb = &on_tunnel;
-    buff_unlock(client);
+    buff_unlock(client->sq_buff);
+    client->sq_buff = 0;
 }
 
 
@@ -396,84 +402,8 @@ static int cancel_setup(struct eval *remote)
 }
 
 
-static int send_saved_req(struct poolhd *pool, struct eval *client)
-{
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize),
-        *cb = client->buff;
-        
-    ssize_t n = cb->lock - cb->offset;
-    memcpy(buff->data, cb->data, cb->lock);
-    buff->offset = cb->offset;
-    
-    ssize_t sn = tcp_send_hook(pool, client->pair, buff, cb->lock);
-    if (sn < 0) {
-        return -1;
-    }
-    cb->offset += sn;
-    if (sn < n) {
-        if (mod_etype(pool, client->pair, !client->pair->tv_ms ? POLLOUT : 0) ||
-                mod_etype(pool, client, 0)) {
-            uniperror("mod_etype");
-            return -1;
-        }
-    }
-    buff->offset = 0;
-    return 0;
-}
-
-
-int on_first_tunnel(struct poolhd *pool, struct eval *val, int etype)
-{
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
-    
-    if (val->flag == FLAG_CONN 
-            && ((etype & POLLOUT) || etype == POLLTIMEOUT)) {
-        if (mod_etype(pool, val, POLLIN) ||
-                mod_etype(pool, val->pair, POLLIN)) {
-            uniperror("mod_etype");
-            return -1;
-        }
-        val->pair->cb = &on_first_tunnel;
-        return send_saved_req(pool, val->pair);
-    }
-    ssize_t n = tcp_recv_hook(pool, val, buff);
-    if (n < 1) {
-        return n;
-    }
-    if (val->flag != FLAG_CONN) {
-        if (!val->buff) {
-            val->buff = buff;
-        }
-        val->buff->lock += n;
-        if (val->buff->lock >= val->buff->size) {
-            free_first_req(val);
-        }
-        else {
-            if (buff != val->buff)
-                memcpy(val->buff->data + val->buff->lock - n, buff->data, n);
-            return send_saved_req(pool, val);
-        }
-    }
-    else {
-        if (on_response(pool, val, buff->data, n) == 0) {
-            return 0;
-        }
-        free_first_req(val->pair);
-        int m = val->pair->attempt;
-        
-        if (val->pair->cache && cache_add(&val->addr, m) < 0) {
-            return -1;
-        }
-    }
-    if (tcp_send_hook(pool, val->pair, buff, n) < n) {
-        return -1;
-    }
-    return 0;
-}
-
-
 ssize_t tcp_send_hook(struct poolhd *pool, 
-        struct eval *remote, struct buffer *buff, ssize_t n)
+        struct eval *remote, struct buffer *buff, ssize_t *n)
 {
     ssize_t sn = -1;
     int skip = remote->flag != FLAG_CONN; 
@@ -482,8 +412,8 @@ ssize_t tcp_send_hook(struct poolhd *pool,
     if (!skip) {
         struct eval *client = remote->pair;
     
-        if (client->recv_count == n 
-                && setup_conn(client, buff->data, n) < 0) {
+        if (client->recv_count == *n 
+                && setup_conn(client, buff->data, *n) < 0) {
             return -1;
         }
         int m = client->attempt, r = client->round_count;
@@ -496,7 +426,7 @@ ssize_t tcp_send_hook(struct poolhd *pool,
         }
     }
     if (skip) {
-        sn = send(remote->fd, buff->data + off, n - off, 0);
+        sn = send(remote->fd, buff->data + off, *n - off, 0);
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
@@ -543,6 +473,40 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
         if (check_round(nr, val->round_count)
                 && !check_round(nr, val->round_count + 1)
                 && cancel_setup(val)) {
+            return -1;
+        }
+    }
+    //
+    if (val->flag != FLAG_CONN 
+            && !val->pair->recv_count 
+            && params.auto_level > AUTO_NOBUFF
+            && (val->sq_buff || val->recv_count == n))
+    {
+        if (!val->sq_buff) {
+            buff->lock = 1; 
+            {
+                struct buffer *b = buff_get(pool->root_buff, buff->size);
+                val->sq_buff = b;
+            }
+            buff->lock = 0;
+        }
+        val->sq_buff->lock += n;
+        
+        if ((size_t )val->sq_buff->lock >= val->sq_buff->size) {
+            free_first_req(val);
+        }
+        else {
+            memcpy(val->sq_buff->data + val->sq_buff->lock - n, buff->data, n);
+        }
+    }
+    else if (val->pair->sq_buff) {
+        if (on_response(pool, val, buff->data, n) == 0) {
+            return 0;
+        }
+        free_first_req(val->pair);
+        int m = val->pair->attempt;
+        
+        if (val->pair->cache && cache_add(&val->addr, m) < 0) {
             return -1;
         }
     }
