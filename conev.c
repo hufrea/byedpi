@@ -93,11 +93,11 @@ void del_event(struct poolhd *pool, struct eval *val)
     epoll_ctl(pool->efd, EPOLL_CTL_DEL, val->fd, 0);
     #endif
     if (val->buff) {
-        buff_unlock(val->buff);
+        buff_push(pool, val->buff);
         val->buff = 0;
     }
     if (val->sq_buff) {
-        buff_unlock(val->sq_buff);
+        buff_push(pool, val->sq_buff);
         val->sq_buff = 0;
     }
     close(val->fd);
@@ -131,12 +131,9 @@ void del_event(struct poolhd *pool, struct eval *val)
 
 void destroy_pool(struct poolhd *pool)
 {
-    for (int x = 0; x < pool->count; x++) {
-        struct eval *val = pool->links[x];
-        if (val->fd) {
-            close(val->fd);
-            val->fd = 0;
-        }
+    while (pool->count) {
+        struct eval *val = pool->links[0];
+        del_event(pool, val);
     }
     free(pool->items);
     free(pool->links);
@@ -332,16 +329,12 @@ void loop_event(struct poolhd *pool)
 }
 
 
-struct buffer *buff_get(struct buffer *root, size_t size)
+struct buffer *buff_pop(struct poolhd *pool, size_t size)
 {
-    struct buffer *prev = root;
-    
-    while (root) {
-        if (!root->lock) {
-            return root;
-        }
-        prev = root;
-        root = root->next;
+    struct buffer *root = pool->root_buff;  
+    if (root) {
+        pool->root_buff = root->next;
+        return root;
     }
     struct buffer *buff = malloc(sizeof(struct buffer) + size);
     if (!buff) {
@@ -352,20 +345,30 @@ struct buffer *buff_get(struct buffer *root, size_t size)
     
     memset(buff, 0, sizeof(struct buffer));
     buff->size = size;
-    
-    if (prev) {
-        prev->next = buff;
-    }
     return buff;
+}
+
+
+void buff_push(struct poolhd *pool, struct buffer *buff)
+{
+    if (!buff) {
+        return;
+    }
+    buff->lock = 0;
+    buff->offset = 0;
+    buff->next = pool->root_buff;
+    pool->root_buff = buff;
 }
 
 
 void buff_destroy(struct buffer *root)
 {
-    while (root) {
+    int i = 0;
+    for (; root; i++) {
         struct buffer *c = root;
         root = root->next;
         free(c);
     }
+    LOG(LOG_S, "buffers count: %d\n", i);
 }
 

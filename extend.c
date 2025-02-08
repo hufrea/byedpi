@@ -165,11 +165,12 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     client->attempt = m;
     client->cache = 1;
     
-    struct buffer *buff = buff_get(pool->root_buff, client->sq_buff->size);
-    buff->lock = client->sq_buff->lock;
-    memcpy(buff->data, client->sq_buff->data, buff->lock);
+    if (!client->buff) {
+        client->buff = buff_pop(pool, client->sq_buff->size);
+    }
+    client->buff->lock = client->sq_buff->lock;
+    memcpy(client->buff->data, client->sq_buff->data, client->buff->lock);
     
-    client->buff = buff;
     client->buff->offset = 0;
     client->round_sent = 0;
     return 0;
@@ -349,9 +350,9 @@ static int on_response(struct poolhd *pool, struct eval *val,
 }
 
 
-static inline void free_first_req(struct eval *client)
+static inline void free_first_req(struct poolhd *pool, struct eval *client)
 {
-    buff_unlock(client->sq_buff);
+    buff_push(pool, client->sq_buff);
     client->sq_buff = 0;
 }
 
@@ -483,17 +484,14 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             && (val->sq_buff || val->recv_count == n))
     {
         if (!val->sq_buff) {
-            buff->lock = 1; 
-            {
-                struct buffer *b = buff_get(pool->root_buff, buff->size);
-                val->sq_buff = b;
+            if (!(val->sq_buff = buff_pop(pool, buff->size))) {
+                return -1;
             }
-            buff->lock = 0;
         }
         val->sq_buff->lock += n;
         
         if ((size_t )val->sq_buff->lock >= val->sq_buff->size) {
-            free_first_req(val);
+            free_first_req(pool, val);
         }
         else {
             memcpy(val->sq_buff->data + val->sq_buff->lock - n, buff->data, n);
@@ -503,7 +501,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
         if (on_response(pool, val, buff->data, n) == 0) {
             return 0;
         }
-        free_first_req(val->pair);
+        free_first_req(pool, val->pair);
         int m = val->pair->attempt;
         
         if (val->pair->cache && cache_add(&val->addr, m) < 0) {

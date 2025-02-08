@@ -656,7 +656,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         val = pair;
         pair = val->pair;
     }
-    if (val->buff && val->buff->lock) {
+    if (val->buff) {
         if (etype & POLLHUP) {
             return -1;
         }
@@ -671,7 +671,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             val->buff->offset += sn;
             return 0;
         }
-        buff_unlock(val->buff);
+        buff_push(pool, val->buff);
         val->buff = 0;
         
         if (mod_etype(pool, val, POLLIN) ||
@@ -680,7 +680,11 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             return -1;
         }
     }
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
+    struct buffer *buff = buff_pop(pool, params.bfsize);
+    if (!buff) {
+        return -1;
+    }
+    val->buff = buff;
     do {
         n = tcp_recv_hook(pool, val, buff);
         //if (n < 0 && get_e() == EAGAIN) {
@@ -698,7 +702,6 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         if (sn < n) {
             LOG(LOG_S, "send: %zd != %zd (fd=%d)\n", sn, n, pair->fd);
             
-            val->buff = buff;
             buff->lock = n;
             buff->offset = sn;
             
@@ -707,17 +710,21 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
                 uniperror("mod_etype");
                 return -1;
             }
-            break;
+            return 0;
         }
     } while (n == (ssize_t )buff->size);
+    buff_push(pool, val->buff);
+    val->buff = 0;
     return 0;
 }
 
 
 int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
 {
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
-    
+    struct buffer *buff = buff_ppop(pool, params.bfsize);
+    if (!buff) {
+        return -1;
+    }
     char *data = buff->data;
     size_t data_len = buff->size;
     
@@ -803,8 +810,10 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
 int on_request(struct poolhd *pool, struct eval *val, int et)
 {
     union sockaddr_u dst = {0};
-    struct buffer *buff = buff_get(pool->root_buff, params.bfsize);
-    
+    struct buffer *buff = buff_ppop(pool, params.bfsize);
+    if (!buff) {
+        return -1;
+    }
     ssize_t n = recv(val->fd, buff->data, buff->size, 0);
     if (n < 1) {
         if (n) uniperror("ss recv");
@@ -934,11 +943,6 @@ int start_event_loop(int srvfd)
     if (!add_event(pool, &on_accept, srvfd, POLLIN)) {
         destroy_pool(pool);
         close(srvfd);
-        return -1;
-    }
-    pool->root_buff = buff_get(0, params.bfsize);
-    if (!pool->root_buff) {
-        destroy_pool(pool);
         return -1;
     }
     loop_event(pool);

@@ -117,12 +117,16 @@ void remove_timer(struct poolhd *pool, struct eval *val);
 
 void loop_event(struct poolhd *pool);
 
-struct buffer *buff_get(struct buffer *root, size_t size);
+struct buffer *buff_pop(struct poolhd *pool, size_t size);
+
+void buff_push(struct poolhd *pool, struct buffer *buff);
 
 void buff_destroy(struct buffer *root);
 
-#define buff_unlock(buff) \
-    buff->lock = 0; \
-    buff->offset = 0; 
-    
+static struct buffer *buff_ppop(struct poolhd *pool, size_t size)
+{
+    struct buffer *b = buff_pop(pool, size);
+    if (b) buff_push(pool, b);
+    return b;
+}
 #endif
