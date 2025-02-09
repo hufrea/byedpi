@@ -291,14 +291,14 @@ void remove_timer(struct poolhd *pool, struct eval *val)
 
 struct eval *next_event_tv(struct poolhd *pool, int *offs, int *type)
 {
-    int ms = 0;
+    if (!pool->tv_start) {
+        return next_event(pool, offs, type, -1);
+    }
     struct eval *val = 0;
     
-    if (pool->tv_start) {
-         ms = pool->tv_start->tv_ms - time_ms();
-    }
-    if (ms >= 0) {
-        val = next_event(pool, offs, type, ms ? ms : -1);
+    int ms = pool->tv_start->tv_ms - time_ms();
+    if (ms > 0) {
+        val = next_event(pool, offs, type, ms);
     }
     else *type = POLLTIMEOUT;
     
