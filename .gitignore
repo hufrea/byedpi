@@ -3,3 +3,5 @@ ciadpi.exe
 ciadpi
 *.o
 compile_flags.txt
+build
+*.user
