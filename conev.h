@@ -30,7 +30,9 @@
     #endif
 #endif
 
-#ifndef POLLRDHUP
+#ifdef __APPLE__
+    #define POLLRDHUP POLLHUP
+#elif !defined POLLRDHUP
     #define POLLRDHUP 0
 #endif
 #define POLLTIMEOUT 0
