@@ -25,7 +25,7 @@
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "16.5"
+#define VERSION "16.6"
 
 ASSERT(sizeof(struct in_addr) == 4)
 ASSERT(sizeof(struct in6_addr) == 16)
