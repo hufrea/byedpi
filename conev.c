@@ -60,7 +60,7 @@ struct eval *add_event(struct poolhd *pool, evcb_t cb,
     val->cb = cb;
 
     #ifndef NOEPOLL
-    struct epoll_event ev = { .events = EPOLLRDHUP | e, .data = {val} };
+    struct epoll_event ev = { .events = _POLLDEF | e, .data = {val} };
     if (epoll_ctl(pool->efd, EPOLL_CTL_ADD, fd, &ev)) {
         uniperror("add event");
         return 0;
@@ -69,7 +69,7 @@ struct eval *add_event(struct poolhd *pool, evcb_t cb,
     struct pollfd *pfd = &(pool->pevents[pool->count]);
     
     pfd->fd = fd;
-    pfd->events = POLLRDHUP | e;
+    pfd->events = _POLLDEF | e;
     pfd->revents = 0;
     #endif
 
@@ -178,7 +178,7 @@ int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
     assert(val->fd > 0);
     struct epoll_event ev = {
-        .events = EPOLLRDHUP | type, .data = {val}
+        .events = _POLLDEF | type, .data = {val}
     };
     return epoll_ctl(pool->efd, EPOLL_CTL_MOD, val->fd, &ev);
 }
@@ -217,7 +217,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *typel, int ms)
 int mod_etype(struct poolhd *pool, struct eval *val, int type)
 {
    assert(val->index >= 0 && val->index < pool->count);
-   pool->pevents[val->index].events = POLLRDHUP | type;
+   pool->pevents[val->index].events = _POLLDEF | type;
    return 0;
 }
 #endif
