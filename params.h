@@ -94,6 +94,9 @@ struct desync_params {
     uint16_t pf[2];
     int rounds[2];
     
+    union sockaddr_u custom_dst_addr;
+    bool custom_dst;
+    
     char *file_ptr;
     ssize_t file_size;
 };
