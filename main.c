@@ -185,6 +185,7 @@ const struct option options[] = {
     {"protect-path",  1, 0, 'P'}, //
     #endif
     {"ipset",         1, 0, 'j'},
+    {"connect-to",    1, 0, 'C'}, //
     {0}
 };
     
@@ -1076,6 +1077,13 @@ int main(int argc, char **argv)
             params.await_int = atoi(optarg);
             break;
             
+        case 'C':
+            if (get_addr(optarg, &dp->custom_dst_addr) < 0)
+                invalid = 1;
+            else
+                dp->custom_dst = 1;
+            break;
+
         #ifdef __linux__
         case 'P':
             params.protect_path = optarg;
