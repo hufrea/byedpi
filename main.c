@@ -17,13 +17,19 @@
     #include <netinet/in.h>
     #include <netinet/tcp.h>
     #include <sys/socket.h>
+    
+    #define DAEMON
 #else
     #include <ws2tcpip.h>
     #include "win_service.h"
     #define close(fd) closesocket(fd)
 #endif
 
-#define VERSION "14.1"
+#define VERSION "16.6"
+
+ASSERT(sizeof(struct in_addr) == 4)
+ASSERT(sizeof(struct in6_addr) == 16)
+
 
 char ip_option[1] = "\0";
 
@@ -39,8 +45,7 @@ fake_udp = {
 
 
 struct params params = {
-    .sfdelay = 3,
-    .wait_send = 1,
+    .await_int = 10,
     
     .cache_ttl = 100800,
     .ipv6 = 1,
@@ -49,19 +54,23 @@ struct params params = {
     .max_open = 512,
     .bfsize = 16384,
     .baddr = {
-        .sin6_family = AF_INET6
+        .in6 = { .sin6_family = AF_INET6 }
     },
     .laddr = {
-        .sin6_family = AF_INET
+        .in = { .sin_family = AF_INET }
     },
     .debug = 0,
-    .auto_level = 0
+    .auto_level = AUTO_NOBUFF
 };
 
 
-const char help_text[] = {
+static const char help_text[] = {
     "    -i, --ip, <ip>            Listening IP, default 0.0.0.0\n"
     "    -p, --port <num>          Listening port, default 1080\n"
+    #ifdef DAEMON
+    "    -D, --daemon              Daemonize\n"
+    "    -w, --pidfile <filename>  Write PID to file\n"
+    #endif
     #ifdef __linux__
     "    -E, --transparent         Transparent proxy mode\n"
     #endif
@@ -83,29 +92,31 @@ const char help_text[] = {
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
-    "    -K, --proto <t,h,u>       Protocol whitelist: tls,http,udp\n"
+    "    -K, --proto <t,h,u,i>     Protocol whitelist: tls,http,udp,ipv4\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
+    "    -j, --ipset <file|:str>   IP whitelist\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
-    "    -s, --split <n[+s]>       Split packet at n\n"
-    "                              +s - add SNI offset\n"
-    "                              +h - add HTTP Host offset\n"
-    "    -d, --disorder <n[+s]>    Split and send reverse order\n"
-    "    -o, --oob <n[+s]>         Split and send as OOB data\n"
-    "    -q, --disoob <n[+s]>      Split and send reverse order as OOB data\n"
+    "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
+    "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
+    "                              Flags: +s - SNI offset, +h - HTTP host offset, +n - null\n"
+    "                              Additional flags: +e - end, +m - middle\n"
+    "    -d, --disorder <pos_t>    Split and send reverse order\n"
+    "    -o, --oob <pos_t>         Split and send as OOB data\n"
+    "    -q, --disoob <pos_t>      Split and send reverse order as OOB data\n"
     #ifdef FAKE_SUPPORT
-    "    -f, --fake <n[+s]>        Split and send fake packet\n"
-    "    -t, --ttl <num>           TTL of fake packets, default 8\n"
+    "    -f, --fake <pos_t>        Split and send fake packet\n"
     #ifdef __linux__
     "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
-    "    -O, --fake-offset <n>     Fake data start offset\n"
-    "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
     #endif
+    "    -t, --ttl <num>           TTL of fake packets, default 8\n"
+    "    -O, --fake-offset <n>     Fake data start offset\n"
+    "    -l, --fake-data <f|:str>  Set custom fake packet\n"
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
-    "    -r, --tlsrec <n[+s]>      Make TLS record at position\n"
+    "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
     #ifdef __linux__
     "    -Y, --drop-sack           Drop packets with SACK extension\n"
@@ -114,9 +125,14 @@ const char help_text[] = {
 
 
 const struct option options[] = {
+    #ifdef DAEMON
+    {"daemon",        0, 0, 'D'},
+    {"pidfile",       1, 0, 'w'},
+    #endif
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
+    {"http-connect",  0, 0, 'G'},
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
@@ -141,45 +157,46 @@ const struct option options[] = {
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
+    {"round",         1, 0, 'R'},
     {"split",         1, 0, 's'},
     {"disorder",      1, 0, 'd'},
     {"oob",           1, 0, 'o'},
     {"disoob",        1, 0, 'q'},
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
-    {"ttl",           1, 0, 't'},
     #ifdef __linux__
     {"ip-opt",        2, 0, 'k'},
     {"md5sig",        0, 0, 'S'},
     #endif
-    {"fake-data",     1, 0, 'l'},
     {"tls-sni",       1, 0, 'n'},
-    {"fake-offset",   1, 0, 'O'},
     #endif
+    {"ttl",           1, 0, 't'},
+    {"fake-data",     1, 0, 'l'},
+    {"fake-offset",   1, 0, 'O'},
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
-    {"delay",         1, 0, 'w'}, //
-    {"not-wait-send", 0, 0, 'W'}, //
+    {"await-int",     1, 0, 'W'}, //
     #ifdef __linux__
     {"drop-sack",     0, 0, 'Y'},
     {"protect-path",  1, 0, 'P'}, //
     #endif
+    {"ipset",         1, 0, 'j'},
     {0}
 };
     
 
-size_t parse_cform(char *buffer, size_t blen, 
+ssize_t parse_cform(char *buffer, size_t blen, 
         const char *str, size_t slen)
 {
     static char esca[] = {
         'r','\r','n','\n','t','\t','\\','\\',
         'f','\f','b','\b','v','\v','a','\a', 0
     };
-    ssize_t i = 0, p = 0;
-    for (; p < slen && i < blen; ++p && ++i) {
+    size_t i = 0, p = 0;
+    for (; p < slen && i < blen; ++p, ++i) {
         if (str[p] != '\\') {
             buffer[i] = str[p];
             continue;
@@ -196,8 +213,8 @@ size_t parse_cform(char *buffer, size_t blen,
             continue;
         }
         int n = 0;
-        if (sscanf(&str[p], "x%2hhx%n", &buffer[i], &n) == 1
-              || sscanf(&str[p], "%3hho%n", &buffer[i], &n) == 1) {
+        if (sscanf(&str[p], "x%2hhx%n", (uint8_t *)&buffer[i], &n) == 1
+              || sscanf(&str[p], "%3hho%n", (uint8_t *)&buffer[i], &n) == 1) {
             p += (n - 1);
             continue;
         }
@@ -217,7 +234,7 @@ char *data_from_str(const char *str, ssize_t *size)
     if (!d) {
         return 0;
     }
-    size_t i = parse_cform(d, len, str, len);
+    ssize_t i = parse_cform(d, len, str, len);
     
     char *m = len != i ? realloc(d, i) : 0;
     if (i == 0) {
@@ -254,7 +271,8 @@ char *ftob(const char *str, ssize_t *sl)
         if (!(buffer = malloc(size))) {
             break;
         }
-        if (fread(buffer, 1, size, file) != size) {
+        size_t rs = fread(buffer, 1, size, file);
+        if (rs != (size_t )size) {
             free(buffer);
             buffer = 0;
         }
@@ -287,7 +305,71 @@ static inline int lower_char(char *cl)
 
 struct mphdr *parse_hosts(char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(1);
+    struct mphdr *hdr = mem_pool(1, CMP_HOST);
+    if (!hdr) {
+        return 0;
+    }
+    size_t num = 0;
+    bool drop = 0;
+    char *end = buffer + size;
+    char *e = buffer, *s = buffer;
+    
+    for (; e <= end; e++) {
+        if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
+            if (lower_char(e)) {
+                drop = 1;
+            }
+            continue;
+        }
+        if (s == e) {
+            s++;
+            continue;
+        }
+        if (!drop) {
+            if (!mem_add(hdr, s, e - s, sizeof(struct elem))) {
+                mem_destroy(hdr);
+                return 0;
+            }
+        } 
+        else {
+            LOG(LOG_E, "invalid host: num: %zd \"%.*s\"\n", num + 1, ((int )(e - s)), s);
+            drop = 0;
+        }
+        num++;
+        s = e + 1;
+    }
+    LOG(LOG_S, "hosts count: %zd\n", hdr->count);
+    return hdr;
+}
+
+
+static int parse_ip(char *out, char *str, size_t size)
+{
+    long bits = 0;
+    char *sep = memchr(str, '/', size);
+    if (sep) {
+        bits = strtol(sep + 1, 0, 10);
+        if (bits <= 0) {
+            return 0;
+        }
+        *sep = 0;
+    }
+    int len = sizeof(struct in_addr);
+    
+    if (inet_pton(AF_INET, str, out) <= 0) {
+        if (inet_pton(AF_INET6, str, out) <= 0) {
+            return 0;
+        }
+        else len = sizeof(struct in6_addr);
+    }
+    if (!bits || bits > len * 8) bits = len * 8;
+    return (int )bits;
+}
+
+
+struct mphdr *parse_ipset(char *buffer, size_t size)
+{
+    struct mphdr *hdr = mem_pool(0, CMP_BITS);
     if (!hdr) {
         return 0;
     }
@@ -297,27 +379,42 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
     
     for (; e <= end; e++) {
         if (e != end && *e != ' ' && *e != '\n' && *e != '\r') {
-            if (lower_char(e)) {
-                LOG(LOG_E, "invalid host: num: %zd (%.*s)\n", num + 1, (int )(e - s + 1), s);
-            }
             continue;
         }
         if (s == e) {
             s++;
             continue;
         }
-        if (mem_add(hdr, s, e - s) == 0) {
-            free(hdr);
-            return 0;
-        }
+        char ip[e - s + 1];
+        ip[e - s] = 0;
+        memcpy(ip, s, e - s);
+        
         num++;
         s = e + 1;
+        
+        char ip_stack[sizeof(struct in6_addr)];
+        int bits = parse_ip(ip_stack, ip, sizeof(ip));
+        if (bits <= 0) {
+            LOG(LOG_E, "invalid ip: num: %zd\n", num);
+            continue;
+        }
+        int len = bits / 8 + (bits % 8 ? 1 : 0);
+        char *ip_raw = malloc(len);
+        memcpy(ip_raw, ip_stack, len);
+        
+        struct elem *elem = mem_add(hdr, ip_raw, bits, sizeof(struct elem));
+        if (!elem) {
+            free(ip_raw);
+            mem_destroy(hdr);
+            return 0;
+        }
     }
+    LOG(LOG_S, "ip count: %zd\n", hdr->count);
     return hdr;
 }
 
 
-int get_addr(const char *str, struct sockaddr_ina *addr)
+int get_addr(const char *str, union sockaddr_u *addr)
 {
     struct addrinfo hints = {0}, *res = 0;
     
@@ -343,7 +440,7 @@ int get_addr(const char *str, struct sockaddr_ina *addr)
 }
 
 
-int get_default_ttl()
+int get_default_ttl(void)
 {
     int orig_ttl = -1, fd;
     socklen_t tsize = sizeof(orig_ttl);
@@ -361,7 +458,7 @@ int get_default_ttl()
 }
 
 
-bool ipv6_support()
+bool ipv6_support(void)
 {
     int fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -376,21 +473,48 @@ int parse_offset(struct part *part, const char *str)
 {
     char *end = 0;
     long val = strtol(str, &end, 0);
-    if (*end == '+') switch (*(end + 1)) {
-        case 's': 
-            part->flag = OFFSET_SNI;
-            break;
-        case 'h': 
-            part->flag = OFFSET_HOST;
-            break;
-        case 'e':
-            part->flag = OFFSET_END;
-            break;
-        default:
+    
+    while (*end == ':') {
+        long rs = strtol(end + 1, &end, 0);
+        if (rs < 0 || rs > INT_MAX) {
             return -1;
+        }
+        if (!part->r) {
+            if (!rs) 
+                return -1;
+            part->r = rs;
+        }
+        else {
+            part->s = rs;
+            break;
+        }
     }
-    else if (*end) {
-        return -1;
+    if (*end == '+') {
+        switch (*(end + 1)) {
+            case 's':
+                part->flag = OFFSET_SNI;
+                break;
+            case 'h': 
+                part->flag = OFFSET_HOST;
+                break;
+            case 'n':
+                break;
+            default:
+                return -1;
+        }
+        switch (*(end + 2)) {
+            case 'e':
+                part->flag |= OFFSET_END;
+                break;
+            case 'm':
+                part->flag |= OFFSET_MID;
+                break;
+            case 'r': //
+                part->flag |= OFFSET_RAND;
+                break;
+            case 's': //
+                part->flag |= OFFSET_START;
+        }
     }
     part->pos = val;
     return 0;
@@ -412,10 +536,42 @@ void *add(void **root, int *n, size_t ss)
 }
 
 
+#ifdef DAEMON
+int init_pid_file(const char *fname)
+{
+    params.pid_fd = open(fname, O_RDWR | O_CREAT, 0640);
+    if (params.pid_fd < 0) {
+        return -1;
+    }
+    struct flock fl = { 
+        .l_whence = SEEK_CUR,
+        .l_type = F_WRLCK
+    };
+    if (fcntl(params.pid_fd, F_SETLK, &fl) < 0) {
+        return -1;
+    }
+    params.pid_file = fname;
+    char pid_str[21];
+    snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+    
+    write(params.pid_fd, pid_str, strlen(pid_str));
+    return 0;
+}
+#endif
+
+
 void clear_params(void)
 {
     #ifdef _WIN32
     WSACleanup();
+    #endif
+    #ifdef DAEMON
+    if (params.pid_fd > 0) {
+        close(params.pid_fd);
+    }
+    if (params.pid_file) {
+        unlink(params.pid_file);
+    }
     #endif
     if (params.mempool) {
         mem_destroy(params.mempool);
@@ -446,6 +602,10 @@ void clear_params(void)
             }
             if (s.hosts != 0) {
                 mem_destroy(s.hosts);
+                s.hosts = 0;
+            }
+            if (s.ipset != 0) {
+                mem_destroy(s.ipset);
                 s.hosts = 0;
             }
         }
@@ -482,11 +642,14 @@ int main(int argc, char **argv)
             opt[o] = ':';
         }
     }
-
-    params.laddr.sin6_port = htons(1080);
+    //
+    params.laddr.in.sin_port = htons(1080);
     if (!ipv6_support()) {
-        params.baddr.sin6_family = AF_INET;
+        params.baddr.sa.sa_family = AF_INET;
     }
+    
+    char *pid_file = 0;
+    bool daemonize = 0;
     
     int rez;
     int invalid = 0;
@@ -516,12 +679,24 @@ int main(int argc, char **argv)
         case 'U':
             params.udp = 0;
             break;
+        case 'G':
+            params.http_connect = 1;
+            break;
         #ifdef __linux__
         case 'E':
             params.transparent = 1;
             break;
         #endif
+        
+        #ifdef DAEMON
+        case 'D':
+            daemonize = 1;
+            break;
             
+        case 'w':
+            pid_file = optarg;
+            break;
+        #endif
         case 'h':
             printf(help_text);
             clear_params();
@@ -532,8 +707,7 @@ int main(int argc, char **argv)
             return 0;
         
         case 'i':
-            if (get_addr(optarg, 
-                    (struct sockaddr_ina *)&params.laddr) < 0)
+            if (get_addr(optarg, &params.laddr) < 0)
                 invalid = 1;
             break;
             
@@ -542,12 +716,11 @@ int main(int argc, char **argv)
             if (val <= 0 || val > 0xffff || *end)
                 invalid = 1;
             else
-                params.laddr.sin6_port = htons(val);
+                params.laddr.in.sin_port = htons(val);
             break;
             
         case 'I':
-            if (get_addr(optarg, 
-                    (struct sockaddr_ina *)&params.baddr) < 0)
+            if (get_addr(optarg, &params.baddr) < 0)
                 invalid = 1;
             break;
             
@@ -588,7 +761,7 @@ int main(int argc, char **argv)
             break;
             
         case 'A':
-            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect)) {
+            if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect || dp->ipset)) {
                 all_limited = 0;
             }
             dp = add((void *)&params.dp, &params.dp_count,
@@ -619,6 +792,9 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
+            if (dp->detect && params.auto_level == AUTO_NOBUFF) {
+                params.auto_level = AUTO_NOSAVE;
+            }
             break;
             
         case 'u':
@@ -636,7 +812,7 @@ int main(int argc, char **argv)
             #else
             val = strtol(optarg, &end, 0);
             #endif
-            if (val <= 0 || val > UINT_MAX || *end)
+            if (val <= 0 || (unsigned long)val > UINT_MAX || *end)
                 invalid = 1;
             else
                 params.timeout = val;
@@ -647,13 +823,16 @@ int main(int argc, char **argv)
             while (end && !invalid) {
                 switch (*end) {
                     case 't': 
-                        dp->proto |= IS_HTTPS;
+                        dp->proto |= IS_TCP | IS_HTTPS;
                         break;
                     case 'h': 
-                        dp->proto |= IS_HTTP;
+                        dp->proto |= IS_TCP | IS_HTTP;
                         break;
                     case 'u': 
                         dp->proto |= IS_UDP;
+                        break;
+                    case 'i': 
+                        dp->proto |= IS_IPV4;
                         break;
                     default:
                         invalid = 1;
@@ -676,10 +855,29 @@ int main(int argc, char **argv)
             }
             dp->hosts = parse_hosts(dp->file_ptr, dp->file_size);
             if (!dp->hosts) {
-                perror("parse_hosts");
+                uniperror("parse_hosts");
                 clear_params();
                 return -1;
             }
+            break;
+            
+        case 'j':;
+            if (dp->ipset) {
+                continue;
+            }
+            ssize_t size;
+            char *data = ftob(optarg, &size);
+            if (!data) {
+                uniperror("read/parse");
+                invalid = 1;
+                continue;
+            }
+            dp->ipset = parse_ipset(data, size);
+            if (!dp->ipset) {
+                uniperror("parse_ipset");
+                invalid = 1;
+            }
+            free(data);
             break;
             
         case 's':
@@ -837,6 +1035,24 @@ int main(int argc, char **argv)
             }
             break;
             
+        case 'R':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > INT_MAX)
+                invalid = 1;
+            else {
+                dp->rounds[0] = val;
+                if (*end == '-') {
+                    val = strtol(end + 1, &end, 0);
+                    if (val <= 0 || val > INT_MAX)
+                        invalid = 1;
+                }
+                if (*end)
+                    invalid = 1;
+                else
+                    dp->rounds[1] = val;
+            }
+            break;
+            
         case 'g':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || val > 255 || *end)
@@ -850,17 +1066,11 @@ int main(int argc, char **argv)
         case 'Y':
             dp->drop_sack = 1;
             break;
-            
-        case 'w': //
-            params.sfdelay = strtol(optarg, &end, 0);
-            if (params.sfdelay < 0 || optarg == end 
-                    || params.sfdelay >= 1000 || *end)
-                invalid = 1;
-            break;
         
         case 'W':
-            params.wait_send = 0;
+            params.await_int = atoi(optarg);
             break;
+            
         #ifdef __linux__
         case 'P':
             params.protect_path = optarg;
@@ -893,7 +1103,7 @@ int main(int argc, char **argv)
         }
     }
     
-    if (params.baddr.sin6_family != AF_INET6) {
+    if (params.baddr.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }
     if (!params.def_ttl) {
@@ -902,14 +1112,25 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    params.mempool = mem_pool(0);
+    params.mempool = mem_pool(0, CMP_BYTES);
     if (!params.mempool) {
         uniperror("mem_pool");
         clear_params();
         return -1;
     }
-
-    int status = run((struct sockaddr_ina *)&params.laddr);
+    srand((unsigned int)time(0));
+    
+    #ifdef DAEMON
+    if (daemonize && daemon(0, 0) < 0) {
+        clear_params();
+        return -1;
+    }
+    if (pid_file && init_pid_file(pid_file) < 0) {
+        clear_params();
+        return -1;
+    }
+    #endif
+    int status = run(&params.laddr);
     clear_params();
     return status;
 }
