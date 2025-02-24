@@ -430,7 +430,7 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
-    if (params.debug) {
+    if (LOG_ENABLED) {
         INIT_ADDR_STR((*dst));
         LOG(LOG_S, "new conn: fd=%d, pair=%d, addr=%s:%d\n", 
             sfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
@@ -516,7 +516,7 @@ static int udp_associate(struct poolhd *pool,
         close(cfd);
         return -1;
     }
-    if (params.debug) {
+    if (LOG_ENABLED) {
         INIT_ADDR_STR((*dst));
         LOG(LOG_S, "udp associate: fds=%d,%d,%d addr=%s:%d\n", 
             ufd, cfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));

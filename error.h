@@ -63,6 +63,7 @@ static int unie(int e)
     #define LOG_L ANDROID_LOG_VERBOSE
     #define LOG(s, str, ...) \
         __android_log_print(s, "proxy", str, ##__VA_ARGS__)
+    #define LOG_ENABLED 1
 #else
     #define LOG_E -1
     #define LOG_S 1
@@ -75,6 +76,7 @@ static int unie(int e)
             va_end(args);
         }
     }
+    #define LOG_ENABLED (params.debug >= LOG_S)
 #endif
 
 #define INIT_ADDR_STR(dst) \
