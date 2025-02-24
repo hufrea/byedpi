@@ -72,6 +72,7 @@ static int unie(int e)
             va_list args;
             va_start(args, str);
             vfprintf(stderr, str, args);
+            va_end(args);
         }
     }
 #endif
