@@ -71,8 +71,6 @@ struct packet {
 
 struct desync_params {
     int ttl;
-    char *ip_options;
-    ssize_t ip_options_len;
     bool md5sig;
     struct packet fake_data;
     int udp_fake_count;
@@ -134,8 +132,6 @@ extern struct params params;
 extern struct packet fake_tls;
 extern struct packet fake_http;
 extern struct packet fake_udp;
-
-extern char ip_option[1];
 
 #define ASSERT(exp) \
     char t[(exp) ? 1 : -1];
