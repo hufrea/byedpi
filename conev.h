@@ -40,6 +40,8 @@
 #endif
 #define POLLTIMEOUT 0
 
+#define MAX_BUFF_INP 8
+
 struct poolhd;
 struct eval;
 typedef int (*evcb_t)(struct poolhd *, struct eval *, int);
@@ -100,6 +102,7 @@ struct poolhd {
     
     struct eval *tv_start, *tv_end;
     struct buffer *root_buff;
+    int buff_count;
 };
 
 struct poolhd *init_pool(int count);
