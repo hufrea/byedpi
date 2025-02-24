@@ -31,8 +31,6 @@ ASSERT(sizeof(struct in_addr) == 4)
 ASSERT(sizeof(struct in6_addr) == 16)
 
 
-char ip_option[1] = "\0";
-
 struct packet fake_tls = { 
     sizeof(tls_data), tls_data 
 },
@@ -106,7 +104,6 @@ static const char help_text[] = {
     #ifdef FAKE_SUPPORT
     "    -f, --fake <pos_t>        Split and send fake packet\n"
     #ifdef __linux__
-    "    -k, --ip-opt[=f|:str]     IP options of fake packets\n"
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
     "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
@@ -165,7 +162,6 @@ const struct option options[] = {
     #ifdef FAKE_SUPPORT
     {"fake",          1, 0, 'f'},
     #ifdef __linux__
-    {"ip-opt",        2, 0, 'k'},
     {"md5sig",        0, 0, 'S'},
     #endif
     {"tls-sni",       1, 0, 'n'},
@@ -582,10 +578,6 @@ void clear_params(void)
     if (params.dp) {
         for (int i = 0; i < params.dp_count; i++) {
             struct desync_params s = params.dp[i];
-            if (s.ip_options != ip_option) {
-                free(s.ip_options);
-                s.ip_options = ip_option;
-            }
             if (s.parts != 0) {
                 free(s.parts);
                 s.parts = 0;
@@ -917,22 +909,6 @@ int main(int argc, char **argv)
                 invalid = 1;
             else
                 dp->ttl = val;
-            break;
-            
-        case 'k':
-            if (dp->ip_options) {
-                continue;
-            }
-            if (optarg)
-                dp->ip_options = ftob(optarg, &dp->ip_options_len);
-            else {
-                dp->ip_options = ip_option;
-                dp->ip_options_len = sizeof(ip_option);
-            }
-            if (!dp->ip_options) {
-                uniperror("read/parse");
-                invalid = 1;
-            }
             break;
             
         case 'S':

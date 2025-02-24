@@ -51,17 +51,6 @@ int setttl(int fd, int ttl)
 
 
 #ifdef __linux__
-static int get_family(const struct sockaddr_in6 *dst)
-{
-    static const char map[12] = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
-    if (dst->sin6_family == AF_INET6 
-            && !memcmp(&dst->sin6_addr, map, sizeof(map))) {
-        return AF_INET;
-    }
-    return dst->sin6_family;
-}
-
-
 static int drop_sack(int fd)
 {
     struct sock_filter code[] = {
@@ -136,26 +125,37 @@ static struct packet get_tcp_fake(const char *buffer, size_t n,
 
 
 #ifdef __linux__
+static int set_md5sig(int sfd, unsigned short key_len)
+{
+    struct tcp_md5sig md5 = {
+        .tcpm_keylen = key_len
+    };
+    socklen_t addr_size = sizeof(md5.tcpm_addr);
+    
+    if (getpeername(sfd, 
+            (struct sockaddr *)&md5.tcpm_addr, &addr_size) < 0) {
+        uniperror("getpeername");
+        return -1;
+    }
+    if (setsockopt(sfd, IPPROTO_TCP,
+            TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
+        uniperror("setsockopt TCP_MD5SIG");
+        return -1;
+    }
+    return 0;
+}
+
+
 static ssize_t send_fake(int sfd, const char *buffer,
         long pos, const struct desync_params *opt, struct packet pkt)
 {
-    struct sockaddr_in6 addr;
-    socklen_t addr_size = sizeof(addr);
-    
-    if (opt->md5sig || opt->ip_options) {
-        if (getpeername(sfd, 
-                (struct sockaddr *)&addr, &addr_size) < 0) {
-            uniperror("getpeername");
-            return -1;
-        }
-    }
     int fds[2];
     if (pipe(fds) < 0) {
         uniperror("pipe");
         return -1;
     }
     char *p = 0;
-    ssize_t len = -1;
+    ssize_t ret = -1;
     
     while (1) {
         p = mmap(0, pos, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -169,27 +169,12 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, opt->ttl ? opt->ttl : DEFAULT_TTL) < 0) {
             break;
         }
-        if (opt->md5sig) {
-            struct tcp_md5sig md5 = {
-                .tcpm_keylen = 5
-            };
-            memcpy(&md5.tcpm_addr, &addr, addr_size);
-            
-            if (setsockopt(sfd, IPPROTO_TCP,
-                    TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
-                uniperror("setsockopt TCP_MD5SIG");
-                break;
-            }
-        }
-        if (opt->ip_options && get_family(&addr) == AF_INET 
-            && setsockopt(sfd, IPPROTO_IP, IP_OPTIONS,
-                opt->ip_options, opt->ip_options_len) < 0) {
-            uniperror("setsockopt IP_OPTIONS");
+        if (opt->md5sig && set_md5sig(sfd, 5)) {
             break;
         }
         struct iovec vec = { .iov_base = p, .iov_len = pos };
         
-        len = vmsplice(fds[1], &vec, 1, SPLICE_F_GIFT);
+        ssize_t len = vmsplice(fds[1], &vec, 1, SPLICE_F_GIFT);
         if (len < 0) {
             uniperror("vmsplice");
             break;
@@ -204,30 +189,16 @@ static ssize_t send_fake(int sfd, const char *buffer,
         if (setttl(sfd, params.def_ttl) < 0) {
             break;
         }
-        if (opt->ip_options && get_family(&addr) == AF_INET 
-            && setsockopt(sfd, IPPROTO_IP,
-                IP_OPTIONS, opt->ip_options, 0) < 0) {
-            uniperror("setsockopt IP_OPTIONS");
+        if (opt->md5sig && set_md5sig(sfd, 0)) {
             break;
         }
-        if (opt->md5sig) {
-            struct tcp_md5sig md5 = {
-                .tcpm_keylen = 0
-            };
-            memcpy(&md5.tcpm_addr, &addr, addr_size);
-            
-            if (setsockopt(sfd, IPPROTO_TCP,
-                    TCP_MD5SIG, (char *)&md5, sizeof(md5)) < 0) {
-                uniperror("setsockopt TCP_MD5SIG");
-                break;
-            }
-        }
+        ret = len;
         break;
     }
     if (p) munmap(p, pos);
     close(fds[0]);
     close(fds[1]);
-    return len;
+    return ret;
 }
 #endif
 
