@@ -331,20 +331,22 @@ void loop_event(struct poolhd *pool)
 
 struct buffer *buff_pop(struct poolhd *pool, size_t size)
 {
-    struct buffer *root = pool->root_buff;  
-    if (root) {
-        pool->root_buff = root->next;
-        return root;
+    struct buffer *buff = pool->root_buff;  
+    if (buff) {
+        pool->root_buff = buff->next;
+        pool->buff_count--;
     }
-    struct buffer *buff = malloc(sizeof(struct buffer) + size);
-    if (!buff) {
-        uniperror("malloc");
-        return 0;
+    else {
+        buff = malloc(sizeof(struct buffer) + size);
+        if (!buff) {
+            uniperror("malloc");
+            return 0;
+        }
+        LOG(LOG_S, "alloc new buffer\n");
+        
+        memset(buff, 0, sizeof(struct buffer));
+        buff->size = size;
     }
-    LOG(LOG_S, "alloc new buffer\n");
-    
-    memset(buff, 0, sizeof(struct buffer));
-    buff->size = size;
     return buff;
 }
 
@@ -354,10 +356,16 @@ void buff_push(struct poolhd *pool, struct buffer *buff)
     if (!buff) {
         return;
     }
+    if (pool->buff_count >= MAX_BUFF_INP) {
+        free(buff);
+        return;
+    }
     buff->lock = 0;
     buff->offset = 0;
     buff->next = pool->root_buff;
+    
     pool->root_buff = buff;
+    pool->buff_count++;
 }
 
 
