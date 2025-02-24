@@ -503,7 +503,7 @@ ssize_t desync(struct poolhd *pool,
     ssize_t offset = buff->offset;
     ssize_t skip = val->pair->round_sent;
     
-    if (!skip && params.debug) {
+    if (!skip && LOG_ENABLED) {
         init_proto_info(buffer, *np, &info);
         
         if (info.host_pos) {
@@ -642,7 +642,7 @@ ssize_t desync_udp(int sfd, char *buffer,
 {
     struct desync_params *dp = &params.dp[dp_c];
     
-    if (params.debug) {
+    if (LOG_ENABLED) {
         INIT_HEX_STR(buffer, (n > 16 ? 16 : n));
         LOG(LOG_S, "bytes: %s (%zd)\n", HEX_STR, n);
     }
