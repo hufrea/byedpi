@@ -22,7 +22,7 @@ extern char tls_data[517];
 extern char http_data[43];
 extern char udp_data[64];
 
-int change_tls_sni(const char *host, char *buffer, size_t bsize);
+int change_tls_sni(const char *host, char *buffer, ssize_t bsize, ssize_t nn);
 
 bool is_tls_chello(const char *buffer, size_t bsize);
 
@@ -41,6 +41,8 @@ bool neq_tls_sid(const char *req, size_t qn, const char *resp, size_t sn);
 bool is_tls_shello(const char *buffer, size_t bsize);
 
 int part_tls(char *buffer, size_t bsize, ssize_t n, long pos);
+
+void randomize_tls(char *buffer, ssize_t n);
 
 //bool is_dns_req(char *buffer, size_t n);
 
