@@ -26,4 +26,7 @@ struct proto_info {
     char init, type;
     int host_len, host_pos;
 };
+
+static long gen_offset(long pos, int flag,
+        const char *buffer, size_t n, long lp, struct proto_info *info);
 #endif

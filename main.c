@@ -32,13 +32,13 @@ ASSERT(sizeof(struct in6_addr) == 16)
 
 
 struct packet fake_tls = { 
-    sizeof(tls_data), tls_data 
+    sizeof(tls_data), tls_data, 0, 0
 },
 fake_http = { 
-    sizeof(http_data), http_data
+    sizeof(http_data), http_data, 0, 0
 },
 fake_udp = { 
-    sizeof(udp_data), udp_data
+    sizeof(udp_data), udp_data, 0, 0
 };
 
 
@@ -106,11 +106,13 @@ static const char help_text[] = {
     #ifdef __linux__
     "    -S, --md5sig              Add MD5 Signature option for fake packets\n"
     #endif
-    "    -n, --tls-sni <str>       Change SNI in fake ClientHello\n"
+    "    -n, --fake-sni <str>      Change SNI in fake\n"
+    "                              Replaced: ? - rand let, # - rand num, * - rand let/num\n"
     #endif
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
-    "    -O, --fake-offset <n>     Fake data start offset\n"
+    "    -O, --fake-offset <pos_t> Fake data start offset\n"
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
+    "    -Q, --fake-tls-mod <r,o>  Modify fake TLS CH: rand,orig\n"
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
@@ -164,11 +166,12 @@ const struct option options[] = {
     #ifdef __linux__
     {"md5sig",        0, 0, 'S'},
     #endif
-    {"tls-sni",       1, 0, 'n'},
+    {"fake-sni",      1, 0, 'n'},
     #endif
     {"ttl",           1, 0, 't'},
     {"fake-data",     1, 0, 'l'},
     {"fake-offset",   1, 0, 'O'},
+    {"fake-tls-mod",  1, 0, 'Q'},
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
@@ -602,6 +605,10 @@ void clear_params(void)
                 mem_destroy(s.ipset);
                 s.hosts = 0;
             }
+            if (s.fake_sni_list != 0) {
+                free(s.fake_sni_list);
+                s.fake_sni_list = 0;
+            }
         }
         free(params.dp);
         params.dp = 0;
@@ -916,20 +923,39 @@ int main(int argc, char **argv)
             break;
             
         case 'O':
-            val = strtol(optarg, &end, 0);
-            if (val <= 0 || *end) 
+            if (parse_offset(&dp->fake_offset, optarg)) {
                 invalid = 1;
-            else
-                dp->fake_offset = val;
+                break;
+            } else dp->fake_offset.m = 1;
             break;
             
-        case 'n':
-            if (change_tls_sni(optarg, fake_tls.data, fake_tls.size)) {
-                fprintf(stderr, "error chsni\n");
-                clear_params();
-                return -1;
+        case 'Q':
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case 'r': 
+                        dp->fake_mod |= FM_RAND;
+                        break;
+                    case 'o': 
+                        dp->fake_mod |= FM_ORIG;
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
+                }
+                end = strchr(end, ',');
+                if (end) end++;
             }
-            printf("sni: %s\n", optarg);
+            break;
+            
+        case 'n':;
+            const char **p = add((void *)&dp->fake_sni_list,
+                    &dp->fake_sni_count, sizeof(optarg));
+            if (!p) {
+                invalid = 1;
+                continue;
+            }
+            *p = optarg;
             break;
             
         case 'l':

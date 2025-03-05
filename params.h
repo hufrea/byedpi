@@ -37,6 +37,9 @@
 #define AUTO_NOBUFF -1
 #define AUTO_NOSAVE 0
 
+#define FM_RAND 1
+#define FM_ORIG 2
+
 enum demode {
     DESYNC_NONE,
     DESYNC_SPLIT,
@@ -67,6 +70,8 @@ struct part {
 struct packet {
      ssize_t size;
      char  *data;
+     ssize_t off;
+     bool dynamic;
 };
 
 struct desync_params {
@@ -74,7 +79,10 @@ struct desync_params {
     bool md5sig;
     struct packet fake_data;
     int udp_fake_count;
-    int fake_offset;
+    struct part fake_offset;
+    int fake_sni_count;
+    const char **fake_sni_list;
+    int fake_mod;
     bool drop_sack;
     char oob_char[2];
     
