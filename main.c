@@ -97,7 +97,7 @@ static const char help_text[] = {
     "    -j, --ipset <file|:str>   IP whitelist\n"
     "    -V, --pf <port[-portr]>   Ports range whitelist\n"
     "    -R, --round <num[-numr]>  Number of request to which desync will be applied\n"
-    "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]]\n"
+    "    -s, --split <pos_t>       Position format: offset[:repeats:skip][+flag1[flag2]][,delay_ms]\n"
     "                              Flags: +s - SNI offset, +h - HTTP host offset, +n - null\n"
     "                              Additional flags: +e - end, +m - middle\n"
     "    -d, --disorder <pos_t>    Split and send reverse order\n"
@@ -490,31 +490,48 @@ int parse_offset(struct part *part, const char *str)
         }
     }
     if (*end == '+') {
-        switch (*(end + 1)) {
-            case 's':
-                part->flag = OFFSET_SNI;
-                break;
-            case 'h': 
-                part->flag = OFFSET_HOST;
-                break;
-            case 'n':
-                break;
-            default:
-                return -1;
+        end++;
+        if (*end) {
+            switch (*end) {
+                case 's':
+                    part->flag = OFFSET_SNI;
+                    break;
+                case 'h': 
+                    part->flag = OFFSET_HOST;
+                    break;
+                case 'n':
+                    break;
+                default:
+                    return -1;
+            }
+            end++;
         }
-        switch (*(end + 2)) {
-            case 'e':
-                part->flag |= OFFSET_END;
-                break;
-            case 'm':
-                part->flag |= OFFSET_MID;
-                break;
-            case 'r': //
-                part->flag |= OFFSET_RAND;
-                break;
-            case 's': //
-                part->flag |= OFFSET_START;
+        if (*end) {
+            switch (*end) {
+                case 'e':
+                    part->flag |= OFFSET_END;
+                    break;
+                case 'm':
+                    part->flag |= OFFSET_MID;
+                    break;
+                case 'r': //
+                    part->flag |= OFFSET_RAND;
+                    break;
+                case 's': //
+                    part->flag |= OFFSET_START;
+                default:
+                    return -1;
+            }
+            end++;
         }
+    }
+    if (*end == ',') {
+        end++;
+        long delay = strtol(end, &end, 0);
+        if (delay < 0 || delay > INT_MAX) {
+            return -1;
+        }
+        part->delay = delay;
     }
     part->pos = val;
     return 0;

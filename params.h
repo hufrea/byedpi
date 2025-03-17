@@ -62,6 +62,7 @@ struct part {
     int flag;
     long pos;
     int r, s;
+    int delay;
 };
 
 struct packet {

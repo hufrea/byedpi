@@ -173,6 +173,7 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     
     client->buff->offset = 0;
     client->round_sent = 0;
+    client->part_sent = 0;
     return 0;
 }
 
@@ -467,6 +468,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
     if (val->round_sent == 0) {
         val->round_count++;
         val->pair->round_sent = 0;
+        val->pair->part_sent = 0;
     }
     if (val->flag == FLAG_CONN && !val->round_sent) {
         int *nr = params.dp[val->pair->attempt].rounds;

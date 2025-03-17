@@ -531,6 +531,7 @@ ssize_t desync(struct poolhd *pool,
     size_t bfsize = buff->size;
     ssize_t offset = buff->offset;
     ssize_t skip = val->pair->round_sent;
+    unsigned int part_skip = val->pair->part_sent;
     
     if (!skip && params.debug) {
         init_proto_info(buffer, *np, &info);
@@ -551,25 +552,40 @@ ssize_t desync(struct poolhd *pool,
     long lp = offset;
     struct part part;
     int i = 0, r = 0;
+    unsigned int curr_part = 0;
+    int prev_part_delay = 0;
     
     for (; r > 0 || i < dp.parts_n; r--) {
         if (r <= 0) {
             part = dp.parts[i];
             r = part.r; i++;
+            curr_part++;
+            if (curr_part <= part_skip) {
+                continue;
+            }
         }
         long pos = gen_offset(part.pos, part.flag, buffer, n, lp, &info);
         pos += (long )part.s * (part.r - r);
         
-        if (skip && pos <= skip && !(part.flag & OFFSET_START)) {
+        if (skip && (pos < skip || (pos == skip && curr_part == 1)) && !(part.flag & OFFSET_START)) {
             continue;
         }
-        if (offset && pos <= offset) {
+        if (offset && (pos < offset || (pos == offset && curr_part == 1))) {
             continue;
         }
         if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
+        
+        // add delay after the previous part only if there is a next one
+        if (prev_part_delay > 0) {
+            LOG(LOG_S, "delay: %d ms\n", prev_part_delay);
+            set_timer(pool, val, prev_part_delay);
+            return lp - offset;
+        }
+        prev_part_delay = part.delay;
+        
         ssize_t s = 0;
         
         if (sock_has_notsent(sfd)) {
@@ -615,12 +631,14 @@ ssize_t desync(struct poolhd *pool,
                 return lp - offset;
             }
             return -1;
-        } 
+        }
         else if (s != (pos - lp)) {
             LOG(LOG_E, "%zd != %ld\n", s, pos - lp);
             return lp + s - offset;
         }
+        
         lp = pos;
+        val->pair->part_sent = curr_part;
     }
     // send all/rest
     if (lp < n) {
