@@ -506,7 +506,7 @@ int parse_offset(struct part *part, const char *str)
             }
             end++;
         }
-        if (*end) {
+        if (*end && *end != ',') {
             switch (*end) {
                 case 'e':
                     part->flag |= OFFSET_END;
