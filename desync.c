@@ -578,13 +578,13 @@ ssize_t desync(struct poolhd *pool,
             break;
         }
         
-        // add delay after the previous part only if there is a next one
+        // add delay after the previous part if there is a next one
+        // (this is for zero-length parts after the last byte)
         if (prev_part_delay > 0) {
             LOG(LOG_S, "delay: %d ms\n", prev_part_delay);
             set_timer(pool, val, prev_part_delay);
             return lp - offset;
         }
-        prev_part_delay = part.delay;
         
         ssize_t s = 0;
         
@@ -639,6 +639,14 @@ ssize_t desync(struct poolhd *pool,
         
         lp = pos;
         val->pair->part_sent = curr_part;
+        
+        // add delay if there is more data to send
+        if (part.delay > 0 && lp < n) {
+            LOG(LOG_S, "delay: %d ms\n", part.delay);
+            set_timer(pool, val, part.delay);
+            return lp - offset;
+        }
+        prev_part_delay = part.delay;
     }
     // send all/rest
     if (lp < n) {
