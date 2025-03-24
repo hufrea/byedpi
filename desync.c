@@ -531,7 +531,7 @@ ssize_t desync(struct poolhd *pool,
     size_t bfsize = buff->size;
     ssize_t offset = buff->offset;
     ssize_t skip = val->pair->round_sent;
-    unsigned int part_skip = val->pair->part_sent;
+    int part_skip = val->pair->part_sent;
     
     if (!skip && params.debug) {
         init_proto_info(buffer, *np, &info);
@@ -552,40 +552,28 @@ ssize_t desync(struct poolhd *pool,
     long lp = offset;
     struct part part;
     int i = 0, r = 0;
-    unsigned int curr_part = 0;
-    int prev_part_delay = 0;
+    int curr_part = -1;
     
     for (; r > 0 || i < dp.parts_n; r--) {
         if (r <= 0) {
             part = dp.parts[i];
             r = part.r; i++;
-            curr_part++;
-            if (curr_part <= part_skip) {
-                continue;
-            }
         }
+        curr_part++;
         long pos = gen_offset(part.pos, part.flag, buffer, n, lp, &info);
         pos += (long )part.s * (part.r - r);
         
-        if (skip && (pos < skip || (pos == skip && curr_part == 1)) && !(part.flag & OFFSET_START)) {
+        if ((skip && pos <= skip) 
+		&& curr_part < part_skip && !(part.flag & OFFSET_START)) {
             continue;
         }
-        if (offset && (pos < offset || (pos == offset && curr_part == 1))) {
+        if (offset && pos < offset) {
             continue;
         }
         if (pos < 0 || pos > n || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
-        
-        // add delay after the previous part if there is a next one
-        // (this is for zero-length parts after the last byte)
-        if (prev_part_delay > 0) {
-            LOG(LOG_S, "delay: %d ms\n", prev_part_delay);
-            set_timer(pool, val, prev_part_delay);
-            return lp - offset;
-        }
-        
         ssize_t s = 0;
         
         if (sock_has_notsent(sfd)) {
@@ -621,11 +609,13 @@ ssize_t desync(struct poolhd *pool,
                 break;
         }
         LOG(LOG_S, "split: pos=%ld-%ld (%zd), m: %s\n", lp, pos, s, demode_str[part.m]);
-        
+        val->pair->part_sent = curr_part + 1;
+
         if (s == ERR_WAIT) {
             set_timer(pool, val, params.await_int);
             return lp - offset;
         }
+	
         if (s < 0) {
             if (get_e() == EAGAIN) {
                 return lp - offset;
@@ -636,17 +626,13 @@ ssize_t desync(struct poolhd *pool,
             LOG(LOG_E, "%zd != %ld\n", s, pos - lp);
             return lp + s - offset;
         }
-        
         lp = pos;
-        val->pair->part_sent = curr_part;
-        
-        // add delay if there is more data to send
-        if (part.delay > 0 && lp < n) {
+	
+	if (part.delay > 0 && lp < n) {
             LOG(LOG_S, "delay: %d ms\n", part.delay);
             set_timer(pool, val, part.delay);
             return lp - offset;
         }
-        prev_part_delay = part.delay;
     }
     // send all/rest
     if (lp < n) {
