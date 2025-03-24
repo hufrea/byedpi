@@ -667,7 +667,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             uniperror("send");
             return -1;
         }
-        if (sn < n) {
+        if (sn < n || pair->tv_ms) {
             val->buff->offset += sn;
             return 0;
         }
@@ -699,8 +699,13 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             uniperror("send");
             return -1;
         }
-        if (sn < n) {
-            LOG(LOG_S, "send: %zd != %zd (fd=%d)\n", sn, n, pair->fd);
+        if (sn < n || pair->tv_ms) {
+            if (sn < n) {
+                LOG(LOG_S, "send: %zd != %zd (fd=%d)\n", sn, n, pair->fd);
+            }
+            else {
+                LOG(LOG_S, "send: %zd, but not done yet (fd=%d)\n", sn, pair->fd);
+            }
             
             buff->lock = n;
             buff->offset = sn;

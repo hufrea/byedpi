@@ -553,6 +553,7 @@ ssize_t desync(struct poolhd *pool,
     struct part part;
     int i = 0, r = 0;
     unsigned int curr_part = 0;
+    bool need_wait = false;
     
     for (; r > 0 || i < dp.parts_n; r--) {
         if (r <= 0) {
@@ -575,6 +576,12 @@ ssize_t desync(struct poolhd *pool,
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
         }
+	
+        if (need_wait) {
+            set_timer(pool, val, params.await_int);
+            return lp - offset;
+        }
+        
         ssize_t s = 0;
         
         if (sock_has_notsent(sfd)) {
@@ -629,9 +636,14 @@ ssize_t desync(struct poolhd *pool,
         }
         lp = pos;
 	
-	if (params.wait_send && lp < n) {
-            set_timer(pool, val, params.await_int);
-            return lp - offset;
+        if (params.wait_send) {
+            if (lp < n) {
+                set_timer(pool, val, params.await_int);
+                return lp - offset;
+            }
+            else {
+                need_wait = true;
+            }
         }
     }
     // send all/rest
