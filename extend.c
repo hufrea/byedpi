@@ -405,7 +405,7 @@ static int cancel_setup(struct eval *remote)
 
 
 ssize_t tcp_send_hook(struct poolhd *pool, 
-        struct eval *remote, struct buffer *buff, ssize_t *n)
+        struct eval *remote, struct buffer *buff, ssize_t *n, bool *wait)
 {
     ssize_t sn = -1;
     int skip = remote->flag != FLAG_CONN; 
@@ -424,7 +424,7 @@ ssize_t tcp_send_hook(struct poolhd *pool,
         }
         else {
             LOG(LOG_S, "desync TCP: group=%d, round=%d, fd=%d\n", m, r, remote->fd);
-            sn = desync(pool, remote, buff, n);
+            sn = desync(pool, remote, buff, n, wait);
         }
     }
     if (skip) {

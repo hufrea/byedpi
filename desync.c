@@ -521,7 +521,7 @@ static void tamp(char *buffer, size_t bfsize, ssize_t *n,
 
 
 ssize_t desync(struct poolhd *pool, 
-        struct eval *val, struct buffer *buff, ssize_t *np)
+        struct eval *val, struct buffer *buff, ssize_t *np, bool *wait)
 {
     struct desync_params dp = params.dp[val->pair->attempt];
     struct proto_info info = { 0 };
@@ -579,6 +579,7 @@ ssize_t desync(struct poolhd *pool,
 	
         if (need_wait) {
             set_timer(pool, val, params.await_int);
+            *wait = true;
             return lp - offset;
         }
         
@@ -621,6 +622,7 @@ ssize_t desync(struct poolhd *pool,
 
         if (s == ERR_WAIT) {
             set_timer(pool, val, params.await_int);
+            *wait = true;
             return lp - offset;
         }
 	
@@ -639,6 +641,7 @@ ssize_t desync(struct poolhd *pool,
         if (params.wait_send) {
             if (lp < n) {
                 set_timer(pool, val, params.await_int);
+                *wait = true;
                 return lp - offset;
             }
             else {
