@@ -62,7 +62,6 @@ struct part {
     int flag;
     long pos;
     int r, s;
-    int delay;
 };
 
 struct packet {
@@ -103,6 +102,7 @@ struct params {
     int dp_count;
     struct desync_params *dp;
     int await_int;
+    bool wait_send;
     int def_ttl;
     bool custom_ttl;
     

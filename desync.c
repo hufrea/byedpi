@@ -531,7 +531,7 @@ ssize_t desync(struct poolhd *pool,
     size_t bfsize = buff->size;
     ssize_t offset = buff->offset;
     ssize_t skip = val->pair->round_sent;
-    int part_skip = val->pair->part_sent;
+    unsigned int part_skip = val->pair->part_sent;
     
     if (!skip && params.debug) {
         init_proto_info(buffer, *np, &info);
@@ -552,7 +552,7 @@ ssize_t desync(struct poolhd *pool,
     long lp = offset;
     struct part part;
     int i = 0, r = 0;
-    int curr_part = -1;
+    unsigned int curr_part = 0;
     
     for (; r > 0 || i < dp.parts_n; r--) {
         if (r <= 0) {
@@ -560,11 +560,12 @@ ssize_t desync(struct poolhd *pool,
             r = part.r; i++;
         }
         curr_part++;
+
         long pos = gen_offset(part.pos, part.flag, buffer, n, lp, &info);
         pos += (long )part.s * (part.r - r);
         
         if ((skip && pos <= skip) 
-		&& curr_part < part_skip && !(part.flag & OFFSET_START)) {
+		&& curr_part <= part_skip && !(part.flag & OFFSET_START)) {
             continue;
         }
         if (offset && pos < offset) {
@@ -609,7 +610,7 @@ ssize_t desync(struct poolhd *pool,
                 break;
         }
         LOG(LOG_S, "split: pos=%ld-%ld (%zd), m: %s\n", lp, pos, s, demode_str[part.m]);
-        val->pair->part_sent = curr_part + 1;
+        val->pair->part_sent = curr_part;
 
         if (s == ERR_WAIT) {
             set_timer(pool, val, params.await_int);
@@ -628,9 +629,8 @@ ssize_t desync(struct poolhd *pool,
         }
         lp = pos;
 	
-	if (part.delay > 0 && lp < n) {
-            LOG(LOG_S, "delay: %d ms\n", part.delay);
-            set_timer(pool, val, part.delay);
+	if (params.wait_send && lp < n) {
+            set_timer(pool, val, params.await_int);
             return lp - offset;
         }
     }
