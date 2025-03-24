@@ -1069,10 +1069,10 @@ int main(int argc, char **argv)
             break;
         
         case 'Z':
-	    params.wait_send = 1;
-	    break;
+            params.wait_send = 1;
+            break;
         
-	case 'W':
+        case 'W':
             params.await_int = atoi(optarg);
             break;
             

@@ -565,7 +565,7 @@ ssize_t desync(struct poolhd *pool,
         pos += (long )part.s * (part.r - r);
         
         if ((skip && pos <= skip) 
-		&& curr_part <= part_skip && !(part.flag & OFFSET_START)) {
+                && curr_part <= part_skip && !(part.flag & OFFSET_START)) {
             continue;
         }
         if (offset && pos < offset) {
@@ -616,20 +616,19 @@ ssize_t desync(struct poolhd *pool,
             set_timer(pool, val, params.await_int);
             return lp - offset;
         }
-	
         if (s < 0) {
             if (get_e() == EAGAIN) {
                 return lp - offset;
             }
             return -1;
-        }
+        } 
         else if (s != (pos - lp)) {
             LOG(LOG_E, "%zd != %ld\n", s, pos - lp);
             return lp + s - offset;
         }
         lp = pos;
-	
-	if (params.wait_send && lp < n) {
+        
+        if (params.wait_send && lp < n) {
             set_timer(pool, val, params.await_int);
             return lp - offset;
         }
