@@ -77,6 +77,7 @@ struct eval {
     ssize_t round_sent;
     unsigned int round_count;
     int attempt;
+    unsigned int part_sent;
     bool cache;
     bool mark; //
 };

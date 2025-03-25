@@ -178,6 +178,7 @@ const struct option options[] = {
     {"tlsrec",        1, 0, 'r'},
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
+    {"wait-send",     0, 0, 'Z'}, //
     {"await-int",     1, 0, 'W'}, //
     #ifdef __linux__
     {"drop-sack",     0, 0, 'Y'},
@@ -1065,6 +1066,10 @@ int main(int argc, char **argv)
             
         case 'Y':
             dp->drop_sack = 1;
+            break;
+        
+        case 'Z':
+            params.wait_send = 1;
             break;
         
         case 'W':
