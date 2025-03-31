@@ -145,7 +145,7 @@ const struct option options[] = {
     {"debug",         1, 0, 'x'},
     
     #ifdef TCP_FASTOPEN_CONNECT
-    {"tfo ",          0, 0, 'F'},
+    {"tfo",           0, 0, 'F'},
     #endif
     {"auto",          1, 0, 'A'},
     {"auto-mode",     1, 0, 'L'},
