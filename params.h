@@ -105,6 +105,8 @@ struct desync_params {
     
     char *file_ptr;
     ssize_t file_size;
+    
+    int _optind;
 };
 
 struct params {
