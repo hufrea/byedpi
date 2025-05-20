@@ -127,19 +127,24 @@ static int cache_add(const union sockaddr_u *dst, int m)
 int connect_hook(struct poolhd *pool, struct eval *val, 
         const union sockaddr_u *dst, evcb_t next)
 {
-    int m = cache_get(dst), init_m = m;
-    val->cache = (m == 0);
+    int m = val->attempt;
+    if (!m) {
+        m = cache_get(dst);
+        val->cache = (m == 0);
+    }
+    int init_m = m;
+    
     m = m < 0 ? 0 : m;
     struct desync_params *dp;
     
     for (; ; m++) {
+        if (m == params.dp_count) {
+            return -1;
+        }
         dp = &params.dp[m];
         if ((!dp->detect || m == init_m)
                 && check_l34(dp, SOCK_STREAM, dst)) {
             break;
-        }
-        if (m == params.dp_count) {
-            return -1;
         }
     }
     val->attempt = m;
@@ -173,15 +178,15 @@ static int reconnect(struct poolhd *pool, struct eval *val, int m)
     assert(val->flag == FLAG_CONN);
     
     struct eval *client = val->pair;
+    client->attempt = m;
     
-    if (create_conn(pool, client, &val->addr, &on_tunnel)) {
+    if (connect_hook(pool, client, &val->addr, &on_tunnel)) {
         return -1;
     }
     val->pair = 0;
     del_event(pool, val);
     
     client->cb = &on_tunnel;
-    client->attempt = m;
     client->cache = 1;
     
     if (!client->buff) {
