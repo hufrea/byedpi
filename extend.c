@@ -481,6 +481,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             case ECONNRESET:
             case ECONNREFUSED:
             case ETIMEDOUT: 
+            case EHOSTUNREACH:
                 if (val->flag == FLAG_CONN)
                     return on_torst(pool, val);
                 else
