@@ -32,13 +32,13 @@ ASSERT(sizeof(struct in6_addr) == 16)
 
 
 struct packet fake_tls = { 
-    sizeof(tls_data), tls_data, 0, 0
+    sizeof(tls_data), tls_data, 0,
 },
 fake_http = { 
-    sizeof(http_data), http_data, 0, 0
+    sizeof(http_data), http_data, 0,
 },
 fake_udp = { 
-    sizeof(udp_data), udp_data, 0, 0
+    sizeof(udp_data), udp_data, 0,
 };
 
 

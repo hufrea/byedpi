@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+
 #ifndef __linux__
     #define NOEPOLL
 #endif
@@ -17,6 +18,7 @@
     #include <sys/socket.h>
     #include <unistd.h>
     #include <time.h>
+    #include <sys/mman.h>
     
     #ifndef NOEPOLL
         #include <sys/epoll.h>
@@ -78,13 +80,22 @@ struct eval {
     struct buffer *buff, *sq_buff;
     int flag;
     union sockaddr_u addr;
+    
     ssize_t recv_count;
     ssize_t round_sent;
     unsigned int round_count;
+    
     int attempt;
-    unsigned int part_sent;
     bool cache;
     bool mark; //
+    
+    bool restore_ttl;
+    bool restore_md5;
+    char *restore_fake;
+    size_t restore_fake_len;
+    const char *restore_orig;
+    size_t restore_orig_len;
+    unsigned int part_sent;
 };
 
 struct poolhd {

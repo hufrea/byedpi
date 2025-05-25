@@ -71,7 +71,6 @@ struct packet {
      ssize_t size;
      char  *data;
      ssize_t off;
-     bool dynamic;
 };
 
 struct desync_params {
