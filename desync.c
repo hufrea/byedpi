@@ -587,6 +587,11 @@ ssize_t desync(struct poolhd *pool,
                 #endif
                 break;
             #endif
+            case DESYNC_OOB:
+                s = send_oob(sfd, 
+                    buffer + lp, bfsize - lp, pos - lp, dp.oob_char);
+                break;
+                
             case DESYNC_DISORDER:
             case DESYNC_DISOOB:
                 if (!((part.r - r) % 2)
