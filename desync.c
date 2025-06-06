@@ -570,7 +570,7 @@ ssize_t desync(struct poolhd *pool,
         ssize_t s = 0;
         
         if (curr_part == part_skip) {
-            ;
+            s = pos - lp;
         } else 
         {
         switch (part.m) {
@@ -641,6 +641,7 @@ ssize_t desync(struct poolhd *pool,
         if (sock_has_notsent(sfd) 
                 || (params.wait_send 
                     && curr_part > part_skip)) {
+            LOG(LOG_S, "sock_has_notsent\n");
             set_timer(pool, val, params.await_int);
             *wait = true;
             return pos - offset;
