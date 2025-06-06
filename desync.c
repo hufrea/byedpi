@@ -25,9 +25,7 @@
     #include <ws2tcpip.h>
     #include <mswsock.h>
 #endif
-#define STR_MODE
 
-#include "params.h"
 #include "packets.h"
 #include "error.h"
 
@@ -512,7 +510,7 @@ static void tamp(char *buffer, size_t bfsize, ssize_t *n,
 ssize_t desync(struct poolhd *pool, 
         struct eval *val, struct buffer *buff, ssize_t *np, bool *wait)
 {
-    struct desync_params dp = params.dp[val->pair->attempt];
+    struct desync_params dp = *val->pair->dp;
     struct proto_info info = { 0 };
     
     int sfd = val->fd;
@@ -665,10 +663,8 @@ ssize_t desync(struct poolhd *pool,
 }
 
 
-int pre_desync(int sfd, int dp_c)
+int pre_desync(int sfd, struct desync_params *dp)
 {
-    struct desync_params *dp = &params.dp[dp_c];
-    
     #ifdef __linux__
     if (dp->drop_sack && drop_sack(sfd)) {
         return -1;
@@ -677,14 +673,13 @@ int pre_desync(int sfd, int dp_c)
     return 0;
 }
 
-int post_desync(int sfd, int dp_c)
+int post_desync(int sfd, struct desync_params *dp)
 {
-    struct desync_params *dp = &params.dp[dp_c];
-    
     #ifdef __linux__
+    int nop = 0;
     if (dp->drop_sack) {
         if (setsockopt(sfd, SOL_SOCKET, 
-                SO_DETACH_FILTER, &dp_c, sizeof(dp_c)) == -1) {
+                SO_DETACH_FILTER, &nop, sizeof(nop)) == -1) {
             uniperror("setsockopt SO_DETACH_FILTER");
             return -1;
         }
@@ -695,10 +690,8 @@ int post_desync(int sfd, int dp_c)
 
 
 ssize_t desync_udp(int sfd, char *buffer, 
-        ssize_t n, const struct sockaddr *dst, int dp_c)
+        ssize_t n, const struct sockaddr *dst, struct desync_params *dp)
 {
-    struct desync_params *dp = &params.dp[dp_c];
-    
     if (LOG_ENABLED) {
         INIT_HEX_STR(buffer, (n > 16 ? 16 : n));
         LOG(LOG_S, "bytes: %s (%zd)\n", HEX_STR, n);

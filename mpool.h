@@ -18,7 +18,7 @@ struct elem {
 
 struct elem_i {
     struct elem i;
-    int m;
+    void *dp;
     time_t time;
 };
 

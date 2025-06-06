@@ -8,6 +8,7 @@
 #include "proxy.h"
 #include "packets.h"
 #include "error.h"
+#include "conev.h"
 
 #ifndef _WIN32
     #include <arpa/inet.h>
@@ -538,6 +539,21 @@ void *add(void **root, int *n, size_t ss)
 }
 
 
+static struct desync_params *add_group(struct desync_params *prev)
+{
+    struct desync_params *dp = calloc(1, sizeof(*prev));
+    if (!dp) {
+        return 0;
+    }
+    if (prev) {
+        dp->prev = prev;
+        prev->next = dp;
+    }
+    params.dp_n++;
+    return dp;
+}
+
+
 #ifdef DAEMON
 int init_pid_file(const char *fname)
 {
@@ -579,41 +595,41 @@ void clear_params(void)
         mem_destroy(params.mempool);
         params.mempool = 0;
     }
-    if (params.dp) {
-        for (int i = 0; i < params.dp_count; i++) {
-            struct desync_params s = params.dp[i];
-            if (s.parts != 0) {
-                free(s.parts);
-                s.parts = 0;
-            }
-            if (s.tlsrec != 0) {
-                free(s.tlsrec);
-                s.tlsrec = 0;
-            }
-            if (s.fake_data.data != 0) {
-                free(s.fake_data.data);
-                s.fake_data.data = 0;
-            }
-            if (s.file_ptr != 0) {
-                free(s.file_ptr);
-                s.file_ptr = 0;
-            }
-            if (s.hosts != 0) {
-                mem_destroy(s.hosts);
-                s.hosts = 0;
-            }
-            if (s.ipset != 0) {
-                mem_destroy(s.ipset);
-                s.hosts = 0;
-            }
-            if (s.fake_sni_list != 0) {
-                free(s.fake_sni_list);
-                s.fake_sni_list = 0;
-            }
+    struct desync_params *dp = params.dp;
+    while (dp) {
+        if (dp->parts != 0) {
+            free(dp->parts);
+            dp->parts = 0;
         }
-        free(params.dp);
-        params.dp = 0;
+        if (dp->tlsrec != 0) {
+            free(dp->tlsrec);
+            dp->tlsrec = 0;
+        }
+        if (dp->fake_data.data != 0) {
+            free(dp->fake_data.data);
+            dp->fake_data.data = 0;
+        }
+        if (dp->file_ptr != 0) {
+            free(dp->file_ptr);
+            dp->file_ptr = 0;
+        }
+        if (dp->hosts != 0) {
+            mem_destroy(dp->hosts);
+            dp->hosts = 0;
+        }
+        if (dp->ipset != 0) {
+            mem_destroy(dp->ipset);
+            dp->hosts = 0;
+        }
+        if (dp->fake_sni_list != 0) {
+            free(dp->fake_sni_list);
+            dp->fake_sni_list = 0;
+        }
+        struct desync_params *t = dp;
+        dp = dp->next;
+        free(t);
     }
+    params.dp = 0;
 }
 
 
@@ -662,12 +678,12 @@ int main(int argc, char **argv)
     
     int curr_optind = 1;
     
-    struct desync_params *dp = add((void *)&params.dp,
-        &params.dp_count, sizeof(struct desync_params));
+    struct desync_params *dp = add_group(0);
     if (!dp) {
         clear_params();
         return -1;
     }
+    params.dp = dp;
     
     while (!invalid && (rez = getopt_long(
              argc, argv, opt, options, 0)) != -1) {
@@ -771,8 +787,7 @@ int main(int argc, char **argv)
             if (!(dp->hosts || dp->proto || dp->pf[0] || dp->detect || dp->ipset)) {
                 all_limited = 0;
             }
-            dp = add((void *)&params.dp, &params.dp_count,
-                sizeof(struct desync_params));
+            dp = add_group(dp);
             if (!dp) {
                 clear_params();
                 return -1;
@@ -803,6 +818,7 @@ int main(int argc, char **argv)
                 params.auto_level = AUTO_NOSAVE;
             }
             dp->_optind = optind;
+            dp->id = params.dp_n - 1;
             break;
             
         case 'B':
@@ -814,14 +830,19 @@ int main(int argc, char **argv)
                 continue;
             }
             val = strtol(optarg, &end, 0);
-            if (val < 1 || val >= params.dp_count || *end) 
+            struct desync_params *itdp = params.dp;
+            
+            while (itdp && itdp->id != val - 1) {
+                itdp = itdp->next;
+            }
+            if (!itdp) 
                 invalid = 1;
             else {
                 curr_optind = optind;
-                optind = params.dp[val - 1]._optind;
+                optind = itdp->_optind;
             }
             break;
-            
+        
         case 'u':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || *end) 
@@ -1134,8 +1155,7 @@ int main(int argc, char **argv)
         return -1;
     }
     if (all_limited) {
-        dp = add((void *)&params.dp,
-            &params.dp_count, sizeof(struct desync_params));
+        dp = add_group(dp);
         if (!dp) {
             clear_params();
             return -1;
