@@ -106,6 +106,10 @@ void del_event(struct poolhd *pool, struct eval *val)
         val->restore_fake = 0;
     }
     #endif
+    if (val->host) {
+        free(val->host);
+        val->host = 0;
+    }
     close(val->fd);
     val->fd = -1;
     val->mod_iter = pool->iters;

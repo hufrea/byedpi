@@ -3,11 +3,32 @@
 
 #include <stdbool.h>
 #include <time.h>
+
 #include "kavl.h"
+#include "params.h"
 
 #define CMP_BYTES 0
 #define CMP_BITS 1
 #define CMP_HOST 2
+
+#pragma pack(push, 1)
+
+struct cache_key {
+    uint16_t family;
+    uint16_t port;
+    union {
+        struct in_addr v4;
+        struct in6_addr v6;
+    } ip;
+};
+
+struct cache_data {
+    struct cache_key key;
+    int host_len;
+    char host[];
+};
+
+#pragma pack(pop)
 
 struct elem {
     int len;
@@ -18,7 +39,7 @@ struct elem {
 
 struct elem_i {
     struct elem i;
-    void *dp;
+    struct desync_params *dp;
     time_t time;
 };
 
@@ -38,5 +59,7 @@ struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t ssize);
 void mem_delete(struct mphdr *hdr, const char *str, int len);
 
 void mem_destroy(struct mphdr *hdr);
+
+void dump_cache(struct mphdr *hdr, FILE *out);
 
 #endif

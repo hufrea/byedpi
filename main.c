@@ -88,6 +88,7 @@ static const char help_text[] = {
     "                              Detect: torst,redirect,ssl_err,none\n"
     "    -L, --auto-mode <0|1>     1 - handle trigger after several packets\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
+    "    -y, --cache-dump <file|-> Dump cache to file or stdout\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <sec>       Timeout waiting for response, after which trigger auto\n"
     #endif
@@ -155,6 +156,7 @@ const struct option options[] = {
     {"timeout",       1, 0, 'T'},
     #endif
     {"copy",          1, 0, 'B'},
+    {"cache-dump",    1, 0, 'y'},
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
@@ -666,7 +668,7 @@ int main(int argc, char **argv)
         params.baddr.sa.sa_family = AF_INET;
     }
     
-    char *pid_file = 0;
+    const char *pid_file = 0;
     bool daemonize = 0;
     
     int rez;
@@ -763,6 +765,10 @@ int main(int argc, char **argv)
             params.debug = strtol(optarg, 0, 0);
             if (params.debug < 0)
                 invalid = 1;
+            break;
+            
+        case 'y': //
+            params.cache_file = optarg;
             break;
             
         // desync options
@@ -1190,6 +1196,21 @@ int main(int argc, char **argv)
     }
     #endif
     int status = run(&params.laddr);
+    
+    for (dp = params.dp; dp; dp = dp->next) {
+        LOG(LOG_S, "group: %d, triggered: %d\n", dp->id, dp->fail_count);
+    }
+    if (params.cache_file) {
+        FILE *f;
+        if (!strcmp(params.cache_file, "-"))
+            f = stdout;
+        else 
+            f = fopen(params.cache_file, "w");
+        if (!f)
+            perror("fopen");
+        else
+            dump_cache(params.mempool, f);
+    }
     clear_params();
     return status;
 }

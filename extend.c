@@ -23,8 +23,6 @@
 #include "desync.h"
 #include "packets.h"
 
-#define KEY_SIZE sizeof(union sockaddr_u)
-
 
 static int set_timeout(int fd, unsigned int s)
 {
@@ -48,79 +46,63 @@ static int set_timeout(int fd, unsigned int s)
 
 
 static ssize_t serialize_addr(const union sockaddr_u *dst,
-        uint8_t *const out, const size_t out_len)
+        struct cache_key *out)
 {
-    #define serialize(raw, field, len, counter){ \
-        const size_t size = sizeof(field); \
-        if ((counter + size) <= len) { \
-            memcpy(raw + counter, &(field), size); \
-            counter += size; \
-        } else return 0; \
-    }
-    size_t c = 0;
-    serialize(out, dst->in.sin_port, out_len, c);
-    serialize(out, dst->sa.sa_family, out_len, c);
+    out->port = dst->in.sin_port;
+    out->family = dst->sa.sa_family;
+    static const ssize_t c = offsetof(struct cache_key, ip.v4);
     
     if (dst->sa.sa_family == AF_INET) {
-        serialize(out, dst->in.sin_addr, out_len, c);
-    } else {
-        serialize(out, dst->in6.sin6_addr, out_len, c);
+        out->ip.v4 = dst->in.sin_addr;
+        return c + sizeof(out->ip.v4);
+    } 
+    else {
+        out->ip.v6 = dst->in6.sin6_addr;
+        return c + sizeof(out->ip.v6);
     }
-    #undef serialize
-
-    return c;
-}
-
-
-static void cache_del(const union sockaddr_u *dst)
-{
-    uint8_t key[KEY_SIZE] = { 0 };
-    int len = serialize_addr(dst, key, sizeof(key));
-    
-    INIT_ADDR_STR((*dst));
-    LOG(LOG_S, "delete ip: %s\n", ADDR_STR);
-    mem_delete(params.mempool, (char *)key, len);
 }
 
 
 static struct elem_i *cache_get(const union sockaddr_u *dst)
 {
-    uint8_t key[KEY_SIZE] = { 0 };
-    int len = serialize_addr(dst, key, sizeof(key));
+    struct cache_key key = { 0 };
+    int len = serialize_addr(dst, &key);
     
-    struct elem_i *val = (struct elem_i *)mem_get(params.mempool, (char *)key, len);
+    struct elem_i *val = (struct elem_i *)mem_get(params.mempool, (char *)&key, len);
     if (!val) {
         return 0;
     }
     time_t t = time(0);
-    if (t > val->time + params.cache_ttl) {
+    if (t > val->time + params.cache_ttl || val->dp == params.dp) {
         LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
-        mem_delete(params.mempool, (char *)key, len);
+        mem_delete(params.mempool, (char *)&key, len);
         return 0;
     }
     return val;
 }
 
 
-static struct elem_i *cache_add(const union sockaddr_u *dst)
+static struct elem_i *cache_add(
+        const union sockaddr_u *dst, const char *host, int host_len)
 {
-    uint8_t key[KEY_SIZE] = { 0 };
-    int len = serialize_addr(dst, key, sizeof(key));
-    
-    INIT_ADDR_STR((*dst));
-    LOG(LOG_S, "save ip: %s\n", ADDR_STR);
+    struct cache_key key = { 0 };
+    int cmp_len = serialize_addr(dst, &key);
     time_t t = time(0);
     
-    char *key_d = malloc(len);
-    if (!key_d) {
+    size_t total = sizeof(struct cache_data) + host_len;
+    struct cache_data *data = malloc(total);
+    if (!data) {
         return 0;
     }
-    memcpy(key_d, key, len);
+    memcpy(data, &key, cmp_len);
     
-    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, key_d, len, sizeof(struct elem_i));
+    data->host_len = host_len;
+    memcpy(data->host, host, host_len);
+    
+    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, (char *)data, cmp_len, sizeof(struct elem_i));
     if (!val) {
         uniperror("mem_add");
-        free(key_d);
+        free(data);
         return 0;
     }
     val->time = t;
@@ -287,7 +269,8 @@ static bool check_round(const int *nr, int r)
 
 static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
-    struct desync_params *dp = val->pair->dp->next;
+    struct desync_params *dp = val->pair->dp;
+    dp->fail_count++;
     
     struct buffer *pair_buff = val->pair->sq_buff;
     bool can_reconn = (
@@ -298,14 +281,18 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
     if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
         return -1;
     }
-    for (; dp; dp = dp->next) {
+    INIT_ADDR_STR((val->addr));
+    
+    for (dp = dp->next; dp; dp = dp->next) {
         if (!dp->detect) {
             break;
         }
         if (!(dp->detect & type)) {
             continue;
         }
-        struct elem_i *e = cache_add(&val->addr);
+        LOG(LOG_S, "save: ip=%s, id=%d\n", ADDR_STR, dp->id);
+        
+        struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
         if (e) {
             e->dp = dp;
         }
@@ -314,7 +301,12 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
         }
         return -1;
     }
-    cache_del(&val->addr);
+    LOG(LOG_S, "unreach ip: %s\n", ADDR_STR);
+    
+    struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
+    if (e) {
+        e->dp = params.dp;
+    }
     return -1;
 }
 
@@ -381,8 +373,31 @@ static inline void free_first_req(struct poolhd *pool, struct eval *client)
 }
 
 
+static void save_hostname(struct eval *client, const char *buffer, ssize_t n)
+{
+    if (client->host) {
+        return;
+    }
+    char *host = 0;
+    int len = parse_tls(buffer, n, &host);
+    if (!len) {
+        if (!(len = parse_http(buffer, n, &host, 0))) {
+            return;
+        }
+    }
+    if (!(client->host = malloc(len))) {
+        return;
+    }
+    memcpy(client->host, host, len);
+    client->host_len = len;
+}
+
+
 static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
 {
+    if (params.cache_file) {
+        save_hostname(client, buffer, n);
+    }
     struct desync_params *dp = client->dp, *init_dp = dp;
     
     for (; dp; dp = dp->next) {

@@ -147,3 +147,26 @@ void mem_destroy(struct mphdr *hdr)
     }
     free(hdr);
 }
+
+
+void dump_cache(struct mphdr *hdr, FILE *out)
+{
+    if (!hdr->root) {
+        return;
+    }
+    kavl_itr_t(my) itr;
+    kavl_itr_first(my, hdr->root, &itr);
+    do {
+        const struct elem_i *p = (const struct elem_i *)kavl_at(&itr);
+        struct cache_data *value = (struct cache_data *)p->i.data;
+        
+        char ADDR_STR[INET6_ADDRSTRLEN];
+        if (value->key.family == AF_INET)
+            inet_ntop(AF_INET, &value->key.ip.v4, ADDR_STR, sizeof(ADDR_STR));
+        else
+            inet_ntop(AF_INET6, &value->key.ip.v6, ADDR_STR, sizeof(ADDR_STR));
+        
+        fprintf(out, "%s %d %d %jd %.*s\n", 
+            ADDR_STR, ntohs(value->key.port), p->dp->id, (intmax_t)p->time, value->host_len, value->host);
+    } while (kavl_itr_next(my, &itr));
+}

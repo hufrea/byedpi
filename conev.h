@@ -75,6 +75,8 @@ struct eval {
     struct buffer *buff, *sq_buff;
     int flag;
     union sockaddr_u addr;
+    char *host;
+    int host_len;
     
     ssize_t recv_count;
     ssize_t round_sent;
