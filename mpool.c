@@ -167,6 +167,7 @@ void dump_cache(struct mphdr *hdr, FILE *out)
             inet_ntop(AF_INET6, &value->key.ip.v6, ADDR_STR, sizeof(ADDR_STR));
         
         fprintf(out, "%s %d %d %jd %.*s\n", 
-            ADDR_STR, ntohs(value->key.port), p->dp->id, (intmax_t)p->time, value->host_len, value->host);
+            ADDR_STR, ntohs(value->key.port), p->dp->id, 
+            (intmax_t)p->time, value->host_len, value->host);
     } while (kavl_itr_next(my, &itr));
 }

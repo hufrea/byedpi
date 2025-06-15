@@ -58,8 +58,7 @@ struct params params = {
     .laddr = {
         .in = { .sin_family = AF_INET }
     },
-    .debug = 0,
-    .auto_level = AUTO_NOBUFF
+    .debug = 0
 };
 
 
@@ -86,7 +85,7 @@ static const char help_text[] = {
     #endif
     "    -A, --auto <t,r,s,n>      Try desync params after this option\n"
     "                              Detect: torst,redirect,ssl_err,none\n"
-    "    -L, --auto-mode <0|1>     1 - handle trigger after several packets\n"
+    "    -L, --auto-mode <0-3>     Mode: 1 - post_resp, 2 - sort, 3 - 1+2\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     "    -y, --cache-dump <file|-> Dump cache to file or stdout\n"
     #ifdef TIMEOUT_SUPPORT
@@ -551,6 +550,9 @@ static struct desync_params *add_group(struct desync_params *prev)
         dp->prev = prev;
         prev->next = dp;
     }
+    dp->id = params.dp_n;
+    dp->bit = 1 << dp->id;
+    
     params.dp_n++;
     return dp;
 }
@@ -778,11 +780,32 @@ int main(int argc, char **argv)
             break;
             
         case 'L':
-            val = strtol(optarg, &end, 0);
-            if (val < 0 || val > 1 || *end)
-                invalid = 1;
-            else
-                params.auto_level = val;
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case '0': 
+                        break;
+                    case '1':
+                    case 'p': 
+                        params.auto_level |= AUTO_POST;
+                        break;
+                    case '2':
+                    case 's': 
+                        params.auto_level |= AUTO_SORT;
+                        break;
+                    case 'r':
+                        params.auto_level = 0;
+                        break;
+                    case '3':
+                        params.auto_level |= (AUTO_POST | AUTO_SORT);
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
+                }
+                end = strchr(end, ',');
+                if (end) end++;
+            }
             break;
             
         case 'A':
@@ -820,11 +843,10 @@ int main(int argc, char **argv)
                 end = strchr(end, ',');
                 if (end) end++;
             }
-            if (dp->detect && params.auto_level == AUTO_NOBUFF) {
-                params.auto_level = AUTO_NOSAVE;
+            if (dp->detect) {
+                params.auto_level |= AUTO_RECONN;
             }
             dp->_optind = optind;
-            dp->id = params.dp_n - 1;
             break;
             
         case 'B':
@@ -1167,7 +1189,9 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    
+    if ((params.auto_level & AUTO_SORT) && params.dp_n > 64) {
+        LOG(LOG_E, "too many groups!\n");
+    }
     if (params.baddr.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }

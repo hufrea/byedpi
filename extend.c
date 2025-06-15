@@ -90,7 +90,7 @@ static struct elem_i *cache_add(
     time_t t = time(0);
     
     size_t total = sizeof(struct cache_data) + host_len;
-    struct cache_data *data = malloc(total);
+    struct cache_data *data = calloc(1, total);
     if (!data) {
         return 0;
     }
@@ -116,7 +116,11 @@ int connect_hook(struct poolhd *pool, struct eval *val,
     struct desync_params *dp = val->dp, *init_dp;
     if (!dp) {
         struct elem_i *e = cache_get(dst);
-        dp = e ? e->dp : params.dp;
+        if (e) {
+            val->dp_mask = e->dp_mask;
+            dp = e->dp;
+        } else
+            dp = params.dp;
     }
     init_dp = dp;
     
@@ -267,18 +271,52 @@ static bool check_round(const int *nr, int r)
 }
 
 
+static void swop_groups(struct desync_params *dpc, struct desync_params *dpn)
+{
+    if (dpc->fail_count <= dpn->fail_count) {
+        return;
+    }
+    struct desync_params dpc_cp = *dpc;
+    dpc->next = dpn->next;
+    dpc->prev = dpn->prev;
+    
+    dpn->prev = dpc_cp.prev;
+    dpn->next = dpc_cp.next;
+    
+    if (dpn->prev) 
+        dpn->prev->next = dpn;
+    
+    if (dpc->next)
+        dpc->next->prev = dpc;
+    
+    if (dpc_cp.next != dpn) {
+        dpn->next->prev = dpn;
+        dpc->prev->next = dpc;
+    } 
+    else {
+        dpc->prev = dpn;
+        dpn->next = dpc;
+    }
+    dpc->detect = dpn->detect;
+    dpn->detect = dpc_cp.detect;
+    
+    if (params.dp == dpc) params.dp = dpn;
+}
+
+    
 static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     struct desync_params *dp = val->pair->dp;
     dp->fail_count++;
+    val->pair->dp_mask |= dp->bit;
     
     struct buffer *pair_buff = val->pair->sq_buff;
     bool can_reconn = (
         pair_buff && pair_buff->lock 
             && !val->recv_count
-            && params.auto_level > AUTO_NOBUFF
+            && (params.auto_level & AUTO_RECONN)
     );
-    if (!can_reconn && params.auto_level <= AUTO_NOSAVE) {
+    if (!can_reconn && !(params.auto_level & AUTO_POST)) {
         return -1;
     }
     INIT_ADDR_STR((val->addr));
@@ -290,11 +328,18 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
         if (!(dp->detect & type)) {
             continue;
         }
+        if (params.auto_level & AUTO_SORT) {
+            if (dp->bit & val->pair->dp_mask) 
+                continue;
+            else
+                swop_groups(val->pair->dp, dp);
+        }
         LOG(LOG_S, "save: ip=%s, id=%d\n", ADDR_STR, dp->id);
         
         struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
         if (e) {
             e->dp = dp;
+            e->dp_mask = val->pair->dp_mask;
         }
         if (can_reconn) {
             return reconnect(pool, val, dp);
@@ -306,6 +351,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
     struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
     if (e) {
         e->dp = params.dp;
+        e->dp_mask = 0;
     }
     return -1;
 }
@@ -412,7 +458,7 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
         LOG(LOG_E, "drop connection\n");
         return -1;
     }
-    if (params.auto_level > AUTO_NOBUFF && params.dp->next) {
+    if ((params.auto_level & AUTO_POST) && params.dp->next) {
         client->mark = is_tls_chello(buffer, n);
     }
     client->dp = dp;
@@ -430,7 +476,7 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
 
 static int cancel_setup(struct eval *remote)
 {
-    if (params.timeout && params.auto_level <= AUTO_NOSAVE &&
+    if (params.timeout && !(params.auto_level & AUTO_POST) &&
             set_timeout(remote->fd, 0)) {
         return -1;
     }
@@ -520,7 +566,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
     //
     if (val->flag != FLAG_CONN 
             && !val->pair->recv_count 
-            && params.auto_level > AUTO_NOBUFF
+            && (params.auto_level & AUTO_RECONN)
             && (val->sq_buff || val->recv_count == n))
     {
         if (!val->sq_buff) {

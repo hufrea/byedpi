@@ -33,8 +33,9 @@
 #define DETECT_TLS_ERR 2
 #define DETECT_TORST 8
 
-#define AUTO_NOBUFF -1
-#define AUTO_NOSAVE 0
+#define AUTO_RECONN 1
+#define AUTO_POST 2
+#define AUTO_SORT 4
 
 #define FM_RAND 1
 #define FM_ORIG 2
@@ -112,6 +113,7 @@ struct desync_params {
     
     int _optind;
     int id;
+    uint64_t bit;
     int fail_count;
     
     struct desync_params *prev;

@@ -83,6 +83,7 @@ struct eval {
     unsigned int round_count;
     
     struct desync_params *dp;
+    uint64_t dp_mask;
     bool mark; //
     
     bool restore_ttl;

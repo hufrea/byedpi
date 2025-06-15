@@ -40,6 +40,7 @@ struct elem {
 struct elem_i {
     struct elem i;
     struct desync_params *dp;
+    uint64_t dp_mask;
     time_t time;
 };
 
