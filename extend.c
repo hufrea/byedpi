@@ -68,7 +68,7 @@ static struct elem_i *cache_get(const union sockaddr_u *dst)
     struct cache_key key = { 0 };
     int len = serialize_addr(dst, &key);
     
-    struct elem_i *val = (struct elem_i *)mem_get(params.mempool, (char *)&key, len);
+    struct elem_i *val = mem_get(params.mempool, (char *)&key, len);
     if (!val) {
         return 0;
     }
@@ -83,29 +83,30 @@ static struct elem_i *cache_get(const union sockaddr_u *dst)
 
 
 static struct elem_i *cache_add(
-        const union sockaddr_u *dst, const char *host, int host_len)
+        const union sockaddr_u *dst, char **host, int host_len)
 {
     struct cache_key key = { 0 };
     int cmp_len = serialize_addr(dst, &key);
     time_t t = time(0);
     
-    size_t total = sizeof(struct cache_data) + host_len;
-    struct cache_data *data = calloc(1, total);
+    struct cache_key *data = calloc(1, cmp_len);
     if (!data) {
         return 0;
     }
     memcpy(data, &key, cmp_len);
     
-    data->host_len = host_len;
-    memcpy(data->host, host, host_len);
-    
-    struct elem_i *val = (struct elem_i *)mem_add(params.mempool, (char *)data, cmp_len, sizeof(struct elem_i));
+    struct elem_i *val = mem_add(params.mempool, (char *)data, cmp_len, sizeof(struct elem_i));
     if (!val) {
         uniperror("mem_add");
         free(data);
         return 0;
     }
     val->time = t;
+    if (!val->extra && *host) {
+        val->extra_len = host_len;
+        val->extra = *host;
+        *host = 0;
+    }
     return val;
 }
 
@@ -276,6 +277,8 @@ static void swop_groups(struct desync_params *dpc, struct desync_params *dpn)
     if (dpc->fail_count <= dpn->fail_count) {
         return;
     }
+    LOG(LOG_S, "swop: %d <-> %d\n", dpc->id, dpn->id);
+    
     struct desync_params dpc_cp = *dpc;
     dpc->next = dpn->next;
     dpc->prev = dpn->prev;
@@ -336,7 +339,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
         }
         LOG(LOG_S, "save: ip=%s, id=%d\n", ADDR_STR, dp->id);
         
-        struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
+        struct elem_i *e = cache_add(&val->addr, &val->pair->host, val->pair->host_len);
         if (e) {
             e->dp = dp;
             e->dp_mask = val->pair->dp_mask;
@@ -348,7 +351,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
     }
     LOG(LOG_S, "unreach ip: %s\n", ADDR_STR);
     
-    struct elem_i *e = cache_add(&val->addr, val->pair->host, val->pair->host_len);
+    struct elem_i *e = cache_add(&val->addr, &val->pair->host, val->pair->host_len);
     if (e) {
         e->dp = params.dp;
         e->dp_mask = 0;

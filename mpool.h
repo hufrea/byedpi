@@ -11,6 +11,9 @@
 #define CMP_BITS 1
 #define CMP_HOST 2
 
+#define MF_STATIC 1
+#define MF_EXTRA 2
+
 #pragma pack(push, 1)
 
 struct cache_key {
@@ -22,12 +25,6 @@ struct cache_key {
     } ip;
 };
 
-struct cache_data {
-    struct cache_key key;
-    int host_len;
-    char host[];
-};
-
 #pragma pack(pop)
 
 struct elem {
@@ -37,25 +34,34 @@ struct elem {
     KAVL_HEAD(struct elem) head;
 };
 
+struct elem_ex {
+    struct elem main;
+    unsigned int extra_len;
+    char *extra;
+};
+
 struct elem_i {
-    struct elem i;
+    struct elem main;
+    unsigned int extra_len;
+    char *extra;
+    
     struct desync_params *dp;
     uint64_t dp_mask;
     time_t time;
 };
 
 struct mphdr {
-    bool static_data;
+    unsigned short flags;
     unsigned char cmp_type;
     size_t count;
     struct elem *root;
 };
 
-struct mphdr *mem_pool(bool is_static, unsigned char cmp_type);
+struct mphdr *mem_pool(unsigned short flags, unsigned char cmp_type);
 
-struct elem *mem_get(const struct mphdr *hdr, const char *str, int len);
+void *mem_get(const struct mphdr *hdr, const char *str, int len);
 
-struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t ssize);
+void *mem_add(struct mphdr *hdr, char *str, int len, size_t ssize);
 
 void mem_delete(struct mphdr *hdr, const char *str, int len);
 

@@ -67,18 +67,18 @@ static int scmp(const struct elem *p, const struct elem *q)
 KAVL_INIT(my, struct elem, head, scmp)
 
 
-struct mphdr *mem_pool(bool is_static, unsigned char cmp_type)
+struct mphdr *mem_pool(unsigned short flags, unsigned char cmp_type)
 {
     struct mphdr *hdr = calloc(1, sizeof(struct mphdr));
     if (hdr) {
-        hdr->static_data = is_static;
+        hdr->flags = flags;
         hdr->cmp_type = cmp_type;
     }
     return hdr;
 }
 
 
-struct elem *mem_get(const struct mphdr *hdr, const char *str, int len)
+void *mem_get(const struct mphdr *hdr, const char *str, int len)
 {
     struct elem temp = { 
         .cmp_type = hdr->cmp_type,
@@ -88,7 +88,19 @@ struct elem *mem_get(const struct mphdr *hdr, const char *str, int len)
 }
 
 
-struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t struct_size)
+static void destroy_elem(struct mphdr *hdr, struct elem *e)
+{
+    if (!(hdr->flags & MF_STATIC)) {
+        free(e->data);
+    }
+    if (hdr->flags & MF_EXTRA) {
+        free(((struct elem_ex *)e)->extra);
+    }
+    free(e);
+}
+
+
+void *mem_add(struct mphdr *hdr, char *str, int len, size_t struct_size)
 {
     struct elem *v, *e = calloc(1, struct_size);
     if (!e) {
@@ -104,9 +116,7 @@ struct elem *mem_add(struct mphdr *hdr, char *str, int len, size_t struct_size)
         v = kavl_insert(my, &hdr->root, e, 0);
     }
     if (e != v) {
-        if (!hdr->static_data)
-            free(e->data);
-        free(e);
+        destroy_elem(hdr, e);
     }
     else hdr->count++;
     return v;
@@ -123,11 +133,7 @@ void mem_delete(struct mphdr *hdr, const char *str, int len)
     if (!e) {
         return;
     }
-    if (!hdr->static_data) {
-        free(e->data);
-        e->data = 0;
-    }
-    free(e);
+    destroy_elem(hdr, e);
     hdr->count--;
 }
 
@@ -139,11 +145,7 @@ void mem_destroy(struct mphdr *hdr)
         if (!e) {
             break;
         }
-        if (!hdr->static_data) {
-            free(e->data);
-        }
-        e->data = 0;
-        free(e);
+        destroy_elem(hdr, e);
     }
     free(hdr);
 }
@@ -157,17 +159,18 @@ void dump_cache(struct mphdr *hdr, FILE *out)
     kavl_itr_t(my) itr;
     kavl_itr_first(my, hdr->root, &itr);
     do {
-        const struct elem_i *p = (const struct elem_i *)kavl_at(&itr);
-        struct cache_data *value = (struct cache_data *)p->i.data;
+        struct elem_i *p = (struct elem_i *)kavl_at(&itr);
+        struct cache_key *key = (struct cache_key *)p->main.data;
         
         char ADDR_STR[INET6_ADDRSTRLEN];
-        if (value->key.family == AF_INET)
-            inet_ntop(AF_INET, &value->key.ip.v4, ADDR_STR, sizeof(ADDR_STR));
+        if (key->family == AF_INET)
+            inet_ntop(AF_INET, &key->ip.v4, ADDR_STR, sizeof(ADDR_STR));
         else
-            inet_ntop(AF_INET6, &value->key.ip.v6, ADDR_STR, sizeof(ADDR_STR));
+            inet_ntop(AF_INET6, &key->ip.v6, ADDR_STR, sizeof(ADDR_STR));
         
         fprintf(out, "%s %d %d %jd %.*s\n", 
-            ADDR_STR, ntohs(value->key.port), p->dp->id, 
-            (intmax_t)p->time, value->host_len, value->host);
-    } while (kavl_itr_next(my, &itr));
+            ADDR_STR, ntohs(key->port), p->dp->id, 
+            (intmax_t)p->time, p->extra_len, p->extra ? p->extra : "");
+    } 
+    while (kavl_itr_next(my, &itr));
 }

@@ -309,7 +309,7 @@ static inline int lower_char(char *cl)
 
 struct mphdr *parse_hosts(char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(1, CMP_HOST);
+    struct mphdr *hdr = mem_pool(MF_STATIC, CMP_HOST);
     if (!hdr) {
         return 0;
     }
@@ -1201,7 +1201,7 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    params.mempool = mem_pool(0, CMP_BYTES);
+    params.mempool = mem_pool(MF_EXTRA, CMP_BYTES);
     if (!params.mempool) {
         uniperror("mem_pool");
         clear_params();
