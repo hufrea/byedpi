@@ -1189,7 +1189,7 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    if ((params.auto_level & AUTO_SORT) && params.dp_n > 64) {
+    if ((size_t )params.dp_n > sizeof(dp->bit) * 8) {
         LOG(LOG_E, "too many groups!\n");
     }
     if (params.baddr.sa.sa_family != AF_INET6) {
@@ -1222,7 +1222,7 @@ int main(int argc, char **argv)
     int status = run(&params.laddr);
     
     for (dp = params.dp; dp; dp = dp->next) {
-        LOG(LOG_S, "group: %d, triggered: %d\n", dp->id, dp->fail_count);
+        LOG(LOG_S, "group: %d, triggered: %d, pri: %d\n", dp->id, dp->fail_count, dp->pri);
     }
     if (params.cache_file) {
         FILE *f;

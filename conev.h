@@ -84,6 +84,7 @@ struct eval {
     
     struct desync_params *dp;
     uint64_t dp_mask;
+    int detect;
     bool mark; //
     
     bool restore_ttl;
