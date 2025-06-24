@@ -461,7 +461,7 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
         LOG(LOG_E, "drop connection\n");
         return -1;
     }
-    if ((params.auto_level & AUTO_POST) && params.dp->next) {
+    if ((params.auto_level & (AUTO_POST | AUTO_RECONN)) && params.dp->next) {
         client->mark = is_tls_chello(buffer, n);
     }
     client->dp = dp;
