@@ -339,12 +339,13 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
         lav->dp_mask |= dp->bit;
     }
     if ((params.auto_level & AUTO_SORT) 
-            && !(lav->dp->bit & (cache->dp_mask | uncheked))) 
+            && !(lav->dp->bit & cache->dp_mask)) 
     {
-        if (next && lav->dp->pri > next->pri) 
+        if (next && lav->dp->pri > next->pri
+                && !(lav->dp->bit & uncheked)) {
             swop_groups(lav->dp, next);
-        else 
-            lav->dp->pri++;
+        }
+        lav->dp->pri++;
     }
     if (!next) {
         LOG(LOG_S, "unreach ip: %s\n", ADDR_STR);
