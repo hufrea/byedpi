@@ -546,7 +546,7 @@ static int udp_associate(struct poolhd *pool,
         uniperror("send");
         return -1;
     }
-    if (mod_etype(pool, val, 0)) {
+    if (mod_etype(pool, val, POLLRDHUP)) {
         uniperror("mod_etype");
         return -1;
     }
