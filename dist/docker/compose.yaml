@@ -1,0 +1,12 @@
+services:
+  byedpi:
+    image: hufrea/byedpi
+    command: ["--fake", "-1", "--md5sig"]
+    restart: unless-stopped
+    user: 1000:1000
+    ports:
+      - name: SOCKS proxy
+        target: 1080
+        host_ip: 127.0.0.1
+        published: 1080
+        protocol: tcp
