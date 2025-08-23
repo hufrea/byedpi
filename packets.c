@@ -166,6 +166,38 @@ static void copy_name(char *out, const char *name, size_t out_len)
 }
 
 
+static int remove_ks_group(char *buffer,
+        ssize_t n, size_t skip, uint16_t group)
+{
+    ssize_t ks_offs = find_tls_ext_offset(0x0033, buffer, n, skip);
+    if (!ks_offs || ks_offs + 6 >= n) {
+        return 0;
+    }
+    int ks_sz = ANTOHS(buffer, ks_offs + 2);
+    if (ks_offs + 4 + ks_sz > n) {
+        return 0;
+    }
+    ssize_t g_offs = ks_offs + 4 + 2;
+    while (g_offs + 4 < ks_offs + 4 + ks_sz) {
+        uint16_t g_sz = ANTOHS(buffer, g_offs + 2);
+        if (ks_offs + 4 + g_sz > n) {
+            return 0;
+        }
+        uint16_t g_tp = ANTOHS(buffer, g_offs);
+        if (g_tp == group) {
+            ssize_t g_end = g_offs + 4 + g_sz;
+            
+            memmove(buffer + g_offs, buffer + g_end, n - g_end);
+            SHTONA(buffer, ks_offs + 2, ks_sz - (4 + g_sz));
+            SHTONA(buffer, ks_offs + 4, ks_sz - (4 + g_sz) - 2);
+            return 4 + g_sz;
+        }
+        g_offs += 4 + g_sz;
+    }
+    return 0;
+}
+
+
 static int remove_tls_ext(char *buffer, 
         ssize_t n, size_t skip, uint16_t type)
 {
@@ -269,9 +301,15 @@ int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
     };
     for (uint16_t *e = exts; avail && avail < 4; e++) {
         if (!*e) {
-            return -1;
+            break;
         }
         avail += remove_tls_ext(buffer, n, skip, *e);
+    }
+    if (avail && avail < 4) {
+        avail += remove_ks_group(buffer, n, skip, 0x11ec);
+    }
+    if (avail < 0) {
+        return -1;
     }
     if (!(sni_offs = find_tls_ext_offset(0x00, buffer, n, skip))) {
         return -1;
