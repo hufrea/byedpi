@@ -232,8 +232,11 @@ static int resize_ech_ext(char *buffer,
     ssize_t pay_offs = ech_offs + 4 + 8 + enc_sz;
     uint16_t pay_sz = ech_sz - (8 + enc_sz + 2);
     
-    if (pay_offs + 2 > n || pay_sz < -inc) {
+    if (pay_offs + 2 > n) {
         return 0;
+    }
+    if (pay_sz < -inc) {
+        inc = -pay_sz;
     }
     SHTONA(buffer, ech_offs + 2, ech_sz + inc);
     SHTONA(buffer, pay_offs, pay_sz + inc);
@@ -287,7 +290,10 @@ int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
     if (avail) {
         avail -= resize_ech_ext(buffer, n, skip, avail);
     }
-    uint16_t exts[] = { 
+    if (avail < -50) {
+        avail += remove_ks_group(buffer, n, skip, 0x11ec);
+    }
+    static const uint16_t exts[] = { 
         0x0015, // padding
         0x0031, // post_handshake_auth
         0x0010, // ALPN
@@ -299,17 +305,11 @@ int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
         0x001b, // compress_certificate
         0
     };
-    for (uint16_t *e = exts; avail && avail < 4; e++) {
+    for (const uint16_t *e = exts; avail && avail < 4; e++) {
         if (!*e) {
-            break;
+            return -1;
         }
         avail += remove_tls_ext(buffer, n, skip, *e);
-    }
-    if (avail && avail < 4) {
-        avail += remove_ks_group(buffer, n, skip, 0x11ec);
-    }
-    if (avail < 0) {
-        return -1;
     }
     if (!(sni_offs = find_tls_ext_offset(0x00, buffer, n, skip))) {
         return -1;
@@ -319,6 +319,9 @@ int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
     }
     copy_name(buffer + sni_offs + 9, host, new_sz);
     
+    if (avail > 0) {
+        avail -= resize_ech_ext(buffer, n, skip, avail);
+    }
     if (avail >= 4) {
         avail += remove_tls_ext(buffer, n, skip, 0x0015);
         
