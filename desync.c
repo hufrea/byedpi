@@ -568,9 +568,13 @@ ssize_t desync(struct poolhd *pool,
         if (offset && pos < offset) {
             continue;
         }
-        if (pos < 0 || pos > n || pos < lp) {
+        if (pos < 0 || pos < lp) {
             LOG(LOG_E, "split cancel: pos=%ld-%ld, n=%zd\n", lp, pos, n);
             break;
+        }
+        if (pos > n) {
+            LOG(LOG_E, "pos reduced: %ld -> %ld\n", pos, n);
+            pos = n;
         }
         ssize_t s = 0;
         
