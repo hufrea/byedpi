@@ -133,16 +133,23 @@ static struct packet get_tcp_fake(const char *buffer, ssize_t n,
         sni = opt->fake_sni_list[rand() % opt->fake_sni_count];
     }
     do {
+        ssize_t f_size = opt->fake_tls_size;
+        if (f_size < 0) {
+            f_size = n + f_size;
+        }
+        if (f_size > n || f_size <= 0) {
+            f_size = n;
+        }
         if ((opt->fake_mod & FM_ORIG) && info->type == IS_HTTPS) {
             memcpy(p, buffer, n);
             
-            if (!sni || !change_tls_sni(sni, p, n, n)) {
+            if (!sni || !change_tls_sni(sni, p, n, f_size)) {
                 break;
             }
             LOG(LOG_E, "change sni error\n");
         }
         memcpy(p, pkt.data, pkt.size);
-        if (sni && change_tls_sni(sni, p, pkt.size, n) < 0) {
+        if (sni && change_tls_sni(sni, p, pkt.size, f_size) < 0) {
             break;
         }
     } while(0);

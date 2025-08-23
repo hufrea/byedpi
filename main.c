@@ -113,7 +113,7 @@ static const char help_text[] = {
     "    -t, --ttl <num>           TTL of fake packets, default 8\n"
     "    -O, --fake-offset <pos_t> Fake data start offset\n"
     "    -l, --fake-data <f|:str>  Set custom fake packet\n"
-    "    -Q, --fake-tls-mod <r,o>  Modify fake TLS CH: rand,orig\n"
+    "    -Q, --fake-tls-mod <flag> Modify fake TLS CH: rand,orig,msize=<int>\n"
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
@@ -1012,6 +1012,15 @@ int main(int argc, char **argv)
                     case 'o': 
                         dp->fake_mod |= FM_ORIG;
                         break;
+                    case 'm': 
+                        if ((end = strchr(end, '='))) {
+                            val = strtol(end + 1, &end, 0);
+                            if (!(val > INT_MAX || (*end && *end != ','))) {
+                                dp->fake_tls_size = val;
+                                break;
+                            }
+                        }
+                        __attribute__((fallthrough));
                     default:
                         invalid = 1;
                         continue;

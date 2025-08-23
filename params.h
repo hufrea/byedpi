@@ -88,6 +88,7 @@ struct desync_params {
     int fake_sni_count;
     const char **fake_sni_list;
     int fake_mod;
+    int fake_tls_size;
     bool drop_sack;
     char oob_char[2];
     
