@@ -118,13 +118,14 @@ static size_t find_ext_block(const char *data, size_t size)
 }
 
 
-static void merge_tls_records(char *buffer, ssize_t n)
+static int merge_tls_records(char *buffer, ssize_t n)
 {
     if (n < 5) {
-        return;
+        return 0;
     }
     uint16_t full_sz = 0;
     uint16_t r_sz = ANTOHS(buffer, 3);
+    int i = 0;
     
     while (1) {
         full_sz += r_sz;
@@ -139,9 +140,11 @@ static void merge_tls_records(char *buffer, ssize_t n)
         }
         memmove(buffer + 5 + full_sz, 
             buffer + 10 + full_sz, n - (10 + full_sz));
+        i++;
     }
     SHTONA(buffer, 3, full_sz);
     SHTONA(buffer, 7, full_sz - 4);
+    return i * 5;
 }
 
 
@@ -260,8 +263,8 @@ static void resize_sni(char *buffer, ssize_t n,
 
 int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
 {
-    merge_tls_records(buffer, n);
-    int avail = nn < n ? nn - n : 0;
+    int avail = merge_tls_records(buffer, n);
+    avail += (nn - n);
     
     uint16_t r_sz = ANTOHS(buffer, 3);
     r_sz += avail;
@@ -323,8 +326,6 @@ int change_tls_sni(const char *host, char *buffer, ssize_t n, ssize_t nn)
         avail -= resize_ech_ext(buffer, n, skip, avail);
     }
     if (avail >= 4) {
-        avail += remove_tls_ext(buffer, n, skip, 0x0015);
-        
         SHTONA(buffer, 5 + r_sz - avail, 0x0015);
         SHTONA(buffer, 5 + r_sz - avail + 2, avail - 4);
         memset(buffer + 5 + r_sz - avail + 4, 0, avail - 4);
