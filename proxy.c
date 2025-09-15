@@ -785,6 +785,10 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
                 if (params.baddr.sa.sa_family != addr.sa.sa_family) {
                     return -1;
                 }
+                INIT_ADDR_STR((addr));
+                LOG(LOG_S, "udp addr: fd=%d, addr=%s:%d\n", 
+                    val->fd, ADDR_STR, ntohs(addr.in.sin_port));
+                    
                 if (connect(pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
                     return -1;
