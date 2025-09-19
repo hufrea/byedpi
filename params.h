@@ -98,6 +98,8 @@ struct desync_params {
     int mod_http;
     int tlsrec_n;
     struct part *tlsrec;
+    uint8_t tlsminor;
+    bool tlsminor_set;
     
     int proto;
     int detect;

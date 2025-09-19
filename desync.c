@@ -479,7 +479,10 @@ static void tamp(char *buffer, size_t bfsize, ssize_t *n,
             LOG(LOG_E, "mod http error\n");
         }
     }
-    else if (dp->tlsrec_n && is_tls_chello(buffer, *n)) {
+    if (dp->tlsminor_set && is_tls_chello(buffer, *n)) {
+        ((uint8_t *)buffer)[2] = dp->tlsminor;
+    }
+    if (dp->tlsrec_n && is_tls_chello(buffer, *n)) {
         long lp = 0;
         struct part part;
         int i = 0, r = 0, rc = 0;

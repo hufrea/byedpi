@@ -117,6 +117,7 @@ static const char help_text[] = {
     "    -e, --oob-data <char>     Set custom OOB data\n"
     "    -M, --mod-http <h,d,r>    Modify HTTP: hcsmix,dcsmix,rmspace\n"
     "    -r, --tlsrec <pos_t>      Make TLS record at position\n"
+    "    -m, --tlsminor <ver>      Change minor version of TLS\n"
     "    -a, --udp-fake <count>    UDP fakes count, default 0\n"
     #ifdef __linux__
     "    -Y, --drop-sack           Drop packets with SACK extension\n"
@@ -178,6 +179,7 @@ const struct option options[] = {
     {"oob-data",      1, 0, 'e'},
     {"mod-http",      1, 0, 'M'},
     {"tlsrec",        1, 0, 'r'},
+    {"tlsminor",      1, 0, 'm'},
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
     {"wait-send",     0, 0, 'Z'}, //
@@ -1092,6 +1094,16 @@ int main(int argc, char **argv)
                    || part->pos > 0xffff) {
                 invalid = 1;
                 break;
+            }
+            break;
+            
+        case 'm':
+            val = strtol(optarg, &end, 0);
+            if (val <= 0 || val > 255 || *end) 
+                invalid = 1;
+            else {
+                dp->tlsminor = val;
+                dp->tlsminor_set = 1;
             }
             break;
             
