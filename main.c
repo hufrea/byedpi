@@ -603,36 +603,17 @@ void clear_params(void)
     }
     struct desync_params *dp = params.dp;
     while (dp) {
-        if (dp->parts != 0) {
-            free(dp->parts);
-            dp->parts = 0;
-        }
-        if (dp->tlsrec != 0) {
-            free(dp->tlsrec);
-            dp->tlsrec = 0;
-        }
-        if (dp->fake_data.data != 0) {
-            free(dp->fake_data.data);
-            dp->fake_data.data = 0;
-        }
-        if (dp->file_ptr != 0) {
-            free(dp->file_ptr);
-            dp->file_ptr = 0;
-        }
-        if (dp->hosts != 0) {
-            mem_destroy(dp->hosts);
-            dp->hosts = 0;
-        }
-        if (dp->ipset != 0) {
-            mem_destroy(dp->ipset);
-            dp->hosts = 0;
-        }
-        if (dp->fake_sni_list != 0) {
-            free(dp->fake_sni_list);
-            dp->fake_sni_list = 0;
-        }
+        free(dp->parts);
+        free(dp->tlsrec);
+        free(dp->fake_data.data);
+        free(dp->file_ptr);
+        free(dp->fake_sni_list);
+        mem_destroy(dp->hosts);
+        mem_destroy(dp->ipset);
+        
         struct desync_params *t = dp;
         dp = dp->next;
+        memset(t, 0, sizeof(*t));
         free(t);
     }
     params.dp = 0;

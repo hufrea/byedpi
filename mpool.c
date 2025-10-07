@@ -140,7 +140,7 @@ void mem_delete(struct mphdr *hdr, const char *str, int len)
 
 void mem_destroy(struct mphdr *hdr)
 {
-    while (hdr->root) {
+    while (hdr && hdr->root) {
         struct elem *e = kavl_erase_first(my, &hdr->root);
         if (!e) {
             break;
