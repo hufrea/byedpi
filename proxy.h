@@ -88,7 +88,10 @@ void map_fix(union sockaddr_u *addr, char f6);
 
 int create_conn(struct poolhd *pool,
         struct eval *val, const union sockaddr_u *dst, evcb_t next);
- 
+
+int s5_set_addr(char *buffer, size_t n,
+        const union sockaddr_u *addr, char end);
+
 int listen_socket(const union sockaddr_u *srv);
 
 int on_tunnel(struct poolhd *pool, struct eval *val, int etype);

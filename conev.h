@@ -71,6 +71,9 @@ struct eval {
     long tv_ms;
     struct eval *tv_next, *tv_prev;
     
+    evcb_t after_conn_cb;
+    int conn_state;
+    
     struct eval *pair;
     struct buffer *buff, *sq_buff;
     int flag;

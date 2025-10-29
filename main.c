@@ -3,6 +3,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <limits.h>
+#include <ctype.h>
 
 #include "params.h"
 #include "proxy.h"
@@ -189,7 +190,8 @@ const struct option options[] = {
     {"protect-path",  1, 0, 'P'}, //
     #endif
     {"ipset",         1, 0, 'j'},
-    {"connect-to",    1, 0, 'C'}, //
+    {"to-socks5",     1, 0, 'C'}, //
+    {"comment",       1, 0, '#'}, //
     {0}
 };
     
@@ -422,13 +424,38 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
 
 int get_addr(const char *str, union sockaddr_u *addr)
 {
+    uint16_t port = 0;
+    const char *s = str, *e = 0;
+    const char *end = 0, *p = str;
+    
+    if (*str == '[') {
+        e = strchr(str, ']');
+        if (!e) return -1;
+        s++; p = e + 1;
+    }
+    p = strchr(p, ':');
+    if (p && isdigit(p[1])) {
+        long val = strtol(p + 1, (char **)&end, 0);
+        if (val <= 0 || val > 0xffff || *end)
+            return -1;
+        else
+            port = htons(val);
+        if (!e) e = p;
+    }
+    if (!e) {
+        e = strchr(str, 0);
+    }
+    char str_ip[(e - s) + 1];
+    memcpy(str_ip, s, e - s);
+    str_ip[e - s] = 0;
+    
     struct addrinfo hints = {0}, *res = 0;
     
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_family = AF_UNSPEC;
     hints.ai_flags = AI_NUMERICHOST;
     
-    if (getaddrinfo(str, 0, &hints, &res) || !res) {
+    if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
         return -1;
     }
     
@@ -438,10 +465,12 @@ int get_addr(const char *str, union sockaddr_u *addr)
     else
         addr->in.sin_addr = (
             (struct sockaddr_in *)res->ai_addr)->sin_addr;
+            
     addr->sa.sa_family = res->ai_addr->sa_family;
-    
+    if (port) {
+        addr->in6.sin6_port = port;
+    }
     freeaddrinfo(res);
-    
     return 0;
 }
 
@@ -1155,12 +1184,11 @@ int main(int argc, char **argv)
             break;
             
         case 'C':
-            if (get_addr(optarg, &dp->custom_dst_addr) < 0)
+            if (get_addr(optarg, &dp->ext_socks) < 0 
+                    || !dp->ext_socks.in6.sin6_port) 
                 invalid = 1;
-            else
-                dp->custom_dst = 1;
             break;
-
+        
         #ifdef __linux__
         case 'P':
             params.protect_path = optarg;

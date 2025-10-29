@@ -22,6 +22,8 @@ ssize_t udp_hook(struct eval *val,
     
 static bool check_l34(struct desync_params *dp, int st, const union sockaddr_u *dst);
 
+int on_torst(struct poolhd *pool, struct eval *val);
+
 #ifdef __linux__
 static int protect(int conn_fd, const char *path);
 #else

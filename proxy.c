@@ -307,7 +307,7 @@ static int s5_get_addr(const char *buffer,
 }
 
 
-static int s5_set_addr(char *buffer, size_t n,
+int s5_set_addr(char *buffer, size_t n,
         const union sockaddr_u *addr, char end)
 {
     struct s5_req *r = (struct s5_req *)buffer;
@@ -914,6 +914,15 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
                 SO_ERROR, (char *)&error, &len)) {
             uniperror("getsockopt SO_ERROR");
             return -1;
+        }
+        switch (error) {
+        case ECONNRESET:
+        case ECONNREFUSED:
+        case ETIMEDOUT:
+        case EHOSTUNREACH:
+            if (on_torst(pool, val) == 0) {
+                return 0;
+            }
         }
     }
     else {

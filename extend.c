@@ -111,6 +111,53 @@ static struct elem_i *cache_add(
 }
 
 
+int on_socks_recv(struct poolhd *pool, struct eval *val, int t)
+{
+    struct s5_req r = { 0 };
+    
+    ssize_t n = recv(val->fd, (char *)&r, sizeof(r), 0);
+    if (n < 2) {
+        uniperror("socks recv");
+        return on_torst(pool, val);
+    }
+    if (r.ver != S_VER5 || r.cmd != 0x00) {
+        LOG(LOG_E, "socks answer: %d\n", r.cmd);
+        return on_torst(pool, val);
+    }
+    if (val->conn_state != FLAG_S5) {
+        r.cmd = S_CMD_CONN;
+        int len = s5_set_addr((char *)&r, sizeof(r), &val->addr, 0);
+        
+        if (send(val->fd, (char *)&r, len, 0) < 0) {
+            uniperror("socks send");
+            return on_torst(pool, val);
+        }
+        val->conn_state = FLAG_S5;
+        return 0;
+    }
+    val->cb = val->after_conn_cb;
+    
+    return (val->cb)(pool, val, POLLOUT);
+}
+
+int on_socks_conn(struct poolhd *pool, struct eval *val, int t)
+{
+    static const char data[3] = "\x05\x01";
+    
+    if (send(val->fd, (char *)data, sizeof(data), 0) < 0) {
+        uniperror("socks send");
+        return on_torst(pool, val);
+    }
+    if (mod_etype(pool, val, POLLIN) ||
+            mod_etype(pool, val->pair, POLLIN)) {
+        uniperror("mod_etype");
+        return -1;
+    }
+    val->cb = &on_socks_recv;
+    return 0;
+}
+
+
 int connect_hook(struct poolhd *pool, struct eval *val, 
         const union sockaddr_u *dst, evcb_t next)
 {
@@ -136,11 +183,13 @@ int connect_hook(struct poolhd *pool, struct eval *val,
     }
     val->dp = dp;
     
-    if (dp->custom_dst) {
-        union sockaddr_u addr = dp->custom_dst_addr;
-        addr.in6.sin6_port = dst->in6.sin6_port;
-        
-        return create_conn(pool, val, &addr, next);
+    if (dp->ext_socks.in6.sin6_port) {
+        int e = create_conn(pool, val, &dp->ext_socks, &on_socks_conn);
+        if (!e) {
+            val->pair->after_conn_cb = next;
+            val->pair->addr = *dst;
+        }
+        return e;
     }
     return create_conn(pool, val, dst, next);
 }
@@ -166,7 +215,8 @@ static int reconnect(struct poolhd *pool, struct eval *val)
     
     struct eval *client = val->pair;
     
-    if (connect_hook(pool, client, &val->addr, &on_tunnel)) {
+    if (connect_hook(pool, client, &val->addr, 
+            client->sq_buff ? &on_tunnel : &on_connect)) {
         return -1;
     }
     val->pair = 0;
@@ -174,13 +224,15 @@ static int reconnect(struct poolhd *pool, struct eval *val)
     
     client->cb = &on_tunnel;
     
-    if (!client->buff) {
-        client->buff = buff_pop(pool, client->sq_buff->size);
+    if (client->sq_buff) {
+        if (!client->buff) {
+            client->buff = buff_pop(pool, client->sq_buff->size);
+        }
+        client->buff->lock = client->sq_buff->lock;
+        memcpy(client->buff->data, client->sq_buff->data, client->buff->lock);
+        
+        client->buff->offset = 0;
     }
-    client->buff->lock = client->sq_buff->lock;
-    memcpy(client->buff->data, client->sq_buff->data, client->buff->lock);
-    
-    client->buff->offset = 0;
     client->round_sent = 0;
     client->part_sent = 0;
     return 0;
@@ -307,7 +359,8 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 {
     struct eval *lav = val->pair;
     
-    bool can_reconn = (lav->sq_buff
+    bool before_req = !lav->recv_count && !val->recv_count;
+    bool can_reconn = ((lav->sq_buff || before_req)
         && (params.auto_level & AUTO_RECONN)
     );
     if (!can_reconn && !(params.auto_level & AUTO_POST)) {
@@ -367,7 +420,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 }
 
 
-static int on_torst(struct poolhd *pool, struct eval *val)
+int on_torst(struct poolhd *pool, struct eval *val)
 {
     if (on_trigger(DETECT_TORST, pool, val) == 0) {
         return 0;
