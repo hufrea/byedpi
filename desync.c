@@ -159,7 +159,7 @@ ssize_t send_fake(int sfd, char *buffer,
             p = 0;
             break;
         }
-        memcpy(p, pkt.data, psz < pos ? psz : pos);
+        memcpy(p, pkt.data, psz < (size_t)pos ? psz : (size_t)pos);
         
         if (setttl(sfd, opt->ttl ? opt->ttl : 8, fa) < 0) {
             break;

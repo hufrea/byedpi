@@ -108,7 +108,7 @@ size_t chello_ext_offset(uint16_t type, char *data, size_t size)
         return 0;
     }
     uint8_t sid_len = data[43];
-    if (size < 44 + sid_len + 2) {
+    if (size < (size_t)(44 + sid_len + 2)) {
         return 0;
     }
     uint16_t cip_len = ANTOHS(data, 44 + sid_len);

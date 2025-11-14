@@ -188,8 +188,8 @@ char *parse_cform(const char *str, ssize_t *size)
             continue;
         }
         int n = 0;
-        if (sscanf(&str[p], "x%2hhx%n", &d[i], &n) == 1
-              || sscanf(&str[p], "%3hho%n", &d[i], &n) == 1) {
+        if (sscanf(&str[p], "x%2hhx%n", (unsigned char *)&d[i], &n) == 1
+              || sscanf(&str[p], "%3hho%n", (unsigned char *)&d[i], &n) == 1) {
             p += (n - 1);
             continue;
         }
@@ -227,7 +227,7 @@ char *ftob(const char *str, ssize_t *sl)
         if (!(buffer = malloc(size))) {
             break;
         }
-        if (fread(buffer, 1, size, file) != size) {
+        if (fread(buffer, 1, size, file) != (size_t)size) {
             free(buffer);
             buffer = 0;
         }

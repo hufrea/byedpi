@@ -46,18 +46,18 @@ void map_fix(struct sockaddr_ina *addr, char f6)
         uint16_t t16;
         uint32_t o32;
     } *ipv6m = (void *)&addr->in6.sin6_addr;
-    
+
     if (addr->sa.sa_family == AF_INET && f6) {
         addr->sa.sa_family = AF_INET6;
-        ipv6m->o32 = *(uint32_t *)(&addr->in.sin_addr);
+        memcpy(&ipv6m->o32, &addr->in.sin_addr, sizeof(uint32_t));
         ipv6m->o64 = 0;
         ipv6m->o16 = 0;
         ipv6m->t16 = 0xffff;
-    } 
+    }
     else if (!ipv6m->o64 && !ipv6m->o16 &&
             ipv6m->t16 == 0xffff && !f6) {
         addr->sa.sa_family = AF_INET;
-        addr->in.sin_addr = *(struct in_addr *)(&ipv6m->o32);
+        memcpy(&addr->in.sin_addr, &ipv6m->o32, sizeof(struct in_addr));
     }
 }
 
@@ -66,15 +66,9 @@ static inline char addr_equ(
         struct sockaddr_ina *a, struct sockaddr_ina *b)
 {
     if (a->sa.sa_family == AF_INET) {
-        return 
-            *((uint32_t *)(&a->in.sin_addr)) ==
-            *((uint32_t *)(&b->in.sin_addr));
+        return !memcmp(&a->in.sin_addr, &b->in.sin_addr, sizeof(struct in_addr));
     }
-    return 
-        *((uint64_t *)(&a->in6.sin6_addr)) ==
-        *((uint64_t *)(&b->in6.sin6_addr)) &&
-        *((uint64_t *)(&a->in6.sin6_addr) + 1) ==
-        *((uint64_t *)(&b->in6.sin6_addr) + 1);
+    return !memcmp(&a->in6.sin6_addr, &b->in6.sin6_addr, sizeof(struct in6_addr));
 }
 
 
@@ -634,7 +628,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val,
             }
             break;
         }
-    } while (n == bfsize);
+    } while ((size_t)n == bfsize);
     return 0;
 }
 
@@ -758,6 +752,7 @@ static inline int on_request(struct poolhd *pool, struct eval *val,
                     }
                     break;
                 }
+                /* fall through */
             default:
                 LOG(LOG_E, "ss: unsupported cmd: 0x%x\n", r->cmd);
                 s5e = -S_ER_CMD;

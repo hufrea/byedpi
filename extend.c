@@ -305,9 +305,9 @@ int on_desync_again(struct poolhd *pool,
     }
     int m = val->attempt;
     LOG((m ? LOG_S : LOG_L), "desync params index: %d\n", m);
-    
+
     ssize_t n = val->buff.size;
-    assert(n > 0 && n <= params.bfsize);
+    assert(n > 0 && (size_t)n <= params.bfsize);
     memcpy(buffer, val->buff.data, n);
     
     if (params.timeout &&
@@ -339,7 +339,7 @@ int on_desync(struct poolhd *pool, struct eval *val,
     if (out) {
         return on_desync_again(pool, val, buffer, bfsize);
     }
-    if (val->buff.size == bfsize) {
+    if ((size_t)val->buff.size == bfsize) {
         to_tunnel(val);
         return 0;
     }
@@ -404,7 +404,13 @@ int protect(int conn_fd, const char *path)
 {
     struct sockaddr_un sa;
     sa.sun_family = AF_UNIX;
-    strcpy(sa.sun_path, path);
+
+    if (strlen(path) >= sizeof(sa.sun_path)) {
+        LOG(LOG_E, "protect: path too long\n");
+        return -1;
+    }
+    strncpy(sa.sun_path, path, sizeof(sa.sun_path) - 1);
+    sa.sun_path[sizeof(sa.sun_path) - 1] = '\0';
     
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
