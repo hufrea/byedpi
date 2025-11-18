@@ -355,13 +355,14 @@ static void swop_groups(struct desync_params *dpc, struct desync_params *dpn)
 }
 
 
-static int on_trigger(int type, struct poolhd *pool, struct eval *val)
+static int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_alive)
 {
     struct eval *lav = val->pair;
     
     bool before_req = !lav->recv_count && !val->recv_count;
+    
     bool can_reconn = ((lav->sq_buff || before_req)
-        && (params.auto_level & AUTO_RECONN)
+        && (params.auto_level & AUTO_RECONN) && client_alive
     );
     if (!can_reconn && !(params.auto_level & AUTO_POST)) {
         return -1;
@@ -422,7 +423,7 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val)
 
 int on_torst(struct poolhd *pool, struct eval *val)
 {
-    if (on_trigger(DETECT_TORST, pool, val) == 0) {
+    if (on_trigger(DETECT_TORST, pool, val, 1) == 0) {
         return 0;
     }
     struct linger l = { .l_onoff = 1 };
@@ -436,10 +437,15 @@ int on_torst(struct poolhd *pool, struct eval *val)
 
 static int on_fin(struct poolhd *pool, struct eval *val)
 {
+    bool is_client = val->flag != FLAG_CONN;
+    
+    if (is_client) {
+        val = val->pair;
+    }
     if (!(val->pair->mark && val->round_count <= 1)) {
         return -1;
     }
-    if (on_trigger(DETECT_TLS_ERR, pool, val) == 0) {
+    if (on_trigger(DETECT_TLS_ERR, pool, val, !is_client) == 0) {
         return 0;
     }
     return -1;
@@ -471,7 +477,7 @@ static int on_response(struct poolhd *pool, struct eval *val,
         }
     }
     if (dp) {
-        return on_trigger(dp->detect, pool, val);
+        return on_trigger(dp->detect, pool, val, 1);
     }
     return -1;
 }
@@ -594,9 +600,6 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
     ssize_t n = recv(val->fd, buff->data, buff->size, 0);
     if (n < 1) {
         if (!n) {
-            if (val->flag != FLAG_CONN) {
-                val = val->pair;
-            }
             return on_fin(pool, val);
         }
         if (get_e() == EAGAIN) {
@@ -611,7 +614,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
                 if (val->flag == FLAG_CONN)
                     return on_torst(pool, val);
                 else
-                    return on_fin(pool, val->pair);
+                    return on_fin(pool, val);
         }
         return -1;
     }
