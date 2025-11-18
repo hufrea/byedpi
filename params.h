@@ -118,6 +118,7 @@ struct desync_params {
     uint64_t bit;
     int fail_count;
     int pri;
+    const char *str;
     
     struct desync_params *prev;
     struct desync_params *next;

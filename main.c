@@ -583,6 +583,7 @@ static struct desync_params *add_group(struct desync_params *prev)
     }
     dp->id = params.dp_n;
     dp->bit = 1 << dp->id;
+    dp->str = "";
     
     params.dp_n++;
     return dp;
@@ -883,6 +884,10 @@ int main(int argc, char **argv)
             }
             break;
         
+        case '#':
+            dp->str = optarg;
+            break;
+            
         case 'u':
             val = strtol(optarg, &end, 0);
             if (val <= 0 || *end) 
@@ -1252,7 +1257,7 @@ int main(int argc, char **argv)
     int status = run(&params.laddr);
     
     for (dp = params.dp; dp; dp = dp->next) {
-        LOG(LOG_S, "group: %d, triggered: %d, pri: %d\n", dp->id, dp->fail_count, dp->pri);
+        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
     }
     if (params.cache_file) {
         FILE *f;
