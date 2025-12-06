@@ -1,5 +1,6 @@
 #include "mpool.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -168,9 +169,67 @@ void dump_cache(struct mphdr *hdr, FILE *out)
         else
             inet_ntop(AF_INET6, &key->ip.v6, ADDR_STR, sizeof(ADDR_STR));
         
-        fprintf(out, "%s %d %d %jd %.*s\n", 
-            ADDR_STR, ntohs(key->port), p->dp->id, 
+        fprintf(out, "0 %s %d %lu %jd %.*s\n", 
+            ADDR_STR, ntohs(key->port), p->dp_mask,
             (intmax_t)p->time, p->extra_len, p->extra ? p->extra : "");
     } 
     while (kavl_itr_next(my, &itr));
+    fflush(out);
 }
+
+
+void load_cache(struct mphdr *hdr, FILE *in)
+{
+    for (int i = 0; ; i++) {
+        char addr_str[INET6_ADDRSTRLEN] = { 0 };
+        char host[256] = { 0 };
+        
+        uint16_t port;
+        uint64_t mask = 0;
+        time_t cache_time;
+        
+        int c = fscanf(in, "0 %39s %hu %lu %jd %255s\n", 
+            addr_str, &port, &mask, &cache_time, host);
+        if (c < 1) {
+            return;
+        }
+        struct cache_key key = { 0 };
+        size_t key_size = offsetof(struct cache_key, ip.v4);
+        
+        if (inet_pton(AF_INET, addr_str, &key.ip.v4) <= 0) {
+            if (inet_pton(AF_INET6, addr_str, &key.ip.v6) <= 0) {
+                continue;
+            } else {
+                key.family = AF_INET6;
+                key_size += sizeof(key.ip.v6);
+            }
+        }
+        else {
+            key.family = AF_INET;
+            key_size += sizeof(key.ip.v4);
+        }
+        key.port = htons(port);
+        
+        struct cache_key *data = calloc(1, key_size);
+        if (!data) {
+            return;
+        }
+        memcpy(data, &key, key_size);
+        
+        struct elem_i *e = mem_add(hdr, (char *)data, key_size, sizeof(struct elem_i));
+        if (!e) {
+            free(data);
+            return;
+        }
+        e->detect = 0xffffffff;
+        e->dp_mask = mask;
+        e->time = cache_time;
+        e->extra_len = strlen(host);
+        
+        if (e->extra_len) {
+            e->extra = malloc(e->extra_len + 1);
+            memcpy(e->extra, host, e->extra_len + 1);
+        }
+    }
+}
+

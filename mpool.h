@@ -45,7 +45,6 @@ struct elem_i {
     unsigned int extra_len;
     char *extra;
     
-    struct desync_params *dp;
     uint64_t dp_mask;
     int detect;
     time_t time;
@@ -69,5 +68,7 @@ void mem_delete(struct mphdr *hdr, const char *str, int len);
 void mem_destroy(struct mphdr *hdr);
 
 void dump_cache(struct mphdr *hdr, FILE *out);
+
+void load_cache(struct mphdr *hdr, FILE *in);
 
 #endif

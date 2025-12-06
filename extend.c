@@ -405,14 +405,12 @@ static int on_trigger(int type, struct poolhd *pool, struct eval *val, bool clie
         LOG(LOG_S, "unreach ip: %s\n", ADDR_STR);
         cache->dp_mask = 0;
         cache->detect = 0;
-        cache->dp = params.dp;
         return -1;
     }
     LOG(LOG_S, "save: ip=%s, id=%d\n", ADDR_STR, next->id);
     
     cache->dp_mask |= lav->dp_mask;
     cache->detect = lav->detect;
-    cache->dp = next;
     
     if (can_reconn) {
         return reconnect(pool, val);

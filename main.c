@@ -685,6 +685,7 @@ int main(int argc, char **argv)
     
     const char *pid_file = 0;
     bool daemonize = 0;
+    const char *cache_file = 0;
     
     int rez;
     int invalid = 0;
@@ -1254,21 +1255,36 @@ int main(int argc, char **argv)
         return -1;
     }
     #endif
+    if (params.cache_file && strcmp(params.cache_file, "-")) {
+        FILE *f = fopen(params.cache_file, "r");
+        if (!f)
+            perror("fopen");
+        else {
+            load_cache(params.mempool, f);
+            fclose(f);
+            LOG(LOG_S, "cache ip count: %zd\n", params.mempool->count);
+        }
+    }
+    
     int status = run(&params.laddr);
     
     for (dp = params.dp; dp; dp = dp->next) {
         LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
     }
     if (params.cache_file) {
-        FILE *f;
+        FILE *f = 0;
         if (!strcmp(params.cache_file, "-"))
             f = stdout;
-        else 
+        else {
             f = fopen(params.cache_file, "w");
-        if (!f)
+        }
+        if (!f) {
             perror("fopen");
-        else
-            dump_cache(params.mempool, f);
+            clear_params();
+            return -1;
+        }
+        dump_cache(params.mempool, f);
+        fclose(f);
     }
     clear_params();
     return status;

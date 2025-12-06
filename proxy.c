@@ -48,6 +48,21 @@ static void on_cancel(int sig) {
     shutdown(server_fd, SHUT_RDWR);
 }
 
+static void on_hup(int sig) {
+    FILE *f;
+    if (!strcmp(params.cache_file, "-"))
+        f = stdout;
+    else
+        f = fopen(params.cache_file, "w");
+    if (!f) {
+        perror("fopen");
+        return;
+    }
+    LOG(LOG_S, "dump cache\n");
+    dump_cache(params.mempool, f);
+    fclose(f);
+}
+
 
 void map_fix(union sockaddr_u *addr, char f6)
 {
@@ -1007,6 +1022,7 @@ int run(const union sockaddr_u *srv)
     #endif
     signal(SIGINT, on_cancel);
     signal(SIGTERM, on_cancel);
+    signal(SIGHUP, on_hup);
     
     int fd = listen_socket(srv);
     if (fd < 0) {
