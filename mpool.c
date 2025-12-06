@@ -157,6 +157,8 @@ void dump_cache(struct mphdr *hdr, FILE *out)
     if (!hdr->root) {
         return;
     }
+    time_t now = time(0);
+    
     kavl_itr_t(my) itr;
     kavl_itr_first(my, hdr->root, &itr);
     do {
@@ -169,9 +171,12 @@ void dump_cache(struct mphdr *hdr, FILE *out)
         else
             inet_ntop(AF_INET6, &key->ip.v6, ADDR_STR, sizeof(ADDR_STR));
         
-        fprintf(out, "0 %s %d %lu %jd %.*s\n", 
+        if (now > p->time + params.cache_ttl[p->time_inc - 1]) {
+            continue;
+        }
+        fprintf(out, "0 %s %d %lu %jd %d %.*s\n", 
             ADDR_STR, ntohs(key->port), p->dp_mask,
-            (intmax_t)p->time, p->extra_len, p->extra ? p->extra : "");
+            (intmax_t)p->time, p->time_inc, p->extra_len, p->extra ? p->extra : "");
     } 
     while (kavl_itr_next(my, &itr));
     fflush(out);
@@ -180,6 +185,7 @@ void dump_cache(struct mphdr *hdr, FILE *out)
 
 void load_cache(struct mphdr *hdr, FILE *in)
 {
+    time_t now = time(0);
     for (int i = 0; ; i++) {
         char addr_str[INET6_ADDRSTRLEN] = { 0 };
         char host[256] = { 0 };
@@ -187,11 +193,15 @@ void load_cache(struct mphdr *hdr, FILE *in)
         uint16_t port;
         uint64_t mask = 0;
         time_t cache_time;
+        int cache_inc;
         
-        int c = fscanf(in, "0 %39s %hu %lu %jd %255s\n", 
-            addr_str, &port, &mask, &cache_time, host);
+        int c = fscanf(in, "0 %39s %hu %lu %jd %d %255s\n", 
+            addr_str, &port, &mask, &cache_time, &cache_inc, host);
         if (c < 1) {
             return;
+        }
+        if (cache_inc > params.cache_ttl_n) {
+            continue;
         }
         struct cache_key key = { 0 };
         size_t key_size = offsetof(struct cache_key, ip.v4);
@@ -224,6 +234,7 @@ void load_cache(struct mphdr *hdr, FILE *in)
         e->detect = 0xffffffff;
         e->dp_mask = mask;
         e->time = cache_time;
+        e->time_inc = cache_inc;
         e->extra_len = strlen(host);
         
         if (e->extra_len) {

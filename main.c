@@ -47,7 +47,6 @@ fake_udp = {
 struct params params = {
     .await_int = 10,
     
-    .cache_ttl = 100800,
     .ipv6 = 1,
     .resolve = 1,
     .udp = 1,
@@ -891,10 +890,17 @@ int main(int argc, char **argv)
             
         case 'u':
             val = strtol(optarg, &end, 0);
-            if (val <= 0 || *end) 
+            if (val <= 0 || (unsigned long)val > UINT_MAX || *end) {
                 invalid = 1;
-            else
-                params.cache_ttl = val;
+                break;
+            }
+            unsigned int *ct = add((void *)&params.cache_ttl,
+                    &params.cache_ttl_n, sizeof(unsigned int));
+            if (!ct) {
+                invalid = 1;
+                continue;
+            }
+            *ct = (unsigned int )val;
             break;
         
         case 'T':;
@@ -1236,6 +1242,15 @@ int main(int argc, char **argv)
             clear_params();
             return -1;
         }
+    }
+    if (!params.cache_ttl) {
+        unsigned int *ct = add((void *)&params.cache_ttl,
+            &params.cache_ttl_n, sizeof(unsigned int));
+        if (!ct) {
+            clear_params();
+            return -1;
+        }
+        *ct = 100800;
     }
     params.mempool = mem_pool(MF_EXTRA, CMP_BYTES);
     if (!params.mempool) {

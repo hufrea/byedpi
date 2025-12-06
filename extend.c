@@ -73,9 +73,8 @@ static struct elem_i *cache_get(const union sockaddr_u *dst)
         return 0;
     }
     time_t t = time(0);
-    if (t > val->time + params.cache_ttl) {
-        LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
-        mem_delete(params.mempool, (char *)&key, len);
+    if (t > val->time + params.cache_ttl[val->time_inc - 1]) {
+        LOG(LOG_S, "ignore: time=%jd, now=%jd, inc=%d\n", (intmax_t)val->time, (intmax_t)t, val->time_inc);
         return 0;
     }
     return val;
@@ -102,6 +101,9 @@ static struct elem_i *cache_add(
         return 0;
     }
     val->time = t;
+    if (val->time_inc < params.cache_ttl_n) {
+        val->time_inc++;
+    }
     if (!val->extra && *host) {
         val->extra_len = host_len;
         val->extra = *host;

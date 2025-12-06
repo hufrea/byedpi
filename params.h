@@ -135,7 +135,8 @@ struct params {
     bool tfo;
     unsigned int timeout;
     int auto_level;
-    long cache_ttl;
+    int cache_ttl_n;
+    unsigned int *cache_ttl;
     bool ipv6;
     bool resolve;
     bool udp;
