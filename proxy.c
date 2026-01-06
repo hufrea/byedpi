@@ -496,14 +496,6 @@ static int udp_associate(struct poolhd *pool,
         close(ufd);
         return -1;
     }
-    if (dst->in6.sin6_port != 0) {
-        if (connect(ufd, &addr.sa, SA_SIZE(&addr)) < 0) {
-            uniperror("connect");
-            del_event(pool, pair);
-            return -1;
-        }
-        pair->addr = addr;
-    }
     //
     socklen_t sz = sizeof(addr);
     
