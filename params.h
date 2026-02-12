@@ -147,6 +147,7 @@ struct params {
     size_t bfsize;
     union sockaddr_u baddr;
     union sockaddr_u laddr;
+    union sockaddr_u dns_addr;
     struct mphdr *mempool;
     
     const char *protect_path;
