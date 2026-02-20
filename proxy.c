@@ -910,17 +910,23 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         if (req_size < 0) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, &on_tunnel);
-        if (!error) {
-            val->buff = buff_pop(pool, params.bfsize);
-            assert(val->buff == buff);
-            memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
-            
-            val->buff->lock = n - (req_size - 3);
-            val->recv_count = val->buff->lock;
-            val->round_count++;
-            val->cb = &on_tunnel;
+        val->buff = buff_pop(pool, params.bfsize);
+        assert(val->buff == buff);
+        memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
+        
+        val->buff->lock = n - (req_size - 3);
+        val->recv_count = val->buff->lock;
+        val->round_count++;
+        
+        if ((params.auto_level & AUTO_RECONN)) {
+            if (!(val->sq_buff = buff_pop(pool, params.bfsize))) {
+                return -1;
+            }
+            val->sq_buff->lock = val->buff->lock;
+            memcpy(val->sq_buff->data, val->buff->data, val->buff->lock);
         }
+        error = connect_hook(pool, val, &dst, &on_tunnel);
+        val->cb = &on_tunnel;
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buff->data, n);
