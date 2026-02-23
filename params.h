@@ -148,6 +148,7 @@ struct params {
     bool transparent;
     bool http_connect;
     bool shadowsocks;
+    bool delay_conn;
     int max_open;
     int debug;
     size_t bfsize;

@@ -1203,6 +1203,7 @@ int parse_args(int argc, char **argv)
             if (get_addr(optarg, &dp->ext_socks) < 0 
                     || !dp->ext_socks.in6.sin6_port) 
                 invalid = 1;
+            params.delay_conn = 1;
             break;
         
         #ifdef __linux__
