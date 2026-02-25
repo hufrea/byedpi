@@ -566,11 +566,12 @@ static struct desync_params *find_dp(struct eval *client,
         buff = client->buff->data;
         n = client->buff->lock;
     }
-    struct desync_params *dp = params.dp, *init_dp = client->dp;
+    struct desync_params *dp = client->dp, *init_dp = dp;
+    if (!dp) dp = params.dp;
     
     for (; dp; dp = dp->next) {
         if (!(dp->bit & client->dp_mask) 
-                && (!dp->detect || (client->detect & dp->detect))
+                && (dp == init_dp || !dp->detect || (client->detect & dp->detect))
                 && (dp == init_dp || check_l34(dp, SOCK_STREAM, dst))
                 && (!dp->proto || !buff || check_proto_tcp(dp->proto, buff, n))
                 && (!dp->hosts || !buff || check_host(dp->hosts, buff, n))) {
@@ -598,11 +599,12 @@ static int recv_and_connect(struct poolhd *pool, struct eval *val, int t)
 int connect_hook(struct poolhd *pool, struct eval *val, 
         const union sockaddr_u *dst, evcb_t next)
 {
-    if (!val->dp_mask) {
+    if (!val->dp) {
         struct elem_i *e = cache_get(dst);
         if (e) {
             val->dp_mask = e->dp_mask;
             val->detect = e->detect;
+            val->dp = e->dp;
         }
     }
     struct desync_params *dp = find_dp(val, 0, 0, dst);
@@ -635,14 +637,12 @@ int connect_hook(struct poolhd *pool, struct eval *val,
 
 static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
 {
-    if (params.cache_file) {
-        save_hostname(client, buffer, n);
-    }
     struct desync_params *dp = find_dp(client, buffer, n, &client->pair->addr);
     if (!dp) {
         LOG(LOG_E, "drop connection\n");
         return -1;
     }
+    save_hostname(client, buffer, n);
     client->mark = is_tls_chello(buffer, n);
     client->dp = dp;
     

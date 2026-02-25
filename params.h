@@ -122,6 +122,7 @@ struct desync_params {
     int pri;
     const char *str;
     long cache_ttl;
+    const char *cache_file;
     
     struct desync_params *prev;
     struct desync_params *next;
@@ -160,7 +161,6 @@ struct params {
     bool daemonize;
     const char *pid_file;
     int pid_fd;
-    const char *cache_file;
 };
 
 extern struct params params;

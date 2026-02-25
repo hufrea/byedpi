@@ -87,10 +87,10 @@ static const char help_text[] = {
     "    -A, --auto <t,r,s,n,k,c>  Try desync params after this option\n"
     "                              Detect: torst,redirect,ssl_err,none,conn,keep,pri=<num>\n"
     "    -L, --auto-mode <s>       Mode: sort\n"
-    "    -y, --cache-dump <file|-> Dump cache to file or stdout\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <s[:p:c:b]> Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -y, --cache-file <path|-> Dump cache to file or stdout\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     "    -K, --proto <t,h,u,i>     Protocol whitelist: tls,http,udp,ipv4\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
@@ -157,7 +157,7 @@ const struct option options[] = {
     {"timeout",       1, 0, 'T'},
     #endif
     {"copy",          1, 0, 'B'},
-    {"cache-dump",    1, 0, 'y'},
+    {"cache-file",    1, 0, 'y'},
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
@@ -688,6 +688,12 @@ int parse_args(int argc, char **argv)
     
     int curr_optind = 1;
     
+    params.mempool = mem_pool(MF_EXTRA, CMP_BITS);
+    if (!params.mempool) {
+        uniperror("mem_pool");
+        return -1;
+    }
+    
     struct desync_params *dp = add_group(0);
     if (!dp) {
         return -1;
@@ -772,8 +778,19 @@ int parse_args(int argc, char **argv)
                 invalid = 1;
             break;
             
-        case 'y': //
-            params.cache_file = optarg;
+        case 'y':
+            dp->cache_file = optarg;
+            if (!strcmp(dp->cache_file, "-")) {
+                break;
+            }
+            FILE *file = fopen(dp->cache_file, "r");
+            if (!file)
+                perror("fopen");
+            else {
+                load_cache(params.mempool, file, dp);
+                fclose(file);
+                LOG(LOG_S, "cache ip count: %zd\n", params.mempool->count);
+            }
             break;
             
         // desync options
@@ -1242,17 +1259,34 @@ int parse_args(int argc, char **argv)
 }
 
 
+void dump_all_cache(void)
+{
+    for (struct desync_params *dp = params.dp; dp; dp = dp->next) {
+        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
+        if (dp->cache_file) {
+            if (!strcmp(dp->cache_file, "-")) {
+                dump_cache(params.mempool, stdout, dp);
+            }
+            else {
+                FILE *f = fopen(dp->cache_file, "w");
+                if (!f) {
+                    perror("fopen");
+                    return;
+                }
+                dump_cache(params.mempool, f, dp);
+                fclose(f);
+            }
+        }
+    }
+}
+
+
 int init(void)
 {
     if (!params.def_ttl) {
         if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
-    }
-    params.mempool = mem_pool(MF_EXTRA, CMP_BITS);
-    if (!params.mempool) {
-        uniperror("mem_pool");
-        return -1;
     }
     srand((unsigned int)time(0));
     
@@ -1265,16 +1299,6 @@ int init(void)
         return -1;
     }
     #endif
-    if (params.cache_file && strcmp(params.cache_file, "-")) {
-        FILE *f = fopen(params.cache_file, "r");
-        if (!f)
-            perror("fopen");
-        else {
-            load_cache(params.mempool, f);
-            fclose(f);
-            LOG(LOG_S, "cache ip count: %zd\n", params.mempool->count);
-        }
-    }
     return 0;
 }
 
@@ -1337,25 +1361,7 @@ int main(int argc, char **argv)
         clear_params(cmd_line, argv);
         return -1;
     }
-    
-    for (struct desync_params *dp = params.dp; dp; dp = dp->next) {
-        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
-    }
-    if (params.cache_file) {
-        FILE *f = 0;
-        if (!strcmp(params.cache_file, "-"))
-            f = stdout;
-        else {
-            f = fopen(params.cache_file, "w");
-        }
-        if (!f) {
-            perror("fopen");
-            clear_params(cmd_line, argv);
-            return -1;
-        }
-        dump_cache(params.mempool, f);
-        fclose(f);
-    }
+    dump_all_cache();
     clear_params(cmd_line, argv);
     return 0;
 }

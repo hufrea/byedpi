@@ -48,22 +48,10 @@ static void on_cancel(int sig) {
     shutdown(server_fd, SHUT_RDWR);
 }
 
+void dump_all_cache(void);
+
 static void on_hup(int sig) {
-    FILE *f;
-    if (!params.cache_file) {
-        return;
-    }
-    if (!strcmp(params.cache_file, "-"))
-        f = stdout;
-    else
-        f = fopen(params.cache_file, "w");
-    if (!f) {
-        perror("fopen");
-        return;
-    }
-    LOG(LOG_S, "dump cache\n");
-    dump_cache(params.mempool, f);
-    if (f != stdout) fclose(f);
+    dump_all_cache();
 }
 
 
