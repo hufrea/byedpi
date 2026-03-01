@@ -312,12 +312,8 @@ static inline int lower_char(char *cl)
 }
 
 
-struct mphdr *parse_hosts(char *buffer, size_t size)
+int parse_hosts(struct mphdr *hdr, char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(MF_STATIC, CMP_HOST);
-    if (!hdr) {
-        return 0;
-    }
     size_t num = 0;
     bool drop = 0;
     char *end = buffer + size;
@@ -336,8 +332,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
         }
         if (!drop) {
             if (!mem_add(hdr, s, e - s, sizeof(struct elem))) {
-                mem_destroy(hdr);
-                return 0;
+                return -1;
             }
         } 
         else {
@@ -348,7 +343,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
         s = e + 1;
     }
     LOG(LOG_S, "hosts count: %zd\n", hdr->count);
-    return hdr;
+    return 0;
 }
 
 
@@ -376,12 +371,8 @@ static int parse_ip(char *out, char *str, size_t size)
 }
 
 
-struct mphdr *parse_ipset(char *buffer, size_t size)
+int parse_ipset(struct mphdr *hdr, char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(0, CMP_BITS);
-    if (!hdr) {
-        return 0;
-    }
     size_t num = 0;
     char *end = buffer + size;
     char *e = buffer, *s = buffer;
@@ -414,12 +405,11 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
         struct elem *elem = mem_add(hdr, ip_raw, bits, sizeof(struct elem));
         if (!elem) {
             free(ip_raw);
-            mem_destroy(hdr);
-            return 0;
+            return -1;
         }
     }
     LOG(LOG_S, "ip count: %zd\n", hdr->count);
-    return hdr;
+    return 0;
 }
 
 
@@ -637,12 +627,16 @@ void clear_params(char *line, char **argv)
         mem_destroy(params.mempool);
         params.mempool = 0;
     }
+    for (int i = 0; i < params.need_free_n; i++) {
+        free(params.need_free[i]);
+    }
+    params.need_free_n = 0;
+    
     struct desync_params *dp = params.dp;
     while (dp) {
         free(dp->parts);
         free(dp->tlsrec);
         free(dp->fake_data.data);
-        free(dp->file_ptr);
         free(dp->fake_sni_list);
         mem_destroy(dp->hosts);
         mem_destroy(dp->ipset);
@@ -965,36 +959,39 @@ int parse_args(int argc, char **argv)
             }
             break;
             
-        case 'H':;
-            if (dp->file_ptr) {
-                continue;
-            }
-            dp->file_ptr = ftob(optarg, &dp->file_size);
-            if (!dp->file_ptr) {
-                uniperror("read/parse");
-                invalid = 1;
-                continue;
-            }
-            dp->hosts = parse_hosts(dp->file_ptr, dp->file_size);
-            if (!dp->hosts) {
-                uniperror("parse_hosts");
+        case 'H':
+            if (!dp->hosts && 
+                    !(dp->hosts = mem_pool(MF_STATIC, CMP_HOST))) {
                 return -1;
             }
-            break;
-            
-        case 'j':;
-            if (dp->ipset) {
-                continue;
-            }
-            ssize_t size;
+            ssize_t size = 0;
             char *data = ftob(optarg, &size);
             if (!data) {
                 uniperror("read/parse");
                 invalid = 1;
                 continue;
             }
-            dp->ipset = parse_ipset(data, size);
-            if (!dp->ipset) {
+            if (!add((void *)&params.need_free, &params.need_free_n, sizeof(data))) {
+                return -1;
+            }
+            if (parse_hosts(dp->hosts, data, size)) {
+                uniperror("parse_hosts");
+                return -1;
+            }
+            break;
+            
+        case 'j':
+            data = ftob(optarg, &size);
+            if (!data) {
+                uniperror("read/parse");
+                invalid = 1;
+                continue;
+            }
+            if (!dp->ipset 
+                    && !(dp->ipset = mem_pool(0, CMP_BITS))) {
+                return -1;
+            }
+            if (parse_ipset(dp->ipset, data, size)) {
                 uniperror("parse_ipset");
                 invalid = 1;
             }

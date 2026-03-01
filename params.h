@@ -112,9 +112,6 @@ struct desync_params {
     
     union sockaddr_u ext_socks;
     
-    char *file_ptr;
-    ssize_t file_size;
-    
     int _optind;
     int id;
     uint64_t bit;
@@ -156,6 +153,9 @@ struct params {
     union sockaddr_u baddr;
     union sockaddr_u laddr;
     struct mphdr *mempool;
+    
+    char **need_free;
+    int need_free_n;
     
     const char *protect_path;
     bool daemonize;
