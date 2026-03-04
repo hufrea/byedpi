@@ -138,7 +138,6 @@ struct params {
     int to_count_lim;
     int to_bytes_lim;
     int auto_level;
-    long cache_ttl;
     char cache_pre;
     bool ipv6;
     bool resolve;

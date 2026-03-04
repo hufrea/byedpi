@@ -47,7 +47,6 @@ fake_udp = {
 struct params params = {
     .await_int = 10,
     
-    .cache_ttl = 0,
     .ipv6 = 1,
     .resolve = 1,
     .udp = 1,
@@ -904,9 +903,6 @@ int parse_args(int argc, char **argv)
             if (val <= 0 || *end) 
                 invalid = 1;
             else {
-                if (!params.cache_ttl) {
-                    params.cache_ttl = val;
-                }
                 dp->cache_ttl = val;
             }
             break;

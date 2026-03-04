@@ -87,10 +87,9 @@ static struct elem_i *cache_get(const union sockaddr_u *dst)
         return 0;
     }
     struct desync_params *dp = val->dp;
-    long ttl = dp->cache_ttl ? dp->cache_ttl : params.cache_ttl;
     
     time_t t = time(0);
-    if (ttl && t > val->time + ttl) {
+    if (dp->cache_ttl && t > val->time + dp->cache_ttl) {
         LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
         mem_delete(params.mempool, (char *)&key, len);
         return 0;
