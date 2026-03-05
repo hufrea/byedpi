@@ -95,10 +95,10 @@ static const char help_text[] = {
     "    -A, --auto <t,r,s,n,k,c>  Try desync params after this option\n"
     "                              Detect: torst,redirect,ssl_err,none,conn,keep,pri=<num>\n"
     "    -L, --auto-mode <s>       Mode: sort\n"
-    "    -y, --cache-dump <file|-> Dump cache to file or stdout\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <s[:p:c:b]> Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -y, --cache-file <path|-> Dump cache to file or stdout\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     "    -K, --proto <t,h,u,i>     Protocol whitelist: tls,http,udp,ipv4\n"
     "    -H, --hosts <file|:str>   Hosts whitelist, filename or :string\n"
@@ -167,7 +167,7 @@ const struct option options[] = {
     {"timeout",       1, 0, 'T'},
     #endif
     {"copy",          1, 0, 'B'},
-    {"cache-dump",    1, 0, 'y'},
+    {"cache-file",    1, 0, 'y'},
     {"proto",         1, 0, 'K'},
     {"hosts",         1, 0, 'H'},
     {"pf",            1, 0, 'V'},
@@ -322,12 +322,8 @@ static inline int lower_char(char *cl)
 }
 
 
-struct mphdr *parse_hosts(char *buffer, size_t size)
+int parse_hosts(struct mphdr *hdr, char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(MF_STATIC, CMP_HOST);
-    if (!hdr) {
-        return 0;
-    }
     size_t num = 0;
     bool drop = 0;
     char *end = buffer + size;
@@ -346,8 +342,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
         }
         if (!drop) {
             if (!mem_add(hdr, s, e - s, sizeof(struct elem))) {
-                mem_destroy(hdr);
-                return 0;
+                return -1;
             }
         } 
         else {
@@ -358,7 +353,7 @@ struct mphdr *parse_hosts(char *buffer, size_t size)
         s = e + 1;
     }
     LOG(LOG_S, "hosts count: %zd\n", hdr->count);
-    return hdr;
+    return 0;
 }
 
 
@@ -386,12 +381,8 @@ static int parse_ip(char *out, char *str, size_t size)
 }
 
 
-struct mphdr *parse_ipset(char *buffer, size_t size)
+int parse_ipset(struct mphdr *hdr, char *buffer, size_t size)
 {
-    struct mphdr *hdr = mem_pool(0, CMP_BITS);
-    if (!hdr) {
-        return 0;
-    }
     size_t num = 0;
     char *end = buffer + size;
     char *e = buffer, *s = buffer;
@@ -424,12 +415,11 @@ struct mphdr *parse_ipset(char *buffer, size_t size)
         struct elem *elem = mem_add(hdr, ip_raw, bits, sizeof(struct elem));
         if (!elem) {
             free(ip_raw);
-            mem_destroy(hdr);
-            return 0;
+            return -1;
         }
     }
     LOG(LOG_S, "ip count: %zd\n", hdr->count);
-    return hdr;
+    return 0;
 }
 
 
@@ -678,12 +668,16 @@ void clear_params(char *line, char **argv)
         mem_destroy(params.mempool);
         params.mempool = 0;
     }
+    for (int i = 0; i < params.need_free_n; i++) {
+        free(params.need_free[i]);
+    }
+    params.need_free_n = 0;
+    
     struct desync_params *dp = params.dp;
     while (dp) {
         free(dp->parts);
         free(dp->tlsrec);
         free(dp->fake_data.data);
-        free(dp->file_ptr);
         free(dp->fake_sni_list);
         mem_destroy(dp->hosts);
         mem_destroy(dp->ipset);
@@ -730,6 +724,12 @@ int parse_args(int argc, char **argv)
     int curr_optind = 1;
     
     char *dns_host = 0;
+    
+    params.mempool = mem_pool(MF_EXTRA, CMP_BITS);
+    if (!params.mempool) {
+        uniperror("mem_pool");
+        return -1;
+    }
     
     struct desync_params *dp = add_group(0);
     if (!dp) {
@@ -829,8 +829,19 @@ int parse_args(int argc, char **argv)
                 invalid = 1;
             break;
             
-        case 'y': //
-            params.cache_file = optarg;
+        case 'y':
+            dp->cache_file = optarg;
+            if (!strcmp(dp->cache_file, "-")) {
+                break;
+            }
+            FILE *file = fopen(dp->cache_file, "r");
+            if (!file)
+                perror("fopen");
+            else {
+                load_cache(params.mempool, file, dp);
+                fclose(file);
+                LOG(LOG_S, "cache ip count: %zd\n", params.mempool->count);
+            }
             break;
             
         // desync options
@@ -1005,36 +1016,39 @@ int parse_args(int argc, char **argv)
             }
             break;
             
-        case 'H':;
-            if (dp->file_ptr) {
-                continue;
-            }
-            dp->file_ptr = ftob(optarg, &dp->file_size);
-            if (!dp->file_ptr) {
-                uniperror("read/parse");
-                invalid = 1;
-                continue;
-            }
-            dp->hosts = parse_hosts(dp->file_ptr, dp->file_size);
-            if (!dp->hosts) {
-                uniperror("parse_hosts");
+        case 'H':
+            if (!dp->hosts && 
+                    !(dp->hosts = mem_pool(MF_STATIC, CMP_HOST))) {
                 return -1;
             }
-            break;
-            
-        case 'j':;
-            if (dp->ipset) {
-                continue;
-            }
-            ssize_t size;
+            ssize_t size = 0;
             char *data = ftob(optarg, &size);
             if (!data) {
                 uniperror("read/parse");
                 invalid = 1;
                 continue;
             }
-            dp->ipset = parse_ipset(data, size);
-            if (!dp->ipset) {
+            if (!add((void *)&params.need_free, &params.need_free_n, sizeof(data))) {
+                return -1;
+            }
+            if (parse_hosts(dp->hosts, data, size)) {
+                uniperror("parse_hosts");
+                return -1;
+            }
+            break;
+            
+        case 'j':
+            data = ftob(optarg, &size);
+            if (!data) {
+                uniperror("read/parse");
+                invalid = 1;
+                continue;
+            }
+            if (!dp->ipset 
+                    && !(dp->ipset = mem_pool(0, CMP_BITS))) {
+                return -1;
+            }
+            if (parse_ipset(dp->ipset, data, size)) {
                 uniperror("parse_ipset");
                 invalid = 1;
             }
@@ -1260,6 +1274,7 @@ int parse_args(int argc, char **argv)
             if (get_addr(optarg, &dp->ext_socks) < 0 
                     || !dp->ext_socks.in6.sin6_port) 
                 invalid = 1;
+            params.delay_conn = 1;
             break;
         
         #ifdef __linux__
@@ -1350,17 +1365,34 @@ int parse_args(int argc, char **argv)
 }
 
 
+void dump_all_cache(void)
+{
+    for (struct desync_params *dp = params.dp; dp; dp = dp->next) {
+        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
+        if (dp->cache_file) {
+            if (!strcmp(dp->cache_file, "-")) {
+                dump_cache(params.mempool, stdout, dp);
+            }
+            else {
+                FILE *f = fopen(dp->cache_file, "w");
+                if (!f) {
+                    perror("fopen");
+                    return;
+                }
+                dump_cache(params.mempool, f, dp);
+                fclose(f);
+            }
+        }
+    }
+}
+
+
 int init(void)
 {
     if (!params.def_ttl) {
         if ((params.def_ttl = get_default_ttl()) < 1) {
             return -1;
         }
-    }
-    params.mempool = mem_pool(MF_EXTRA, CMP_BITS);
-    if (!params.mempool) {
-        uniperror("mem_pool");
-        return -1;
     }
     srand((unsigned int)time(0));
     
@@ -1373,16 +1405,6 @@ int init(void)
         return -1;
     }
     #endif
-    if (params.cache_file && strcmp(params.cache_file, "-")) {
-        FILE *f = fopen(params.cache_file, "r");
-        if (!f)
-            perror("fopen");
-        else {
-            load_cache(params.mempool, f);
-            fclose(f);
-            LOG(LOG_S, "cache ip count: %zd\n", params.mempool->count);
-        }
-    }
     return 0;
 }
 
@@ -1445,25 +1467,7 @@ int main(int argc, char **argv)
         clear_params(cmd_line, argv);
         return -1;
     }
-    
-    for (struct desync_params *dp = params.dp; dp; dp = dp->next) {
-        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
-    }
-    if (params.cache_file) {
-        FILE *f = 0;
-        if (!strcmp(params.cache_file, "-"))
-            f = stdout;
-        else {
-            f = fopen(params.cache_file, "w");
-        }
-        if (!f) {
-            perror("fopen");
-            clear_params(cmd_line, argv);
-            return -1;
-        }
-        dump_cache(params.mempool, f);
-        fclose(f);
-    }
+    dump_all_cache();
     clear_params(cmd_line, argv);
     return 0;
 }

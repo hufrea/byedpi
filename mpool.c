@@ -152,7 +152,7 @@ void mem_destroy(struct mphdr *hdr)
 }
 
 
-void dump_cache(struct mphdr *hdr, FILE *out)
+void dump_cache(struct mphdr *hdr, FILE *out, struct desync_params *dp)
 {
     if (!hdr->root) {
         return;
@@ -163,6 +163,9 @@ void dump_cache(struct mphdr *hdr, FILE *out)
         struct elem_i *p = (struct elem_i *)kavl_at(&itr);
         struct cache_key *key = (struct cache_key *)p->main.data;
         
+        if (p->dp != dp) {
+            continue;
+        }
         char ADDR_STR[INET6_ADDRSTRLEN];
         if (key->family == AF_INET)
             inet_ntop(AF_INET, &key->ip.v4, ADDR_STR, sizeof(ADDR_STR));
@@ -170,8 +173,8 @@ void dump_cache(struct mphdr *hdr, FILE *out)
             inet_ntop(AF_INET6, &key->ip.v6, ADDR_STR, sizeof(ADDR_STR));
         
         int bitlen = p->main.len - offsetof(struct cache_key, ip.v4) * 8;
-        fprintf(out, "0 %s %d %d %lu %d %jd %.*s\n", 
-            ADDR_STR, bitlen, ntohs(key->port), p->dp_mask, p->dp->id,
+        fprintf(out, "0 %s %d %d %jd %.*s\n", 
+            ADDR_STR, bitlen, ntohs(key->port),
             (intmax_t)p->time, p->extra_len ? p->extra_len : 1, p->extra ? p->extra : "-");
     } 
     while (kavl_itr_next(my, &itr));
@@ -179,7 +182,7 @@ void dump_cache(struct mphdr *hdr, FILE *out)
 }
 
 
-void load_cache(struct mphdr *hdr, FILE *in)
+void load_cache(struct mphdr *hdr, FILE *in, struct desync_params *dp)
 {
     for (int i = 0; ; i++) {
         char addr_str[INET6_ADDRSTRLEN] = { 0 };
@@ -187,12 +190,10 @@ void load_cache(struct mphdr *hdr, FILE *in)
         
         int bitlen;
         uint16_t port;
-        uint64_t mask = 0;
-        int dp_id;
         time_t cache_time;
         
-        int c = fscanf(in, "0 %39s %d %hu %lu %d %jd %255s\n", 
-            addr_str, &bitlen, &port, &mask, &dp_id, &cache_time, host);
+        int c = fscanf(in, "0 %39s %d %hu %jd %255s\n", 
+            addr_str, &bitlen, &port, &cache_time, host);
         if (c < 1) {
             return;
         }
@@ -217,11 +218,6 @@ void load_cache(struct mphdr *hdr, FILE *in)
         }
         key.port = htons(port);
         
-        struct desync_params *dp = params.dp;
-        for (; dp && dp->id != dp_id; dp = dp->next) {
-        }
-        if (!dp) continue;
-        
         struct cache_key *data = calloc(1, key_size);
         if (!data) {
             return;
@@ -233,8 +229,6 @@ void load_cache(struct mphdr *hdr, FILE *in)
             free(data);
             return;
         }
-        e->detect = 0xffffffff;
-        e->dp_mask = mask;
         e->time = cache_time;
         e->extra_len = strlen(host);
         e->dp = dp;

@@ -112,9 +112,6 @@ struct desync_params {
     
     union sockaddr_u ext_socks;
     
-    char *file_ptr;
-    ssize_t file_size;
-    
     int _optind;
     int id;
     uint64_t bit;
@@ -122,6 +119,7 @@ struct desync_params {
     int pri;
     const char *str;
     long cache_ttl;
+    const char *cache_file;
     
     struct desync_params *prev;
     struct desync_params *next;
@@ -148,6 +146,7 @@ struct params {
     bool transparent;
     bool http_connect;
     bool shadowsocks;
+    bool delay_conn;
     int max_open;
     int debug;
     size_t bfsize;
@@ -158,11 +157,13 @@ struct params {
     const char *dns_hostname;
     struct mphdr *mempool;
     
+    char **need_free;
+    int need_free_n;
+    
     const char *protect_path;
     bool daemonize;
     const char *pid_file;
     int pid_fd;
-    const char *cache_file;
 };
 
 extern struct params params;

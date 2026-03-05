@@ -49,22 +49,10 @@ static void on_cancel(int sig) {
     shutdown(server_fd, SHUT_RDWR);
 }
 
+void dump_all_cache(void);
+
 static void on_hup(int sig) {
-    FILE *f;
-    if (!params.cache_file) {
-        return;
-    }
-    if (!strcmp(params.cache_file, "-"))
-        f = stdout;
-    else
-        f = fopen(params.cache_file, "w");
-    if (!f) {
-        perror("fopen");
-        return;
-    }
-    LOG(LOG_S, "dump cache\n");
-    dump_cache(params.mempool, f);
-    if (f != stdout) fclose(f);
+    dump_all_cache();
 }
 
 
@@ -167,7 +155,7 @@ static int resp_s5_error(int fd, int e)
 }
 
 
-static int resp_error(int fd, int e, int flag)
+int resp_error(int fd, int e, int flag)
 {
     if (flag == FLAG_S4) {
         struct s4_req s4r = { 
@@ -629,6 +617,7 @@ static int on_accept(struct poolhd *pool, struct eval *val, int et)
 int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
 {
     ssize_t n = 0;
+    bool wait = false;
     struct eval *pair = val->pair;
     
     if (etype == POLLTIMEOUT && !pair->buff && val->round_count) {
@@ -641,12 +630,8 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         pair = val->pair;
     }
     if (val->buff) {
-        if (etype & POLLHUP) {
-            return -1;
-        }
         n = val->buff->lock - val->buff->offset;
         
-        bool wait = false;
         ssize_t sn = tcp_send_hook(pool, pair, val->buff, &val->buff->lock, &wait);
         if (sn < 0) {
             uniperror("send");
@@ -672,15 +657,9 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
     val->buff = buff;
     do {
         n = tcp_recv_hook(pool, val, buff);
-        //if (n < 0 && get_e() == EAGAIN) {
-        if (n == 0) {
-            break;
-        }
-        if (n < 0) {
-            return -1;
-        }
+        if (n == 0) break;
+        if (n < 0 ) return -1;
         
-        bool wait = false;
         ssize_t sn = tcp_send_hook(pool, pair, buff, &n, &wait);
         if (sn < 0) {
             uniperror("send");
@@ -693,7 +672,6 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
             else {
                 LOG(LOG_S, "send: %zd, but not done yet (fd=%d)\n", sn, pair->fd);
             }
-            
             buff->lock = n;
             buff->offset = sn;
             
@@ -883,17 +861,22 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         if (req_size < 0) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, &on_tunnel);
-        if (!error) {
-            val->buff = buff_pop(pool, params.bfsize);
-            assert(val->buff == buff);
-            memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
-            
-            val->buff->lock = n - (req_size - 3);
-            val->recv_count = val->buff->lock;
-            val->round_count++;
-            val->cb = &on_tunnel;
+        val->buff = buff_pop(pool, params.bfsize);
+        assert(val->buff == buff);
+        memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
+        
+        val->buff->lock = n - (req_size - 3);
+        val->recv_count = val->buff->lock;
+        val->round_count++;
+        
+        if ((params.auto_level & AUTO_RECONN)) {
+            if (!(val->sq_buff = buff_pop(pool, params.bfsize))) {
+                return -1;
+            }
+            val->sq_buff->lock = val->buff->lock;
+            memcpy(val->sq_buff->data, val->buff->data, val->buff->lock);
         }
+        error = connect_hook(pool, val, &dst, &on_connect);
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buff->data, n);
@@ -938,6 +921,9 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
         }
         val->cb = &on_tunnel;
         val->pair->cb = &on_tunnel;
+    }
+    if (!error && val->pair->buff) {
+        return on_tunnel(pool, val, et);
     }
     if (resp_error(val->pair->fd,
             error, val->pair->flag) < 0) {
