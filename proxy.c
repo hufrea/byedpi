@@ -896,7 +896,7 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         val->recv_count = val->buff->lock;
         val->round_count++;
         
-        if ((params.auto_level & AUTO_RECONN)) {
+        if (params.auto_reconnect) {
             if (!(val->sq_buff = buff_pop(pool, params.bfsize))) {
                 return -1;
             }

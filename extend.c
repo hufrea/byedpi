@@ -332,7 +332,9 @@ static void swop_groups(struct desync_params *dpc, struct desync_params *dpn)
         dpn->next = dpc;
     }
     dpc->detect = dpn->detect;
+    dpc->auto_level = dpn->auto_level;
     dpn->detect = dpc_cp.detect;
+    dpn->auto_level = dpc_cp.auto_level;
     
     if (params.dp == dpc) params.dp = dpn;
 }
@@ -344,12 +346,7 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
     
     bool before_req = !lav->recv_count && !val->recv_count;
     
-    bool can_reconn = ((lav->sq_buff || before_req)
-        && (params.auto_level & AUTO_RECONN) && client_alive
-    );
-    if (!can_reconn && (params.auto_level & AUTO_NOPOST)) {
-        return -1;
-    }
+    bool can_reconn = ((lav->sq_buff || before_req) && client_alive);
     INIT_ADDR_STR((val->addr));
     
     struct elem_i *cache = cache_add(&val->addr, &lav->host, lav->host_len);
@@ -369,17 +366,17 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
         }
         if (!(dp->bit & lav->dp_mask)
                 && (!dp->detect || (dp->detect & type))
-                && (!(dp->detect & DETECT_RECONN) || can_reconn)) {
+                && (!(dp->auto_level & AUTO_ONRECONN) || can_reconn)) {
             next = dp;
             break;
         }
         uncheked &= ~dp->bit;
         lav->dp_mask |= dp->bit;
     }
-    if ((params.auto_level & AUTO_SORT) 
-            && !(lav->dp->bit & cache->dp_mask)) 
+    if (!(lav->dp->bit & cache->dp_mask)) 
     {
-        if (next && lav->dp->pri > next->pri
+        if (next && (next->auto_level & AUTO_SORT)
+                && lav->dp->pri > next->pri
                 && !(lav->dp->bit & uncheked)) {
             swop_groups(lav->dp, next);
         }
@@ -398,7 +395,7 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
     cache->detect = lav->detect;
     cache->dp = dp;
     
-    if (can_reconn) {
+    if (!(next->auto_level & AUTO_NORECONN) && can_reconn) {
         return reconnect(pool, val);
     }
     return -1;
@@ -760,7 +757,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             free_first_req(pool, val->pair);
         }
     }
-    else if ((params.auto_level & AUTO_RECONN)
+    else if (params.auto_reconnect
             && (val->sq_buff || val->recv_count == n))
     {
         if (!val->sq_buff) {
