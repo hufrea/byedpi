@@ -128,6 +128,7 @@ struct desync_params {
 struct params {
     int dp_n;
     struct desync_params *dp;
+    uint64_t dp_full_mask;
     int await_int;
     bool wait_send;
     int def_ttl;

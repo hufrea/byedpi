@@ -576,6 +576,7 @@ static struct desync_params *add_group(struct desync_params *prev)
     dp->str = "";
     
     params.dp_n++;
+    params.dp_full_mask |= dp->bit;
     return dp;
 }
 

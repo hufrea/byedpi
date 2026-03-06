@@ -563,9 +563,12 @@ static struct desync_params *find_dp(struct eval *client,
         n = client->buff->lock;
     }
     struct desync_params *dp = client->dp, *init_dp = dp;
-    if (!dp) dp = params.dp;
     
-    for (; dp; dp = dp->next) {
+    for (; ; dp = dp->next) {
+        if (!dp) dp = params.dp;
+        if (client->dp_mask == params.dp_full_mask) {
+            break;
+        }
         if (!(dp->bit & client->dp_mask) 
                 && (dp == init_dp || !dp->detect || (client->detect & dp->detect))
                 && (dp == init_dp || check_l34(dp, SOCK_STREAM, dst))
