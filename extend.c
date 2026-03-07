@@ -571,7 +571,7 @@ static struct desync_params *find_dp(struct eval *client,
         }
         if (!(dp->bit & client->dp_mask) 
                 && (dp == init_dp || !dp->detect || (client->detect & dp->detect))
-                && (dp == init_dp || check_l34(dp, SOCK_STREAM, dst))
+                && (check_l34(dp, SOCK_STREAM, dst))
                 && (!dp->proto || !buff || check_proto_tcp(dp->proto, buff, n))
                 && (!dp->hosts || !buff || check_host(dp->hosts, buff, n))) {
             return dp;
