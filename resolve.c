@@ -253,7 +253,13 @@ int resolve_dot_inner(
     
     if (!ctx) {
         ctx = SSL_CTX_new_fn(TLS_method_fn());
+        
+        #ifdef __ANDROID__
+        SSL_CTX_load_verify_locations_fn(ctx, NULL, "/system/etc/security/cacerts");
+        #else
         SSL_CTX_set_default_verify_paths_fn(ctx);
+        #endif
+        
         SSL_CTX_set_verify_fn(ctx, SSL_VERIFY_PEER, NULL);
     }
     

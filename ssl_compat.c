@@ -7,6 +7,7 @@
 const SSL_METHOD *(*TLS_method_fn)(void) = NULL;
 SSL_CTX *(*SSL_CTX_new_fn)(const SSL_METHOD*) = NULL;
 int (*SSL_CTX_set_default_verify_paths_fn)(SSL_CTX*) = NULL;
+int (*SSL_CTX_load_verify_locations_fn)(SSL_CTX*, const char *CAfile, const char *CApath) = NULL;
 void (*SSL_CTX_set_verify_fn)(SSL_CTX*, int, SSL_verify_cb) = NULL;
 SSL *(*SSL_new_fn)(SSL_CTX*) = NULL;
 void *(*SSL_free_fn)(SSL*) = NULL;
@@ -26,6 +27,7 @@ int ssl_load(void) {
     TLS_method_fn = dlsym(libssl, "TLS_method");
     SSL_CTX_new_fn = dlsym(libssl, "SSL_CTX_new");
     SSL_CTX_set_default_verify_paths_fn = dlsym(libssl, "SSL_CTX_set_default_verify_paths");
+    SSL_CTX_load_verify_locations_fn = dlsym(libssl, "SSL_CTX_load_verify_locations");
     SSL_CTX_set_verify_fn = dlsym(libssl, "SSL_CTX_set_verify");
     SSL_new_fn = dlsym(libssl, "SSL_new");
     SSL_free_fn = dlsym(libssl, "SSL_free");
