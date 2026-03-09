@@ -318,6 +318,7 @@ int resolve_dot_inner(
     
     uint8_t *buf = malloc(recv_len);
     if (SSL_read_fn(ssl, buf, recv_len) <= 0) {
+        free(buf);
         SSL_free_fn(ssl);
         close(fd);
         return -1;
@@ -328,6 +329,7 @@ int resolve_dot_inner(
     uint8_t *cname_qname = NULL;
     int cname_len;
     if (parse_dns_response(buf, recv_len, id, debug_hostname, debug_hostname_len, addr_out, &cname_qname, &cname_len) < 0) {
+        free(buf);
         return -1;
     }
     free(buf);
