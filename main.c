@@ -49,7 +49,6 @@ fake_udp = {
 struct params params = {
     .await_int = 10,
     
-    .cache_ttl = 0,
     .ipv6 = 1,
     .resolve = 1,
     .udp = 1,
@@ -92,12 +91,12 @@ static const char help_text[] = {
     #ifdef TCP_FASTOPEN_CONNECT
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
-    "    -A, --auto <t,r,s,n,k,c>  Try desync params after this option\n"
-    "                              Detect: torst,redirect,ssl_err,none,conn,keep,pri=<num>\n"
-    "    -L, --auto-mode <s>       Mode: sort\n"
     #ifdef TIMEOUT_SUPPORT
     "    -T, --timeout <s[:p:c:b]> Timeout waiting for response, after which trigger auto\n"
     #endif
+    "    -A, --auto <t,r,s,n,c>    Try desync params after this option\n"
+    "                              Detect: torst,redirect,ssl_err,none,conn\n"
+    "    -L, --auto-mode <s,o,n>   Mode: swop,onreconn,noreconn\n"
     "    -y, --cache-file <path|-> Dump cache to file or stdout\n"
     "    -u, --cache-ttl <sec>     Lifetime of cached desync params for IP\n"
     "    -K, --proto <t,h,u,i>     Protocol whitelist: tls,http,udp,ipv4\n"
@@ -618,6 +617,7 @@ static struct desync_params *add_group(struct desync_params *prev)
     dp->str = "";
     
     params.dp_n++;
+    params.dp_full_mask |= dp->bit;
     return dp;
 }
 
@@ -854,19 +854,14 @@ int parse_args(int argc, char **argv)
             end = optarg;
             while (end && !invalid) {
                 switch (*end) {
-                    case '0': 
-                    case '2':
-                        params.auto_level |= AUTO_NOPOST;
-                        if (*end == '2') params.auto_level |= AUTO_SORT;
+                    case 'o':
+                        dp->auto_level |= AUTO_ONRECONN;
                         break;
-                    case '1':
-                        break;
-                    case '3':
                     case 's': 
-                        params.auto_level |= AUTO_SORT;
+                        dp->auto_level |= AUTO_SORT;
                         break;
-                    case 'r':
-                        params.auto_level = 0;
+                    case 'n': 
+                        dp->auto_level |= AUTO_NORECONN;
                         break;
                     default:
                         invalid = 1;
@@ -898,12 +893,8 @@ int parse_args(int argc, char **argv)
                     case 'r': 
                         dp->detect |= DETECT_HTTP_LOCAT;
                         break;
-                    case 'a':
                     case 's': 
                         dp->detect |= DETECT_TLS_ERR;
-                        break;
-                    case 'k':
-                        dp->detect |= DETECT_RECONN;
                         break;
                     case 'c':
                         dp->detect |= DETECT_CONNECT;
@@ -925,7 +916,7 @@ int parse_args(int argc, char **argv)
                 if (end) end++;
             }
             if (dp->detect) {
-                params.auto_level |= AUTO_RECONN;
+                params.auto_reconnect = 1;
             }
             dp->_optind = optind;
             break;
@@ -961,9 +952,6 @@ int parse_args(int argc, char **argv)
             if (val <= 0 || *end) 
                 invalid = 1;
             else {
-                if (!params.cache_ttl) {
-                    params.cache_ttl = val;
-                }
                 dp->cache_ttl = val;
             }
             break;

@@ -87,10 +87,9 @@ static struct elem_i *cache_get(const union sockaddr_u *dst)
         return 0;
     }
     struct desync_params *dp = val->dp;
-    long ttl = dp->cache_ttl ? dp->cache_ttl : params.cache_ttl;
     
     time_t t = time(0);
-    if (ttl && t > val->time + ttl) {
+    if (dp->cache_ttl && t > val->time + dp->cache_ttl) {
         LOG(LOG_S, "time=%jd, now=%jd, ignore\n", (intmax_t)val->time, (intmax_t)t);
         mem_delete(params.mempool, (char *)&key, len);
         return 0;
@@ -333,7 +332,9 @@ static void swop_groups(struct desync_params *dpc, struct desync_params *dpn)
         dpn->next = dpc;
     }
     dpc->detect = dpn->detect;
+    dpc->auto_level = dpn->auto_level;
     dpn->detect = dpc_cp.detect;
+    dpn->auto_level = dpc_cp.auto_level;
     
     if (params.dp == dpc) params.dp = dpn;
 }
@@ -345,12 +346,7 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
     
     bool before_req = !lav->recv_count && !val->recv_count;
     
-    bool can_reconn = ((lav->sq_buff || before_req)
-        && (params.auto_level & AUTO_RECONN) && client_alive
-    );
-    if (!can_reconn && (params.auto_level & AUTO_NOPOST)) {
-        return -1;
-    }
+    bool can_reconn = ((lav->sq_buff || before_req) && client_alive);
     INIT_ADDR_STR((val->addr));
     
     struct elem_i *cache = cache_add(&val->addr, &lav->host, lav->host_len);
@@ -370,17 +366,17 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
         }
         if (!(dp->bit & lav->dp_mask)
                 && (!dp->detect || (dp->detect & type))
-                && (!(dp->detect & DETECT_RECONN) || can_reconn)) {
+                && (!(dp->auto_level & AUTO_ONRECONN) || can_reconn)) {
             next = dp;
             break;
         }
         uncheked &= ~dp->bit;
         lav->dp_mask |= dp->bit;
     }
-    if ((params.auto_level & AUTO_SORT) 
-            && !(lav->dp->bit & cache->dp_mask)) 
+    if (!(lav->dp->bit & cache->dp_mask)) 
     {
-        if (next && lav->dp->pri > next->pri
+        if (next && (next->auto_level & AUTO_SORT)
+                && lav->dp->pri > next->pri
                 && !(lav->dp->bit & uncheked)) {
             swop_groups(lav->dp, next);
         }
@@ -399,7 +395,7 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
     cache->detect = lav->detect;
     cache->dp = dp;
     
-    if (can_reconn) {
+    if (!(next->auto_level & AUTO_NORECONN) && can_reconn) {
         return reconnect(pool, val);
     }
     return -1;
@@ -567,12 +563,15 @@ static struct desync_params *find_dp(struct eval *client,
         n = client->buff->lock;
     }
     struct desync_params *dp = client->dp, *init_dp = dp;
-    if (!dp) dp = params.dp;
     
-    for (; dp; dp = dp->next) {
+    for (; ; dp = dp->next) {
+        if (!dp) dp = params.dp;
+        if (client->dp_mask == params.dp_full_mask) {
+            break;
+        }
         if (!(dp->bit & client->dp_mask) 
                 && (dp == init_dp || !dp->detect || (client->detect & dp->detect))
-                && (dp == init_dp || check_l34(dp, SOCK_STREAM, dst))
+                && (check_l34(dp, SOCK_STREAM, dst))
                 && (!dp->proto || !buff || check_proto_tcp(dp->proto, buff, n))
                 && (!dp->hosts || !buff || check_host(dp->hosts, buff, n))) {
             return dp;
@@ -761,7 +760,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             free_first_req(pool, val->pair);
         }
     }
-    else if ((params.auto_level & AUTO_RECONN)
+    else if (params.auto_reconnect
             && (val->sq_buff || val->recv_count == n))
     {
         if (!val->sq_buff) {
