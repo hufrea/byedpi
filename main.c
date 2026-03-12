@@ -10,6 +10,8 @@
 #include "packets.h"
 #include "error.h"
 #include "conev.h"
+#include "resolve.h"
+#include "ssl_compat.h"
 
 #ifndef _WIN32
     #include <arpa/inet.h>
@@ -58,6 +60,7 @@ struct params params = {
     .laddr = {
         .in = { .sin_family = AF_INET }
     },
+    .dns_mode = 's',
     .debug = 0
 };
 
@@ -74,6 +77,11 @@ static const char help_text[] = {
     #endif
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
+    "    -k, --dns-mode <mode>     Domain resolution mode: system(s),plain(p),dot(t)\n"
+    "                              Defaults to system\n"
+    "    -z, --dns <host[:port]>   Nameserver address\n"
+    "                              Only applicable when DNS mode is not 'system'\n"
+    "                              Takes IP as host when DNS mode is 'plain' and hostname when DNS mode is 'dot'\n"
     "    -U, --no-udp              Deny UDP association\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
@@ -131,6 +139,8 @@ const struct option options[] = {
     {"pidfile",       1, 0, 'w'},
     #endif
     {"no-domain",     0, 0, 'N'},
+    {"dns-mode",     1, 0, 'k'},
+    {"dns",     1, 0, 'z'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
     {"http-connect",  0, 0, 'G'},
@@ -465,6 +475,37 @@ int get_addr(const char *str, union sockaddr_u *addr)
 }
 
 
+int get_hostname(const char *str, union sockaddr_u *addr_out)
+{
+    uint16_t port = 0;
+    const char *e = 0;
+    const char *end = 0, *p = str;
+    
+    p = strchr(p, ':');
+    if (p && isdigit(p[1])) {
+        long val = strtol(p + 1, (char **)&end, 0);
+        if (val <= 0 || val > 0xffff || *end)
+            return -1;
+        else
+            port = htons(val);
+        if (!e) e = p;
+    }
+    if (!e) {
+        e = strchr(str, 0);
+    }
+    
+    if (resolve_system(str, e - str, addr_out) < 0) {
+        return -1;
+    }
+    
+    if (port) {
+        addr_out->in6.sin6_port = port;
+    }
+    
+    return e - str;
+}
+
+
 int get_default_ttl(void)
 {
     int orig_ttl = -1, fd;
@@ -682,6 +723,8 @@ int parse_args(int argc, char **argv)
     
     int curr_optind = 1;
     
+    char *dns_host = 0;
+    
     params.mempool = mem_pool(MF_EXTRA, CMP_BITS);
     if (!params.mempool) {
         uniperror("mem_pool");
@@ -700,6 +743,20 @@ int parse_args(int argc, char **argv)
         
         case 'N':
             params.resolve = 0;
+            break;
+        case 'k':
+            if (strcmp(optarg, "system") == 0 || strcmp(optarg, "s") == 0) {
+                params.dns_mode = 's';
+            } else if (strcmp(optarg, "plain") == 0 || strcmp(optarg, "p") == 0) {
+                params.dns_mode = 'p';
+            } else if (strcmp(optarg, "dot") == 0 || strcmp(optarg, "t") == 0) {
+                params.dns_mode = 't';
+            } else {
+                invalid = 1;
+            }
+            break;
+        case 'z':
+            dns_host = optarg;
             break;
         case 'X':
             params.ipv6 = 0;
@@ -1224,6 +1281,58 @@ int parse_args(int argc, char **argv)
             return -1;
         }
     }
+    
+    switch (params.dns_mode) {
+        case 's':
+            if (dns_host) {
+                rez = 'z';
+                optarg = dns_host;
+                invalid = 1;
+            }
+            break;
+        case 'p':
+            if (dns_host == 0) {
+                rez = 'z';
+                optarg = "";
+                invalid = 1;
+                break;
+            }
+            if (get_addr(dns_host, &params.dns_addr) < 0) {
+                rez = 'z';
+                optarg = dns_host;
+                invalid = 1;
+                break;
+            }
+            if (!params.dns_addr.in6.sin6_port) {
+                params.dns_addr.in6.sin6_port = htons(53);
+            }
+            break;
+        case 't':
+            if (ssl_load() < 0) {
+                fprintf(stderr, "failed to load openssl that is required for DoT\n");
+                return -1;
+            }
+            if (dns_host == 0) {
+                rez = 'z';
+                optarg = "";
+                invalid = 1;
+                break;
+            }
+            int hostname_len = get_hostname(dns_host, &params.dns_addr);
+            if (hostname_len < 0) {
+                rez = 'z';
+                optarg = dns_host;
+                invalid = 1;
+                break;
+            }
+            if (!params.dns_addr.in.sin_port) {
+                params.dns_addr.in.sin_port = htons(853);
+            }
+            dns_host[hostname_len] = '\0';
+            params.dns_hostname = dns_host;
+            break;
+    }
+    
     if (invalid) {
         fprintf(stderr, "invalid value: -%c %s\n", rez, optarg);
         return -1;

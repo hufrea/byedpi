@@ -12,6 +12,7 @@
 #include "extend.h"
 #include "error.h"
 #include "packets.h"
+#include "resolve.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -124,33 +125,6 @@ static inline int nb_socket(int domain, int type)
 }
 
 
-static int resolve(const char *chost, int len, 
-        union sockaddr_u *addr, int type) 
-{
-    struct addrinfo hints = {0}, *res = 0;
-    
-    hints.ai_socktype = type;
-    hints.ai_flags = AI_ADDRCONFIG;
-    if (!params.resolve)
-        hints.ai_flags |= AI_NUMERICHOST;
-    hints.ai_family = params.ipv6 ? AF_UNSPEC : AF_INET;
-    
-    char host[len + 1];
-    host[len] = 0;
-    memcpy(host, chost, len);
-    
-    LOG(LOG_S, "resolve: %s\n", host);
-    
-    if (getaddrinfo(host, 0, &hints, &res) || !res) {
-        return -1;
-    }
-    memcpy(addr, res->ai_addr, SA_SIZE(res->ai_addr));
-    freeaddrinfo(res);
-    
-    return 0;
-}
-
-
 static int auth_socks5(int fd, const char *buffer, ssize_t n)
 {
     if (n <= 2 || (uint8_t)buffer[1] != (n - 2)) {
@@ -253,7 +227,7 @@ static int s4_get_addr(const char *buff,
         if (len < 3 || len > 255) {
             return -1;
         }
-        if (resolve(id_end + 1, len, dst, SOCK_STREAM)) {
+        if (resolve(id_end + 1, len, dst)) {
             LOG(LOG_E, "not resolved: %.*s\n", len, id_end + 1);
             return -1;
         }
@@ -267,8 +241,7 @@ static int s4_get_addr(const char *buff,
 }
 
 
-static int s5_get_addr(const char *buffer, 
-        size_t n, union sockaddr_u *addr, int type) 
+static int s5_get_addr(const char *buffer, size_t n, union sockaddr_u *addr) 
 {
     if (n < S_SIZE_MIN) {
         LOG(LOG_E, "ss: request too small\n");
@@ -294,7 +267,7 @@ static int s5_get_addr(const char *buffer,
                 return -S_ER_ATP;
             }
             if (r->dst.id.len < 3 || 
-                    resolve(r->dst.id.domain, r->dst.id.len, addr, type)) {
+                    resolve(r->dst.id.domain, r->dst.id.len, addr)) {
                 LOG(LOG_E, "not resolved: %.*s\n", r->dst.id.len, r->dst.id.domain);
                 return -S_ER_HOST;
             }
@@ -354,7 +327,7 @@ static int http_get_addr(
     if (host_len < 3 || host_len > 255) {
         return -1;
     }
-    if (resolve(host, host_len, dst, SOCK_STREAM)) {
+    if (resolve(host, host_len, dst)) {
         LOG(LOG_E, "not resolved: %.*s\n", host_len, host);
         return -1;
     }
@@ -765,7 +738,7 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
             if (*(data + 2) != 0) { // frag
                 continue;
             }
-            int offs = s5_get_addr(data, n, &addr, SOCK_DGRAM);
+            int offs = s5_get_addr(data, n, &addr);
             if (offs < 0) {
                 LOG(LOG_E, "udp parse error\n");
                 return -1;
@@ -838,14 +811,14 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         int s5e = 0;
         switch (r->cmd) {
             case S_CMD_CONN:
-                s5e = s5_get_addr(buff->data, n, &dst, SOCK_STREAM);
+                s5e = s5_get_addr(buff->data, n, &dst);
                 if (s5e >= 0) {
                     error = connect_hook(pool, val, &dst, &on_connect);
                 }
                 break;
             case S_CMD_AUDP:
                 if (params.udp) {
-                    s5e = s5_get_addr(buff->data, n, &dst, SOCK_DGRAM);
+                    s5e = s5_get_addr(buff->data, n, &dst);
                     if (s5e >= 0) {
                         error = udp_associate(pool, val, &dst);
                     }
@@ -884,7 +857,7 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         error = connect_hook(pool, val, &dst, &on_connect);
     }
     else if (params.shadowsocks && *buff->data <= S_ATP_I6) {
-        int req_size = s5_get_addr(buff->data - 3, n + 3, &dst, SOCK_STREAM);
+        int req_size = s5_get_addr(buff->data - 3, n + 3, &dst);
         if (req_size < 0) {
             return -1;
         }

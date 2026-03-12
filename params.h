@@ -152,6 +152,9 @@ struct params {
     size_t bfsize;
     union sockaddr_u baddr;
     union sockaddr_u laddr;
+    char dns_mode;
+    union sockaddr_u dns_addr;
+    const char *dns_hostname;
     struct mphdr *mempool;
     
     char **need_free;

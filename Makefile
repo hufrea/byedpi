@@ -4,8 +4,8 @@ CPPFLAGS = -D_DEFAULT_SOURCE
 CFLAGS += -I. -std=c99 -O2 -Wall -Wno-unused -Wextra -Wno-unused-parameter -pedantic
 WIN_LDFLAGS = -lws2_32 -lmswsock
 
-HEADERS = conev.h desync.h error.h extend.h kavl.h mpool.h packets.h params.h proxy.h win_service.h
-SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c
+HEADERS = conev.h desync.h error.h extend.h kavl.h mpool.h packets.h params.h proxy.h resolve.h ssl_compat.h win_service.h
+SRC = packets.c main.c conev.c proxy.c desync.c mpool.c extend.c resolve.c ssl_compat.c
 WIN_SRC = win_service.c
 
 OBJ = $(SRC:.c=.o)
