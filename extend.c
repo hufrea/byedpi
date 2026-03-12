@@ -622,8 +622,9 @@ int connect_hook(struct poolhd *pool, struct eval *val,
         val->addr = *dst;
         return 0;
     }
-    if (dp->ext_socks.in6.sin6_port) {
-        int e = create_conn(pool, val, &dp->ext_socks, &on_socks_conn);
+    if (dp->out_type) {
+        int e = create_conn(pool, val, &dp->out_addr, 
+            dp->out_type == OUT_SOCKS5 ? &on_socks_conn : next);
         if (!e) {
             val->pair->after_conn_cb = next;
             val->pair->addr = *dst;

@@ -38,6 +38,9 @@
 #define AUTO_NORECONN 2
 #define AUTO_SORT 4
 
+#define OUT_SOCKS5 1
+#define OUT_TCP 2
+
 #define FM_RAND 1
 #define FM_ORIG 2
 
@@ -110,7 +113,8 @@ struct desync_params {
     uint16_t pf[2];
     int rounds[2];
     
-    union sockaddr_u ext_socks;
+    uint16_t out_type;
+    union sockaddr_u out_addr;
     
     int _optind;
     int id;

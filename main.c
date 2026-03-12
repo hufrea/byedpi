@@ -189,7 +189,7 @@ const struct option options[] = {
     {"protect-path",  1, 0, 'P'}, //
     #endif
     {"ipset",         1, 0, 'j'},
-    {"to-socks5",     1, 0, 'C'}, //
+    {"connect-to",    1, 0, 'C'}, //
     {"comment",       1, 0, '#'}, //
     {"cache-merge",   1, 0, '/'},
     {0}
@@ -1201,10 +1201,21 @@ int parse_args(int argc, char **argv)
             params.await_int = atoi(optarg);
             break;
             
-        case 'C':
-            if (get_addr(optarg, &dp->ext_socks) < 0 
-                    || !dp->ext_socks.in6.sin6_port) 
+        case 'C':;
+            const char *arg = optarg;
+            dp->out_type = OUT_SOCKS5;
+            
+            if (!strncmp(arg, "socks5://", 9)) {
+                arg += 9;
+            }
+            else if (!strncmp(arg, "tcp://", 6)) {
+                dp->out_type = OUT_TCP;
+                arg += 6;
+            }
+            if (get_addr(arg, &dp->out_addr) < 0 
+                    || !dp->out_addr.in6.sin6_port) {
                 invalid = 1;
+            }
             params.delay_conn = 1;
             break;
         
