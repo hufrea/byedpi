@@ -808,6 +808,72 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
 }
 
 
+static int save_buffer(struct poolhd *pool, 
+        struct eval *val, struct buffer *buff, ssize_t n)
+{
+    val->buff = buff_pop(pool, params.bfsize);
+    assert(val->buff == buff);
+    
+    val->buff->lock = n;
+    val->recv_count = val->buff->lock;
+    val->round_count++;
+    
+    if (params.auto_reconnect) {
+        if (!(val->sq_buff = buff_pop(pool, params.bfsize))) {
+            return -1;
+        }
+        val->sq_buff->lock = val->buff->lock;
+        memcpy(val->sq_buff->data, val->buff->data, val->buff->lock);
+    }
+    return 0;
+}
+
+
+static int handle_s5(struct poolhd *pool, struct eval *val, 
+            struct buffer *buff, ssize_t n, union sockaddr_u *dst)
+{
+    if (val->flag != FLAG_S5) {
+        if (auth_socks5(val->fd, buff->data, n)) {
+            return -1;
+        }
+        val->flag = FLAG_S5;
+        return 0;
+    }
+    if (n < S_SIZE_MIN) {
+        LOG(LOG_E, "ss: request too small (%zd)\n", n);
+        return -1;
+    }
+    struct s5_req *r = (struct s5_req *)buff->data;
+    int s5e = 0;
+    switch (r->cmd) {
+        case S_CMD_CONN:
+            s5e = s5_get_addr(buff->data, n, dst, SOCK_STREAM);
+            if (s5e >= 0) {
+                return connect_hook(pool, val, dst, &on_connect);
+            }
+            break;
+        case S_CMD_AUDP:
+            if (params.udp) {
+                s5e = s5_get_addr(buff->data, n, dst, SOCK_DGRAM);
+                if (s5e >= 0) {
+                    return udp_associate(pool, val, dst);
+                }
+                break;
+            }
+            __attribute__((fallthrough));
+        default:
+            LOG(LOG_E, "ss: unsupported cmd: 0x%x\n", r->cmd);
+            s5e = -S_ER_CMD;
+    }
+    if (s5e < 0) {
+        if (resp_s5_error(val->fd, -s5e) < 0)
+            uniperror("send");
+        return -1;
+    }
+    return -1;
+}
+
+
 int on_request(struct poolhd *pool, struct eval *val, int et)
 {
     union sockaddr_u dst = {0};
@@ -823,47 +889,9 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
     int error = 0;
     
     if (*buff->data == S_VER5) {
-        if (val->flag != FLAG_S5) {
-            if (auth_socks5(val->fd, buff->data, n)) {
-                return -1;
-            }
-            val->flag = FLAG_S5;
-            return 0;
-        }
-        if (n < S_SIZE_MIN) {
-            LOG(LOG_E, "ss: request too small (%zd)\n", n);
-            return -1;
-        }
-        struct s5_req *r = (struct s5_req *)buff->data;
-        int s5e = 0;
-        switch (r->cmd) {
-            case S_CMD_CONN:
-                s5e = s5_get_addr(buff->data, n, &dst, SOCK_STREAM);
-                if (s5e >= 0) {
-                    error = connect_hook(pool, val, &dst, &on_connect);
-                }
-                break;
-            case S_CMD_AUDP:
-                if (params.udp) {
-                    s5e = s5_get_addr(buff->data, n, &dst, SOCK_DGRAM);
-                    if (s5e >= 0) {
-                        error = udp_associate(pool, val, &dst);
-                    }
-                    break;
-                }
-                __attribute__((fallthrough));
-            default:
-                LOG(LOG_E, "ss: unsupported cmd: 0x%x\n", r->cmd);
-                s5e = -S_ER_CMD;
-        }
-        if (s5e < 0) {
-            if (resp_s5_error(val->fd, -s5e) < 0)
-                uniperror("send");
-            return -1;
-        }
+        error = handle_s5(pool, val, buff, n, &dst);
     }
-    else if (*buff->data == S_VER4
-            && !buff->data[n - 1] && buff->data[1] == S_CMD_CONN) {
+    else if (!params.shadowsocks && *buff->data == S_VER4) {
         val->flag = FLAG_S4;
         
         error = s4_get_addr(buff->data, n, &dst);
@@ -888,20 +916,9 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         if (req_size < 0) {
             return -1;
         }
-        val->buff = buff_pop(pool, params.bfsize);
-        assert(val->buff == buff);
         memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
-        
-        val->buff->lock = n - (req_size - 3);
-        val->recv_count = val->buff->lock;
-        val->round_count++;
-        
-        if (params.auto_reconnect) {
-            if (!(val->sq_buff = buff_pop(pool, params.bfsize))) {
-                return -1;
-            }
-            val->sq_buff->lock = val->buff->lock;
-            memcpy(val->sq_buff->data, val->buff->data, val->buff->lock);
+        if (save_buffer(pool, val, buff, n - (req_size - 3))) {
+            return -1;
         }
         error = connect_hook(pool, val, &dst, &on_connect);
     }
