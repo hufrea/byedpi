@@ -149,6 +149,8 @@ struct params {
     bool transparent;
     bool http_connect;
     bool shadowsocks;
+    bool proxy_rawtls;
+    bool proxy_unknown;
     bool delay_conn;
     bool auto_reconnect;
     int max_open;

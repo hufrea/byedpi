@@ -363,6 +363,24 @@ static int http_get_addr(
 }
 
 
+static int tls_get_addr(
+        const char *buff, size_t n, union sockaddr_u *dst)
+{
+    char *host = 0;
+    int host_len = parse_tls(buff, n, &host);
+    
+    if (host_len < 3 || host_len > 255) {
+        return -1;
+    }
+    if (params.resolve && resolve(host, host_len, dst, SOCK_STREAM)) {
+        LOG(LOG_E, "not resolved: %.*s\n", host_len, host);
+        return -1;
+    }
+    dst->in.sin_port = htons(443);
+    return 0;
+}
+
+    
 static int remote_sock(union sockaddr_u *dst, int type)
 {
     if (params.baddr.sa.sa_family == AF_INET6) {
@@ -918,6 +936,21 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         }
         memmove(buff->data, buff->data + (req_size - 3), n - (req_size - 3));
         if (save_buffer(pool, val, buff, n - (req_size - 3))) {
+            return -1;
+        }
+        error = connect_hook(pool, val, &dst, &on_connect);
+    }
+    else if (params.proxy_rawtls && is_tls_chello(buff->data, n)) {
+        if (tls_get_addr(buff->data, n, &dst)) {
+            return -1;
+        }
+        if (save_buffer(pool, val, buff, n)) {
+            return -1;
+        }
+        error = connect_hook(pool, val, &dst, &on_connect);
+    }
+    else if (params.proxy_unknown) {
+        if (save_buffer(pool, val, buff, n)) {
             return -1;
         }
         error = connect_hook(pool, val, &dst, &on_connect);

@@ -133,7 +133,7 @@ const struct option options[] = {
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
-    {"http-connect",  0, 0, 'G'},
+    {"proxy-mode",    1, 0, 'G'}, //
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
@@ -708,7 +708,31 @@ int parse_args(int argc, char **argv)
             params.udp = 0;
             break;
         case 'G':
-            params.http_connect = 1;
+            end = optarg;
+            while (end && !invalid) {
+                switch (*end) {
+                    case 'c':
+                        params.http_connect = 1;
+                        break;
+                    case 's': 
+                        params.shadowsocks = 1;
+                        break;
+                    case 't': 
+                        params.transparent = 1;
+                        break;
+                    case 'r': 
+                        params.proxy_rawtls = 1;
+                        break;
+                    case 'u': 
+                        params.proxy_unknown = 1;
+                        break;
+                    default:
+                        invalid = 1;
+                        continue;
+                }
+                end = strchr(end, ',');
+                if (end) end++;
+            }
             break;
         #ifdef __linux__
         case 'E':
