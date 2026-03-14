@@ -41,6 +41,14 @@
 #define OUT_SOCKS5 1
 #define OUT_TCP 2
 
+#define MODE_SOCKS5 1
+#define MODE_SOCKS4 2
+#define MODE_HTTP 4
+#define MODE_TRANSPARENT 8
+#define MODE_SHADOWSOCKS 16
+#define MODE_RAWTLS 32
+#define MODE_UNKNOWN 64
+
 #define FM_RAND 1
 #define FM_ORIG 2
 
@@ -143,14 +151,10 @@ struct params {
     int to_count_lim;
     int to_bytes_lim;
     char cache_pre;
+    int mode;
     bool ipv6;
     bool resolve;
     bool udp;
-    bool transparent;
-    bool http_connect;
-    bool shadowsocks;
-    bool proxy_rawtls;
-    bool proxy_unknown;
     bool delay_conn;
     bool auto_reconnect;
     int max_open;

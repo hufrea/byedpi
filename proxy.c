@@ -216,8 +216,8 @@ int resp_error(int fd, int e, int flag)
         return send(fd, r, sizeof(r) - 1, 0);
     }
     #ifdef __linux__
-    if (params.transparent &&
-            (e == ECONNREFUSED || e == ETIMEDOUT)) {
+    //if (e == ECONNREFUSED || e == ETIMEDOUT) {
+    else if (e) {
         struct linger l = { .l_onoff = 1 };
         if (setsockopt(fd, 
                 SOL_SOCKET, SO_LINGER, &l, sizeof(l)) < 0) {
@@ -649,8 +649,9 @@ static int on_accept(struct poolhd *pool, struct eval *val, int et)
         }
         rval->addr = client;
         #ifdef __linux__
-        if (params.transparent && transp_conn(pool, rval) < 0) {
-            del_event(pool, rval);
+        if ((params.mode & MODE_TRANSPARENT) && transp_conn(pool, rval) < 0) {
+            if (!(params.mode & ~MODE_TRANSPARENT))
+                del_event(pool, rval);
             continue;
         }
         #endif
@@ -883,18 +884,15 @@ static int handle_s5(struct poolhd *pool, struct eval *val,
             LOG(LOG_E, "ss: unsupported cmd: 0x%x\n", r->cmd);
             s5e = -S_ER_CMD;
     }
-    if (s5e < 0) {
-        if (resp_s5_error(val->fd, -s5e) < 0)
-            uniperror("send");
-        return -1;
-    }
-    return -1;
+    if (resp_s5_error(val->fd, -s5e) < 0)
+        uniperror("send");
+    return 1;
 }
 
 
 int on_request(struct poolhd *pool, struct eval *val, int et)
 {
-    union sockaddr_u dst = {0};
+    union sockaddr_u dst = { 0 };
     struct buffer *buff = buff_ppop(pool, params.bfsize);
     if (!buff) {
         return -1;
@@ -905,31 +903,25 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         return -1;
     }
     int error = 0;
+    bool skip_conn = 0;
     
-    if (*buff->data == S_VER5) {
-        error = handle_s5(pool, val, buff, n, &dst);
-    }
-    else if (!params.shadowsocks && *buff->data == S_VER4) {
-        val->flag = FLAG_S4;
-        
-        error = s4_get_addr(buff->data, n, &dst);
-        if (error) {
-            if (resp_error(val->fd, error, FLAG_S4) < 0)
-                uniperror("send");
+    if ((params.mode & MODE_SOCKS5) && *buff->data == S_VER5) {
+        if ((error = handle_s5(pool, val, buff, n, &dst)) > 0) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, &on_connect);
+        skip_conn = 1;
     }
-    else if (params.http_connect
+    else if ((params.mode & MODE_SOCKS4) && *buff->data == S_VER4) {
+        val->flag = FLAG_S4;
+        error = s4_get_addr(buff->data, n, &dst);
+    }
+    else if ((params.mode & MODE_HTTP)
             && n > 7 && !memcmp(buff->data, "CONNECT", 7)) {
         val->flag = FLAG_HTTP;
         
-        if (http_get_addr(buff->data, n, &dst)) {
-            return -1;
-        }
-        error = connect_hook(pool, val, &dst, &on_connect);
+        error = http_get_addr(buff->data, n, &dst);
     }
-    else if (params.shadowsocks && *buff->data <= S_ATP_I6) {
+    else if ((params.mode & MODE_SHADOWSOCKS) && *buff->data <= S_ATP_I6) {
         int req_size = s5_get_addr(buff->data - 3, n + 3, &dst, SOCK_STREAM);
         if (req_size < 0) {
             return -1;
@@ -938,32 +930,29 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
         if (save_buffer(pool, val, buff, n - (req_size - 3))) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, &on_connect);
     }
-    else if (params.proxy_rawtls && is_tls_chello(buff->data, n)) {
-        if (tls_get_addr(buff->data, n, &dst)) {
+    else if ((params.mode & MODE_RAWTLS) && is_tls_chello(buff->data, n)) {
+        error = tls_get_addr(buff->data, n, &dst);
+        
+        if (!error && save_buffer(pool, val, buff, n)) {
             return -1;
         }
+    }
+    else if ((params.mode & MODE_UNKNOWN)) {
         if (save_buffer(pool, val, buff, n)) {
             return -1;
         }
-        error = connect_hook(pool, val, &dst, &on_connect);
-    }
-    else if (params.proxy_unknown) {
-        if (save_buffer(pool, val, buff, n)) {
-            return -1;
-        }
-        error = connect_hook(pool, val, &dst, &on_connect);
     }
     else {
         LOG(LOG_E, "ss: invalid version: 0x%x (%zd)\n", *buff->data, n);
         return -1;
     }
+    if (!error && !skip_conn) {
+        error = connect_hook(pool, val, &dst, &on_connect);
+    }
     if (error) {
-        int en = get_e();
-        if (resp_error(val->fd, en ? en : error, val->flag) < 0)
+        if (resp_error(val->fd, ENOENT, val->flag) < 0)
             uniperror("send");
-        LOG(LOG_S, "ss error: %d\n", en);
         return -1;
     }
     return 0;

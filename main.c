@@ -711,24 +711,23 @@ int parse_args(int argc, char **argv)
             end = optarg;
             while (end && !invalid) {
                 switch (*end) {
-                    case 'c':
-                        params.http_connect = 1;
-                        break;
-                    case 's': 
-                        params.shadowsocks = 1;
-                        break;
-                    case 't': 
-                        params.transparent = 1;
-                        break;
-                    case 'r': 
-                        params.proxy_rawtls = 1;
-                        break;
-                    case 'u': 
-                        params.proxy_unknown = 1;
-                        break;
-                    default:
-                        invalid = 1;
-                        continue;
+                case '4': params.mode |= MODE_SOCKS4; 
+                    break;
+                case '5': params.mode |= MODE_SOCKS5;
+                    break;
+                case 'h': params.mode |= MODE_HTTP; 
+                    break;
+                case 's': params.mode |= MODE_SHADOWSOCKS; 
+                    break;
+                case 't': params.mode |= MODE_TRANSPARENT; 
+                    break;
+                case 'r': params.mode |= MODE_RAWTLS; 
+                    break;
+                case 'u': params.mode |= MODE_UNKNOWN; 
+                    break;
+                default:
+                    invalid = 1;
+                    continue;
                 }
                 end = strchr(end, ',');
                 if (end) end++;
@@ -736,7 +735,7 @@ int parse_args(int argc, char **argv)
             break;
         #ifdef __linux__
         case 'E':
-            params.transparent = 1;
+            params.mode = MODE_TRANSPARENT;
             break;
         #endif
         
@@ -1275,6 +1274,7 @@ int parse_args(int argc, char **argv)
     if (params.baddr.sa.sa_family != AF_INET6) {
         params.ipv6 = 0;
     }
+    if (!params.mode) params.mode |= (MODE_SOCKS4 | MODE_SOCKS5);
     return 0;
 }
 
@@ -1345,7 +1345,7 @@ int main(int argc, char **argv)
             params.protect_path = "protect_path";
         }
         #endif
-        params.shadowsocks = 1;
+        params.mode |= MODE_SHADOWSOCKS;
     }
     char *cmd_line = 0;
     const char *env_options = getenv("SS_PLUGIN_OPTIONS");
