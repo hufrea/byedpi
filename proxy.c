@@ -756,9 +756,12 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
         socklen_t asz = sizeof(addr);
         
         ssize_t n = recvfrom(val->fd, data, data_len, 0, &addr.sa, &asz);
-        if (n < 1) {
-            if (n && get_e() == EAGAIN)
+        if (n < 0) {
+            int err = get_e();
+            if (err == EAGAIN || err == EWOULDBLOCK)
                 break;
+            if (err == EMSGSIZE || err == ECONNREFUSED)
+                continue;
             uniperror("recv udp");
             return -1;
         }
@@ -819,6 +822,9 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
             ns = send(pair->fd, data - offs, offs + n, 0);
         }
         if (ns < 0) {
+            int err = get_e();
+            if (err == EMSGSIZE || err == ECONNREFUSED)
+                continue;
             uniperror("sendto");
             return -1;
         }
