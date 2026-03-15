@@ -541,6 +541,9 @@ int parse_offset(struct part *part, const char *str)
                 part->flag |= OFFSET_START;
         }
     }
+    else if (*end) {
+        return -1;
+    }
     part->pos = val;
     return 0;
 }
@@ -584,7 +587,7 @@ static struct desync_params *add_group(struct desync_params *prev)
 #ifdef DAEMON
 int init_pid_file(const char *fname)
 {
-    int pid_fd = open(params.pid_file, O_RDWR | O_CREAT, 0640);
+    int pid_fd = open(fname, O_RDWR | O_CREAT, 0640);
     if (pid_fd < 0) {
         return -1;
     }
@@ -599,7 +602,10 @@ int init_pid_file(const char *fname)
     char pid_str[21];
     snprintf(pid_str, sizeof(pid_str), "%d", getpid());
     
-    write(pid_fd, pid_str, strlen(pid_str));
+    if (write(pid_fd, pid_str, strlen(pid_str)) < 0) {
+        close(pid_fd);
+        return -1;
+    }
     return pid_fd;
 }
 #endif
