@@ -975,6 +975,8 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
             uniperror("getsockopt SO_ERROR");
             return -1;
         }
+        if (!error) error = ECONNREFUSED;
+        
         switch (error) {
         case ECONNRESET:
         case ECONNREFUSED:
