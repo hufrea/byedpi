@@ -74,6 +74,7 @@ static const char help_text[] = {
     #endif
     "    -c, --max-conn <count>    Connection count limit, default 512\n"
     "    -N, --no-domain           Deny domain resolving\n"
+    "    -z, --dns-addr <ip[:p]>   DNS server for domain resolving, default system DNS\n"
     "    -U, --no-udp              Deny UDP association\n"
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
@@ -131,6 +132,7 @@ const struct option options[] = {
     {"pidfile",       1, 0, 'w'},
     #endif
     {"no-domain",     0, 0, 'N'},
+    {"dns-addr",      1, 0, 'z'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
     {"proxy-mode",    1, 0, 'G'}, //
@@ -706,6 +708,15 @@ int parse_args(int argc, char **argv)
         
         case 'N':
             params.resolve = 0;
+            break;
+        case 'z':
+            if (get_addr(optarg, &params.dns_addr) < 0) {
+                invalid = 1;
+                break;
+            }
+            if (!params.dns_addr.in6.sin6_port) {
+                params.dns_addr.in6.sin6_port = htons(53);
+            }
             break;
         case 'X':
             params.ipv6 = 0;
