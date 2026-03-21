@@ -1072,7 +1072,9 @@ int run(const union sockaddr_u *srv)
     #endif
     signal(SIGINT, on_cancel);
     signal(SIGTERM, on_cancel);
+    #ifdef SIGHUP
     signal(SIGHUP, on_hup);
+    #endif
     
     int fd = listen_socket(srv);
     if (fd < 0) {
