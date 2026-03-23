@@ -38,16 +38,16 @@
 #define AUTO_NORECONN 2
 #define AUTO_SORT 4
 
-#define OUT_SOCKS5 1
-#define OUT_TCP 2
-
 #define MODE_SOCKS5 1
 #define MODE_SOCKS4 2
 #define MODE_HTTP 4
 #define MODE_TRANSPARENT 8
 #define MODE_SHADOWSOCKS 16
 #define MODE_RAWTLS 32
-#define MODE_UNKNOWN 64
+#define MODE_TCP 64
+#define MODE_SOCKS (MODE_SOCKS4 | MODE_SOCKS5)
+
+#define OUT_SUPPORT (MODE_SOCKS5 | MODE_TCP)
 
 #define FM_RAND 1
 #define FM_ORIG 2

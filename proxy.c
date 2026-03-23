@@ -944,7 +944,7 @@ int on_request(struct poolhd *pool, struct eval *val, int et)
             return -1;
         }
     }
-    else if ((params.mode & MODE_UNKNOWN)) {
+    else if ((params.mode & MODE_TCP)) {
         if (save_buffer(pool, val, buff, n)) {
             return -1;
         }

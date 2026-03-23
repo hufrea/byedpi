@@ -133,7 +133,6 @@ const struct option options[] = {
     {"no-domain",     0, 0, 'N'},
     {"no-ipv6",       0, 0, 'X'},
     {"no-udp",        0, 0, 'U'},
-    {"proxy-mode",    1, 0, 'G'}, //
     {"help",          0, 0, 'h'},
     {"version",       0, 0, 'v'},
     {"ip",            1, 0, 'i'},
@@ -435,33 +434,64 @@ int get_addr(const char *str, union sockaddr_u *addr)
     if (!e) {
         e = strchr(str, 0);
     }
-    char str_ip[(e - s) + 1];
-    memcpy(str_ip, s, e - s);
-    str_ip[e - s] = 0;
-    
-    struct addrinfo hints = {0}, *res = 0;
-    
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_flags = AI_NUMERICHOST;
-    
-    if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
-        return -1;
+    if (e != s) {
+        char str_ip[(e - s) + 1];
+        memcpy(str_ip, s, e - s);
+        str_ip[e - s] = 0;
+        
+        struct addrinfo hints = {0}, *res = 0;
+        
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_flags = AI_NUMERICHOST;
+        
+        if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
+            return -1;
+        }
+        
+        if (res->ai_addr->sa_family == AF_INET6)
+            addr->in6.sin6_addr = (
+                (struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
+        else
+            addr->in.sin_addr = (
+                (struct sockaddr_in *)res->ai_addr)->sin_addr;
+                
+        addr->sa.sa_family = res->ai_addr->sa_family;
+        freeaddrinfo(res);
     }
-    
-    if (res->ai_addr->sa_family == AF_INET6)
-        addr->in6.sin6_addr = (
-            (struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
-    else
-        addr->in.sin_addr = (
-            (struct sockaddr_in *)res->ai_addr)->sin_addr;
-            
-    addr->sa.sa_family = res->ai_addr->sa_family;
     if (port) {
         addr->in6.sin6_port = port;
     }
-    freeaddrinfo(res);
     return 0;
+}
+
+
+int get_addr_scheme(const char *str, union sockaddr_u *addr)
+{
+    const char *schemes[] = {
+        "socks4://", "socks5://", "socks://", "ss://", 
+        "http://", "sni://", "tcp://", 
+    #ifdef __linux__
+        "red://", 
+    #endif
+    0 };
+    const int scheme_int[] = {
+        MODE_SOCKS4, MODE_SOCKS5, MODE_SOCKS, MODE_SHADOWSOCKS, 
+        MODE_HTTP, MODE_RAWTLS, MODE_TCP, MODE_TRANSPARENT
+    };
+    int mode = 0;
+    for (size_t i = 0; schemes[i]; i++) {
+        int s_len = strlen(schemes[i]);
+        if (!strncmp(str, schemes[i], s_len)) {
+            mode = scheme_int[i];
+            str += s_len;
+            break;
+        }
+    }
+    if (get_addr(str, addr)) {
+        return -1;
+    }
+    return mode;
 }
 
 
@@ -713,32 +743,6 @@ int parse_args(int argc, char **argv)
         case 'U':
             params.udp = 0;
             break;
-        case 'G':
-            end = optarg;
-            while (end && !invalid) {
-                switch (*end) {
-                case '4': params.mode |= MODE_SOCKS4; 
-                    break;
-                case '5': params.mode |= MODE_SOCKS5;
-                    break;
-                case 'h': params.mode |= MODE_HTTP; 
-                    break;
-                case 's': params.mode |= MODE_SHADOWSOCKS; 
-                    break;
-                case 't': params.mode |= MODE_TRANSPARENT; 
-                    break;
-                case 'r': params.mode |= MODE_RAWTLS; 
-                    break;
-                case 'u': params.mode |= MODE_UNKNOWN; 
-                    break;
-                default:
-                    invalid = 1;
-                    continue;
-                }
-                end = strchr(end, ',');
-                if (end) end++;
-            }
-            break;
         #ifdef __linux__
         case 'E':
             params.mode = MODE_TRANSPARENT;
@@ -761,9 +765,12 @@ int parse_args(int argc, char **argv)
             printf("%s\n", VERSION);
             return 1;
         
-        case 'i':
-            if (get_addr(optarg, &params.laddr) < 0)
+        case 'i':;
+            int mode = get_addr_scheme(optarg, &params.laddr);
+            if (mode < 0)
                 invalid = 1;
+            else
+                params.mode |= mode;
             break;
             
         case 'p':
@@ -1230,21 +1237,13 @@ int parse_args(int argc, char **argv)
             params.await_int = atoi(optarg);
             break;
             
-        case 'C':;
-            const char *arg = optarg;
-            dp->out_type = OUT_SOCKS5;
-            
-            if (!strncmp(arg, "socks5://", 9)) {
-                arg += 9;
-            }
-            else if (!strncmp(arg, "tcp://", 6)) {
-                dp->out_type = OUT_TCP;
-                arg += 6;
-            }
-            if (get_addr(arg, &dp->out_addr) < 0 
+        case 'C':
+            dp->out_type = get_addr_scheme(optarg, &dp->out_addr);
+            if ((dp->out_type & OUT_SUPPORT) != dp->out_type
                     || !dp->out_addr.in6.sin6_port) {
                 invalid = 1;
             }
+            if (!dp->out_type) dp->out_type = MODE_SOCKS5;
             params.delay_conn = 1;
             break;
         

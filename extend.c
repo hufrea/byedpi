@@ -623,7 +623,7 @@ int connect_hook(struct poolhd *pool, struct eval *val,
     }
     if (dp->out_type) {
         int e = create_conn(pool, val, &dp->out_addr, 
-            dp->out_type == OUT_SOCKS5 ? &on_socks_conn : next);
+            dp->out_type == MODE_SOCKS5 ? &on_socks_conn : next);
         if (!e) {
             val->pair->after_conn_cb = next;
             val->pair->addr = *dst;
