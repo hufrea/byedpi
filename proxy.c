@@ -680,7 +680,6 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         
         ssize_t sn = tcp_send_hook(pool, pair, val->buff, &val->buff->lock, &wait);
         if (sn < 0) {
-            uniperror("send");
             return -1;
         }
         if (sn < n || wait) {
@@ -708,7 +707,6 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
         
         ssize_t sn = tcp_send_hook(pool, pair, buff, &n, &wait);
         if (sn < 0) {
-            uniperror("send");
             return -1;
         }
         if (sn < n || wait) {

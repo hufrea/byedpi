@@ -665,6 +665,22 @@ static int cancel_setup(struct eval *remote)
 }
 
 
+static int handle_err(struct poolhd *pool, struct eval *val, int e)
+{
+    switch (e) {
+        case ECONNRESET:
+        case ECONNREFUSED:
+        case ETIMEDOUT: 
+        case EHOSTUNREACH:
+            if (val->flag == FLAG_CONN)
+                return on_torst(pool, val);
+            else
+                return on_fin(pool, val);
+    }
+    return -1;
+}
+
+
 ssize_t tcp_send_hook(struct poolhd *pool, 
         struct eval *remote, struct buffer *buff, ssize_t *n, bool *wait)
 {
@@ -694,6 +710,10 @@ ssize_t tcp_send_hook(struct poolhd *pool,
             return 0;
         }
     }
+    if (sn < 0) {
+        uniperror("send");
+        return handle_err(pool, remote, get_e());
+    }
     remote->pair->round_sent += sn;
     return sn;
 }
@@ -711,17 +731,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             return 0;
         }
         uniperror("recv");
-        switch (get_e()) {
-            case ECONNRESET:
-            case ECONNREFUSED:
-            case ETIMEDOUT: 
-            case EHOSTUNREACH:
-                if (val->flag == FLAG_CONN)
-                    return on_torst(pool, val);
-                else
-                    return on_fin(pool, val);
-        }
-        return -1;
+        return handle_err(pool, val, get_e());
     }
     val->recv_count += n;
     
