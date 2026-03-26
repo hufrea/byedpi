@@ -995,9 +995,11 @@ int parse_args(int argc, char **argv)
                 invalid = 1;
                 continue;
             }
-            if (!add((void *)&params.need_free, &params.need_free_n, sizeof(data))) {
+            char **d = add((void *)&params.need_free, &params.need_free_n, sizeof(data));
+            if (!d) {
                 return -1;
             }
+            *d = data;
             if (parse_hosts(dp->hosts, data, size)) {
                 uniperror("parse_hosts");
                 return -1;
