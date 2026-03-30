@@ -124,6 +124,182 @@ static inline int nb_socket(int domain, int type)
 }
 
 
+static inline uint16_t dns_get16(const uint8_t *p)
+{
+    return (uint16_t)(p[0] << 8) | p[1];
+}
+
+
+static inline void dns_set16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v >> 8);
+    p[1] = (uint8_t)(v & 0xff);
+}
+
+
+static int dns_skip_name(const uint8_t *data, size_t n, size_t *off)
+{
+    size_t p = *off;
+    
+    while (p < n) {
+        uint8_t c = data[p];
+        if (c == 0) {
+            *off = p + 1;
+            return 0;
+        }
+        if ((c & 0xc0) == 0xc0) {
+            if (p + 1 >= n) {
+                return -1;
+            }
+            *off = p + 2;
+            return 0;
+        }
+        if (c & 0xc0) {
+            return -1;
+        }
+        p++;
+        if (p + c > n) {
+            return -1;
+        }
+        p += c;
+    }
+    return -1;
+}
+
+
+static int dns_pack_name(
+        const char *host, int len, uint8_t *out, size_t out_len)
+{
+    int st = 0;
+    size_t o = 0;
+    
+    if (len <= 0 || len > 253) {
+        return -1;
+    }
+    for (int i = 0; i <= len; i++) {
+        if (i != len && host[i] != '.') {
+            continue;
+        }
+        int ll = i - st;
+        if (ll <= 0 || ll > 63) {
+            return -1;
+        }
+        if (o + (size_t)ll + 2 > out_len) {
+            return -1;
+        }
+        out[o++] = (uint8_t)ll;
+        memcpy(out + o, host + st, ll);
+        o += (size_t)ll;
+        st = i + 1;
+    }
+    if (o + 1 > out_len) {
+        return -1;
+    }
+    out[o++] = 0;
+    return (int)o;
+}
+
+
+static int dns_resolve_type(
+        const char *host, int len, uint16_t qtype, union sockaddr_u *addr)
+{
+    uint8_t req[512] = {0}, resp[512] = {0};
+    union sockaddr_u dns = params.dns_addr;
+    socklen_t dns_len = SA_SIZE(&dns);
+    
+    if (!dns.in6.sin6_port) {
+        dns.in6.sin6_port = htons(53);
+    }
+    int qname_len = dns_pack_name(host, len, req + 12, sizeof(req) - 16);
+    if (qname_len < 0) {
+        return -1;
+    }
+    
+    uint16_t id = (uint16_t)rand();
+    dns_set16(req, id);
+    dns_set16(req + 2, 0x0100);
+    dns_set16(req + 4, 1);
+    
+    size_t qoff = 12 + (size_t)qname_len;
+    dns_set16(req + qoff, qtype);
+    dns_set16(req + qoff + 2, 1);
+    size_t req_len = qoff + 4;
+    
+    int fd = socket(dns.sa.sa_family, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return -1;
+    }
+    ssize_t sn = sendto(fd, (const char *)req, req_len, 0, &dns.sa, dns_len);
+    if (sn < 0 || (size_t)sn != req_len) {
+        close(fd);
+        return -1;
+    }
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+    
+    struct timeval tv = {
+        .tv_sec = 2,
+        .tv_usec = 0
+    };
+    int sr = select(fd + 1, &rfds, 0, 0, &tv);
+    if (sr <= 0) {
+        close(fd);
+        return -1;
+    }
+    ssize_t rn = recvfrom(fd, (char *)resp, sizeof(resp), 0, 0, 0);
+    close(fd);
+    
+    if (rn < 12) {
+        return -1;
+    }
+    size_t n = (size_t)rn;
+    if (dns_get16(resp) != id) {
+        return -1;
+    }
+    uint16_t flags = dns_get16(resp + 2);
+    if (!(flags & 0x8000) || (flags & 0x000f)) {
+        return -1;
+    }
+    uint16_t qd = dns_get16(resp + 4);
+    uint16_t an = dns_get16(resp + 6);
+    
+    size_t off = 12;
+    for (uint16_t i = 0; i < qd; i++) {
+        if (dns_skip_name(resp, n, &off) || off + 4 > n) {
+            return -1;
+        }
+        off += 4;
+    }
+    for (uint16_t i = 0; i < an; i++) {
+        if (dns_skip_name(resp, n, &off) || off + 10 > n) {
+            return -1;
+        }
+        uint16_t atype = dns_get16(resp + off);
+        uint16_t aclass = dns_get16(resp + off + 2);
+        uint16_t rdlen = dns_get16(resp + off + 8);
+        off += 10;
+        if (off + rdlen > n) {
+            return -1;
+        }
+        if (aclass == 1 && atype == qtype) {
+            if (qtype == 1 && rdlen == 4) {
+                addr->in.sin_family = AF_INET;
+                memcpy(&addr->in.sin_addr, resp + off, 4);
+                return 0;
+            }
+            if (qtype == 28 && rdlen == 16) {
+                addr->in6.sin6_family = AF_INET6;
+                memcpy(&addr->in6.sin6_addr, resp + off, 16);
+                return 0;
+            }
+        }
+        off += rdlen;
+    }
+    return -1;
+}
+
+
 static int resolve(const char *chost, int len, 
         union sockaddr_u *addr, int type) 
 {
@@ -140,6 +316,25 @@ static int resolve(const char *chost, int len,
     memcpy(host, chost, len);
     
     LOG(LOG_S, "resolve: %s\n", host);
+    if (inet_pton(AF_INET, host, &addr->in.sin_addr) == 1) {
+        addr->in.sin_family = AF_INET;
+        return 0;
+    }
+    if (params.ipv6 &&
+            inet_pton(AF_INET6, host, &addr->in6.sin6_addr) == 1) {
+        addr->in6.sin6_family = AF_INET6;
+        return 0;
+    }
+    if (params.resolve && params.dns_addr.sa.sa_family &&
+            params.dns_addr.in6.sin6_port) {
+        if (params.ipv6 && dns_resolve_type(host, len, 28, addr) == 0) {
+            return 0;
+        }
+        if (dns_resolve_type(host, len, 1, addr) == 0) {
+            return 0;
+        }
+        return -1;
+    }
     
     if (getaddrinfo(host, 0, &hints, &res) || !res) {
         return -1;
