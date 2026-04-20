@@ -159,6 +159,7 @@ struct params {
     bool auto_reconnect;
     int max_open;
     int debug;
+    bool validate;
     size_t bfsize;
     union sockaddr_u baddr;
     union sockaddr_u laddr;
