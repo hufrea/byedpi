@@ -58,7 +58,8 @@ struct params params = {
     .laddr = {
         .in = { .sin_family = AF_INET }
     },
-    .debug = 0
+    .debug = 0,
+    .validate = 0
 };
 
 
@@ -78,6 +79,7 @@ static const char help_text[] = {
     "    -I  --conn-ip <ip>        Connection binded IP, default ::\n"
     "    -b, --buf-size <size>     Buffer size, default 16384\n"
     "    -x, --debug <level>       Print logs, 0, 1 or 2\n"
+    "    -z, --validate            Checks args without proxy run\n"
     "    -g, --def-ttl <num>       TTL for all outgoing connections\n"
     // desync options
     #ifdef TCP_FASTOPEN_CONNECT
@@ -144,6 +146,7 @@ const struct option options[] = {
     {"buf-size",      1, 0, 'b'},
     {"max-conn",      1, 0, 'c'},
     {"debug",         1, 0, 'x'},
+    {"validate",      0, 0, 'z'},
     
     #ifdef TCP_FASTOPEN_CONNECT
     {"tfo",           0, 0, 'F'},
@@ -666,6 +669,7 @@ void clear_params(char *line, char **argv)
     for (int i = 0; i < params.need_free_n; i++) {
         free(params.need_free[i]);
     }
+    params.validate = 0;
     params.need_free_n = 0;
     
     struct desync_params *dp = params.dp;
@@ -806,6 +810,9 @@ int parse_args(int argc, char **argv)
             params.debug = strtol(optarg, 0, 0);
             if (params.debug < 0)
                 invalid = 1;
+            break;
+        case 'z':
+            params.validate = 1;
             break;
             
         case 'y':
@@ -1380,6 +1387,10 @@ int main(int argc, char **argv)
     if (status) {
         clear_params(cmd_line, argv);
         return status - 1;
+    }
+    if (params.validate) {
+        clear_params(cmd_line, argv);
+        return status;
     }
     INIT_ADDR_STR(params.laddr);
     LOG(LOG_S, "listen address: %s:%d\n", ADDR_STR, ntohs(params.laddr.in.sin_port));
