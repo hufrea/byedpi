@@ -19,6 +19,7 @@
     #include <netinet/in.h>
     #include <netinet/tcp.h>
     #include <sys/socket.h>
+    #include <ifaddrs.h>
     
     #define DAEMON
 #else
@@ -411,28 +412,67 @@ int parse_ipset(struct mphdr *hdr, char *buffer, size_t size)
 }
 
 
+static int get_addr_ifname(const char *name, union sockaddr_u *addr)
+{
+    int err = -1, prefer_family = addr->sa.sa_family;
+
+    #ifndef _WIN32
+    struct ifaddrs *ifap, *ifa;
+    
+    if (getifaddrs(&ifap) || !ifap) {
+        uniperror("getifaddrs");
+        return -1;
+    }
+    for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (strcmp(ifa->ifa_name, name)) {
+            continue;
+        }
+        if (!err && prefer_family
+                 && prefer_family != ifa->ifa_addr->sa_family) {
+            continue;
+        }
+        memcpy(addr, ifa->ifa_addr, SA_SIZE(ifa->ifa_addr));
+        err = 0;
+    }
+    freeifaddrs(ifap);
+    
+    if (err && prefer_family == AF_INET6) {
+        char *e = 0;
+        addr->in6.sin6_scope_id = strtol(name, &e, 10);
+        if (!*e) {
+            err = 0;
+        }
+    }
+    #endif
+    return err;
+}
+
+
 int get_addr(const char *str, union sockaddr_u *addr)
 {
-    uint16_t port = 0;
-    const char *s = str, *e = 0;
-    const char *end = 0, *p = str;
+    uint16_t port = addr->in.sin_port;
+    const char *s = str, *p = s, *e = strchr(str, 0);
     
     if (*str == '[') {
-        e = strchr(str, ']');
-        if (!e) return -1;
+        if (!(e = strchr(str, ']'))) {
+            return -1;
+        }
         s++; p = e + 1;
     }
     p = strchr(p, ':');
     if (p && isdigit(p[1])) {
+        const char *end = 0;
         long val = strtol(p + 1, (char **)&end, 0);
         if (val <= 0 || val > 0xffff || *end)
             return -1;
         else
             port = htons(val);
-        if (!e) e = p;
+        if (e > p) e = p;
     }
-    if (!e) {
-        e = strchr(str, 0);
+    const char *scope = strchr(s, '%');
+    if (scope) { 
+        p = e; 
+        if (e > scope) e = scope;
     }
     if (e != s) {
         char str_ip[(e - s) + 1];
@@ -448,20 +488,19 @@ int get_addr(const char *str, union sockaddr_u *addr)
         if (getaddrinfo(str_ip, 0, &hints, &res) || !res) {
             return -1;
         }
-        
-        if (res->ai_addr->sa_family == AF_INET6)
-            addr->in6.sin6_addr = (
-                (struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
-        else
-            addr->in.sin_addr = (
-                (struct sockaddr_in *)res->ai_addr)->sin_addr;
-                
-        addr->sa.sa_family = res->ai_addr->sa_family;
+        memcpy(addr, res->ai_addr, SA_SIZE(res->ai_addr));
         freeaddrinfo(res);
     }
-    if (port) {
-        addr->in6.sin6_port = port;
+    if (scope) {
+        char str_scope[p - scope];
+        memcpy(str_scope, scope + 1, p - scope - 1);
+        str_scope[p - scope - 1] = 0;
+        
+        if (get_addr_ifname(str_scope, addr)) {
+            return -1;
+        }
     }
+    addr->in.sin_port = port;
     return 0;
 }
 
