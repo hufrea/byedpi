@@ -138,15 +138,16 @@ static struct elem_i *cache_add(
 static int on_socks_recv(struct poolhd *pool, struct eval *val, int t)
 {
     struct s5_req r = { 0 };
+    evcb_t ret = val->after_conn_cb;
     
     ssize_t n = recv(val->fd, (char *)&r, sizeof(r), 0);
     if (n < 2) {
         uniperror("socks recv");
-        return (val->after_conn_cb)(pool, val, POLLERR);
+        return (ret)(pool, val, POLLERR);
     }
     if (r.ver != S_VER5 || r.cmd != S_ER_OK) {
         LOG(LOG_E, "socks answer: %d\n", r.cmd);
-        return (val->after_conn_cb)(pool, val, POLLERR);
+        return (ret)(pool, val, POLLERR);
     }
     if (val->conn_state != FLAG_S5) {
         r.cmd = S_CMD_CONN;
@@ -154,23 +155,23 @@ static int on_socks_recv(struct poolhd *pool, struct eval *val, int t)
         
         if (send(val->fd, (char *)&r, len, 0) < 0) {
             uniperror("socks send");
-            return (val->after_conn_cb)(pool, val, POLLERR);
+            return (ret)(pool, val, POLLERR);
         }
         val->conn_state = FLAG_S5;
         return 0;
     }
-    val->cb = val->after_conn_cb;
-    
-    return (val->cb)(pool, val, POLLOUT);
+    val->cb = ret;
+    return (ret)(pool, val, POLLOUT);
 }
+
 
 static int on_socks_conn(struct poolhd *pool, struct eval *val, int t)
 {
-    static const char data[3] = { S_VER5, 0x01, 0x00 };
+    static const char data[] = { S_VER5, 0x01, S_AUTH_NONE };
     
     if (send(val->fd, (char *)data, sizeof(data), 0) < 0) {
         uniperror("socks send");
-        return (val->after_conn_cb)(pool, val, t);
+        return (val->after_conn_cb)(pool, val, POLLERR);
     }
     if (mod_etype(pool, val, POLLIN)) {
         uniperror("mod_etype");
@@ -622,7 +623,17 @@ int connect_hook(struct poolhd *pool, struct eval *val,
         return 0;
     }
     if (dp->out_type) {
-        int e = create_conn(pool, val, &dp->out_addr, 
+        union sockaddr_u out_addr = dp->out_addr;
+        
+        if (!out_addr.in.sin_port) {
+            out_addr.in.sin_port = dst->in.sin_port;
+        }
+        if (!out_addr.in.sin_family) {
+            out_addr.in6.sin6_family = dst->in6.sin6_family;
+            memcpy(&out_addr.in.sin_addr, &dst->in.sin_addr, 
+                sizeof(out_addr) - offsetof(union sockaddr_u, in.sin_addr));
+        }
+        int e = create_conn(pool, val, &out_addr, 
             dp->out_type == MODE_SOCKS5 ? &on_socks_conn : next);
         if (!e) {
             val->pair->after_conn_cb = next;

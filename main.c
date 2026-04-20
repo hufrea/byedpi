@@ -1241,8 +1241,7 @@ int parse_args(int argc, char **argv)
             
         case 'C':
             dp->out_type = get_addr_scheme(optarg, &dp->out_addr);
-            if ((dp->out_type & OUT_SUPPORT) != dp->out_type
-                    || !dp->out_addr.in6.sin6_port) {
+            if ((dp->out_type & OUT_SUPPORT) != dp->out_type) {
                 invalid = 1;
             }
             if (!dp->out_type) dp->out_type = MODE_SOCKS5;
