@@ -434,10 +434,10 @@ static int on_fin(struct poolhd *pool, struct eval *val)
 
 
 int on_timeout(struct poolhd *pool, struct eval *val) {
-    if (++val->to_count >= params.to_count_lim) {
+    if (++val->to_count >= params.tls_to_count_lim) {
         return on_torst(pool, val);
     }
-    set_timer(pool, val, params.ptimeout);
+    set_timer(pool, val, params.tls_timeout);
     return 0;
 }
 
@@ -483,8 +483,8 @@ static int try_set_tls_timer(struct poolhd *pool,
         struct eval *val, const char *buff, ssize_t n)
 {
     ssize_t pos = 0;
-    if (params.to_bytes_lim 
-            && val->recv_count > params.to_bytes_lim) {
+    if (params.tls_to_bytes_lim 
+            && val->recv_count > params.tls_to_bytes_lim) {
         remove_timer(pool, val);
         return -1;
     }
@@ -518,10 +518,10 @@ static int try_set_tls_timer(struct poolhd *pool,
         val->tls_rec_pos += end; pos += end;
     } while (pos < n);
     
-    if (params.ptimeout) {
+    if (params.tls_timeout) {
         remove_timer(pool, val);
         if (val->tls_rec_pos != val->tls_rec_size) {
-            set_timer(pool, val, params.ptimeout);
+            set_timer(pool, val, params.tls_timeout);
         }
     }
     return 0;
@@ -769,7 +769,7 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
             val->pair->mark = 0;
         }
         if (val->to_count >= 0 && params.timeout 
-                && (params.to_bytes_lim && val->recv_count > params.to_bytes_lim)) {
+                && (params.tcp_to_bytes_lim && val->recv_count > params.tcp_to_bytes_lim)) {
             set_timeout(val->fd, 0);
             val->to_count = -1;
         }

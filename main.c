@@ -85,8 +85,9 @@ static const char help_text[] = {
     "    -F, --tfo                 Enable TCP Fast Open\n"
     #endif
     #ifdef TIMEOUT_SUPPORT
-    "    -T, --timeout <s[:p:c:b]> Timeout waiting for response, after which trigger auto\n"
+    "    -T, --tcp-timeout <s[:b]> Set TCP_USER_TIMEOUT option\n"
     #endif
+    "    -W, --tls-timeout <s:c:b> Set TLS timeout\n"
     "    -A, --auto <t,r,s,n,c>    Try desync params after this option\n"
     "                              Detect: torst,redirect,ssl_err,none,conn\n"
     "    -L, --auto-mode <s,o,n>   Mode: swop,onreconn,noreconn\n"
@@ -153,8 +154,9 @@ const struct option options[] = {
     {"auto-mode",     1, 0, 'L'},
     {"cache-ttl",     1, 0, 'u'},
     #ifdef TIMEOUT_SUPPORT
-    {"timeout",       1, 0, 'T'},
+    {"tcp-timeout",   1, 0, 'T'},
     #endif
+    {"tls-timeout",   1, 0, 'W'},
     {"copy",          1, 0, 'B'},
     {"cache-file",    1, 0, 'y'},
     {"proto",         1, 0, 'K'},
@@ -183,7 +185,7 @@ const struct option options[] = {
     {"udp-fake",      1, 0, 'a'},
     {"def-ttl",       1, 0, 'g'},
     {"wait-send",     0, 0, 'Z'}, //
-    {"await-int",     1, 0, 'W'}, //
+    {"await-int",     1, 0, 'z'}, //
     #ifdef __linux__
     {"drop-sack",     0, 0, 'Y'},
     {"protect-path",  1, 0, 'P'}, //
@@ -985,16 +987,21 @@ int parse_args(int argc, char **argv)
         case 'T':;
             float f = strtof(optarg, &end);
             params.timeout = (f * 1000);
-            
-            if (*end == ':') 
-                params.ptimeout = strtof(end + 1, &end) * 1000;
-            if (*end == ':') 
-                params.to_count_lim = strtof(end + 1, &end);
             if (*end == ':')
-                params.to_bytes_lim = strtof(end + 1, &end);
+                params.tcp_to_bytes_lim = strtof(end + 1, &end);
             if (*end)
                 invalid = 1;
-                
+            break;
+            
+        case 'W':
+            f = strtof(optarg, &end);
+            params.tls_timeout = (f * 1000);
+            if (*end == ':') 
+                params.tls_to_count_lim = strtof(end + 1, &end);
+            if (*end == ':')
+                params.tls_to_bytes_lim = strtof(end + 1, &end);
+            if (*end)
+                invalid = 1;
             break;
             
         case 'K':
@@ -1274,7 +1281,7 @@ int parse_args(int argc, char **argv)
             params.wait_send = 1;
             break;
         
-        case 'W':
+        case 'z':
             params.await_int = atoi(optarg);
             break;
             

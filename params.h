@@ -147,9 +147,10 @@ struct params {
     bool custom_ttl;
     
     bool tfo;
-    unsigned int timeout, ptimeout;
-    int to_count_lim;
-    int to_bytes_lim;
+    unsigned int timeout, tls_timeout;
+    int tls_to_count_lim;
+    int tls_to_bytes_lim;
+    int tcp_to_bytes_lim;
     char cache_pre;
     int mode;
     bool ipv6;
