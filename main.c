@@ -19,6 +19,7 @@
     #include <netinet/in.h>
     #include <netinet/tcp.h>
     #include <sys/socket.h>
+    #include <sys/resource.h>
     #include <ifaddrs.h>
     
     #define DAEMON
@@ -1369,6 +1370,21 @@ int init(void)
     if (params.pid_file 
             && (params.pid_fd = init_pid_file(params.pid_file)) < 0) {
         return -1;
+    }
+    #endif
+    struct rlimit r = { 0 };
+    rlim_t mc = params.max_open * 3 + 10;
+    
+    #ifndef _WIN32
+    if (getrlimit(RLIMIT_NOFILE, &r) < 0) {
+        uniperror("getrlimit");
+    }
+    else if (r.rlim_cur < mc) {
+        r.rlim_cur = r.rlim_max < mc ? r.rlim_max : mc;
+        
+        if (setrlimit(RLIMIT_NOFILE, &r) < 0) {
+            uniperror("setrlimit");
+        }
     }
     #endif
     return 0;

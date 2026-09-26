@@ -42,11 +42,34 @@
 #endif
 
 
-int server_fd;
+#define RFD_COUNT 2
+
+int server_fd, res_fds[RFD_COUNT];
 
 static void on_cancel(int sig) {
     shutdown(server_fd, SHUT_RDWR);
 }
+
+static int accept_close(int fd)
+{
+    #ifndef _WIN32
+    for (size_t i = 0; i < RFD_COUNT; i++) {
+        if (res_fds[i] > 0) close(res_fds[i]);
+    }
+    if (fd > 0) {
+        int c = accept(fd, 0, 0);
+        if (c > 0) 
+            close(c);
+        else if (errno != EAGAIN) 
+            return -1;
+    }
+    for (size_t i = 0; i < RFD_COUNT; i++) {
+        res_fds[i] = dup(0);
+    }
+    #endif
+    return 0;
+}
+
 
 void dump_all_cache(void);
 
@@ -616,9 +639,14 @@ static int on_accept(struct poolhd *pool, struct eval *val, int et)
         #endif
         if (c < 0) {
             if (get_e() == EAGAIN ||
-                    get_e() == EINPROGRESS)
+                    get_e() == EINPROGRESS) {
                 break;
+            }
             uniperror("accept");
+            if (get_e() == EMFILE
+                && accept_close(val->fd) > -1) {
+                    break;
+            }
             pool->brk = 1;
             return -1;
         }
@@ -1073,6 +1101,8 @@ int run(const union sockaddr_u *srv)
     #ifdef SIGHUP
     signal(SIGHUP, on_hup);
     #endif
+    
+    accept_close(0);
     
     int fd = listen_socket(srv);
     if (fd < 0) {
