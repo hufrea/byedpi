@@ -193,6 +193,7 @@ const struct option options[] = {
     #endif
     {"ipset",         1, 0, 'j'},
     {"connect-to",    1, 0, 'C'}, //
+    {"rst",           0, 0, '0'}, //
     {"comment",       1, 0, '#'}, //
     {"cache-merge",   1, 0, '/'},
     {0}
@@ -1284,6 +1285,10 @@ int parse_args(int argc, char **argv)
         
         case 'z':
             params.await_int = atoi(optarg);
+            break;
+            
+        case '0':
+            dp->rst = 1;
             break;
             
         case 'C':

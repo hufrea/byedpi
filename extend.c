@@ -622,6 +622,10 @@ int connect_hook(struct poolhd *pool, struct eval *val,
         val->addr = *dst;
         return 0;
     }
+    if (dp->rst) {
+        LOG(LOG_S, "drop connection\n");
+        return -1;
+    }
     if (dp->out_type) {
         union sockaddr_u out_addr = dp->out_addr;
         

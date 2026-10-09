@@ -121,6 +121,8 @@ struct desync_params {
     uint16_t pf[2];
     int rounds[2];
     
+    bool rst;
+    
     uint16_t out_type;
     union sockaddr_u out_addr;
     
