@@ -477,18 +477,16 @@ int create_conn(struct poolhd *pool,
         close(sfd);
         return -1;
     }
-    if (LOG_ENABLED) {
-        INIT_ADDR_STR((*dst));
-        LOG(LOG_S, "new conn: fd=%d, pair=%d, addr=%s:%d\n", 
-            sfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
-    }
+    LOG(LOG_S, "new conn: fd=%d, pair=%d, addr=%s:%d\n", 
+        sfd, val->fd, straddr(*dst).s, ntohs(dst->in.sin_port));
+    
     int status = connect(sfd, &addr.sa, SA_SIZE(&addr));
     if (status == 0 && params.tfo) {
         LOG(LOG_S, "TFO supported!\n");
     }
     if (status < 0 && 
             get_e() != EINPROGRESS && get_e() != EAGAIN) {
-        uniperror("connect");
+        LOG(LOG_E, "connect: %s (addr=%s)\n", strerr(get_e()).s, straddr(addr).s);
         close(sfd);
         return -1;
     }
@@ -555,11 +553,9 @@ static int udp_associate(struct poolhd *pool,
         close(cfd);
         return -1;
     }
-    if (LOG_ENABLED) {
-        INIT_ADDR_STR((*dst));
-        LOG(LOG_S, "udp associate: fds=%d,%d,%d addr=%s:%d\n", 
-            ufd, cfd, val->fd, ADDR_STR, ntohs(dst->in.sin_port));
-    }
+    LOG(LOG_S, "udp associate: fds=%d,%d,%d addr=%s:%d\n", 
+        ufd, cfd, val->fd, straddr(*dst).s, ntohs(dst->in.sin_port));
+
     val->cb = &on_ignore;
     val->pair = client;
     client->pair = pair;
@@ -618,7 +614,6 @@ static inline int transp_conn(struct poolhd *pool, struct eval *val)
     }
     int error = connect_hook(pool, val, &remote, &on_connect);
     if (error) {
-        uniperror("connect_hook");
         return -1;
     }
     return 0;
@@ -650,7 +645,7 @@ static int on_accept(struct poolhd *pool, struct eval *val, int et)
             pool->brk = 1;
             return -1;
         }
-        LOG(LOG_S, "accept: fd=%d\n", c);
+        LOG(LOG_S, "accept: fd=%d, from=%s\n", c, straddr(client).s);
         #ifndef __linux__
         #ifdef _WIN32
         unsigned long mode = 1;
@@ -695,11 +690,12 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
     struct eval *pair = val->pair;
     
     if (etype == POLLTIMEOUT && !pair->buff && val->round_count) {
-        LOG(LOG_S, "timeout (%u) (fd=%d)\n", val->to_count, val->fd);
+        LOG(LOG_S, "timeout (%u) (fd=%d, addr=%s)\n", 
+            val->to_count, val->fd, straddr(val->addr).s);
         return on_timeout(pool, val);
     }
     if (etype & POLLOUT || etype == POLLTIMEOUT) {
-        LOG(LOG_S, "pollout (fd=%d)\n", val->fd);
+        LOG(LOG_L, "pollout (fd=%d)\n", val->fd);
         val = pair;
         pair = val->pair;
     }
@@ -825,9 +821,8 @@ int on_udp_tunnel(struct poolhd *pool, struct eval *val, int et)
                 if (params.baddr.sa.sa_family != addr.sa.sa_family) {
                     return -1;
                 }
-                INIT_ADDR_STR((addr));
                 LOG(LOG_S, "udp addr: fd=%d, addr=%s:%d\n", 
-                    val->fd, ADDR_STR, ntohs(addr.in.sin_port));
+                    val->fd, straddr(addr).s, ntohs(addr.in.sin_port));
                     
                 if (connect(pair->fd, &addr.sa, SA_SIZE(&addr)) < 0) {
                     uniperror("connect");
@@ -1001,13 +996,14 @@ int on_connect(struct poolhd *pool, struct eval *val, int et)
             uniperror("getsockopt SO_ERROR");
             return -1;
         }
+        LOG(LOG_E, "connect: %s (addr=%s)\n", strerr(error).s, straddr(val->addr).s);
         if (!error) error = ECONNREFUSED;
         
         switch (error) {
         case ECONNRESET:
         case ECONNREFUSED:
         case ETIMEDOUT:
-        //case EHOSTUNREACH:
+        case EHOSTUNREACH:
             if (on_connerr(pool, val) == 0) {
                 return 0;
             }

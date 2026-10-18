@@ -79,14 +79,31 @@ static int unie(int e)
     #define LOG_ENABLED (params.debug >= LOG_S)
 #endif
 
-#define INIT_ADDR_STR(dst) \
-    char ADDR_STR[INET6_ADDRSTRLEN]; \
-    const char *p = 0; \
-    if (dst.sa.sa_family == AF_INET) \
-        p = inet_ntop(AF_INET, &dst.in.sin_addr, ADDR_STR, sizeof(ADDR_STR)); \
-    else \
-        p = inet_ntop(AF_INET6, &dst.in6.sin6_addr, ADDR_STR, sizeof(ADDR_STR)); \
+static struct addr_str {
+    char s[INET6_ADDRSTRLEN];
+}
+straddr(union sockaddr_u dst)
+{
+    struct addr_str s;
+    const char *p = 0;
+    if (dst.sa.sa_family == AF_INET)
+        p = inet_ntop(AF_INET, &dst.in.sin_addr, s.s, sizeof(s.s));
+    else
+        p = inet_ntop(AF_INET6, &dst.in6.sin6_addr, s.s, sizeof(s.s));
     if (!p) uniperror("inet_ntop");
+    return s;
+}
+
+static struct err_str {
+    char s[128];
+}
+strerr(int e)
+{
+    struct err_str s = {{ 'e','m','p','t','y' }};
+    if (strerror_r(e, s.s, sizeof(s.s)))
+        uniperror("strerror_r");
+    return s;
+}
 
 #endif
 

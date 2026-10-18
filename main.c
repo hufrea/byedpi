@@ -1447,8 +1447,8 @@ int main(int argc, char **argv)
         clear_params(cmd_line, argv);
         return status - 1;
     }
-    INIT_ADDR_STR(params.laddr);
-    LOG(LOG_S, "listen address: %s:%d\n", ADDR_STR, ntohs(params.laddr.in.sin_port));
+    LOG(LOG_S, "listen address: %s:%d\n", 
+        straddr(params.laddr).s, ntohs(params.laddr.in.sin_port));
     
     if (init() < 0 || run(&params.laddr) < 0) {
         clear_params(cmd_line, argv);

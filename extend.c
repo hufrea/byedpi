@@ -347,7 +347,6 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
     bool before_req = !lav->recv_count && !val->recv_count;
     
     bool can_reconn = ((lav->sq_buff || before_req) && client_alive);
-    INIT_ADDR_STR((val->addr));
     
     struct elem_i *cache = cache_add(&val->addr, &lav->host, lav->host_len);
     if (!cache) {
@@ -383,13 +382,13 @@ int on_trigger(int type, struct poolhd *pool, struct eval *val, bool client_aliv
         lav->dp->pri++;
     }
     if (!next) {
-        LOG(LOG_S, "unreach ip: %s\n", ADDR_STR);
+        LOG(LOG_S, "unreach ip: %s\n", straddr(val->addr).s);
         cache->dp_mask = 0;
         cache->detect = 0;
         cache->dp = params.dp;
         return -1;
     }
-    LOG(LOG_S, "save: ip=%s, id=%d\n", ADDR_STR, next->id);
+    LOG(LOG_S, "save: ip=%s, id=%d\n", straddr(val->addr).s, next->id);
     
     cache->dp_mask |= lav->dp_mask;
     cache->detect = lav->detect;
@@ -608,7 +607,7 @@ int connect_hook(struct poolhd *pool, struct eval *val,
     }
     struct desync_params *dp = find_dp(val, 0, 0, dst);
     if (!dp) {
-        LOG(LOG_E, "drop connection\n");
+        LOG(LOG_E, "drop connection (addr=%s)\n", straddr(*dst).s);
         return -1;
     }
     val->dp = dp;
@@ -623,7 +622,7 @@ int connect_hook(struct poolhd *pool, struct eval *val,
         return 0;
     }
     if (dp->rst) {
-        LOG(LOG_S, "drop connection\n");
+        LOG(LOG_S, "drop connection (addr=%s)\n", straddr(*dst).s);
         return -1;
     }
     if (dp->out_type) {
@@ -682,6 +681,7 @@ static int cancel_setup(struct eval *remote)
 
 static int handle_err(struct poolhd *pool, struct eval *val, int e)
 {
+    LOG(LOG_E, "recv: %s (addr=%s)\n", strerr(get_e()).s, straddr(val->addr).s);
     switch (e) {
         case ECONNRESET:
         case ECONNREFUSED:
@@ -726,7 +726,6 @@ ssize_t tcp_send_hook(struct poolhd *pool,
         }
     }
     if (sn < 0) {
-        uniperror("send");
         return handle_err(pool, remote, get_e());
     }
     remote->pair->round_sent += sn;
@@ -745,7 +744,6 @@ ssize_t tcp_recv_hook(struct poolhd *pool,
         if (get_e() == EAGAIN) {
             return 0;
         }
-        uniperror("recv");
         return handle_err(pool, val, get_e());
     }
     val->recv_count += n;
