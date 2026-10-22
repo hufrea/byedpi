@@ -131,6 +131,7 @@ struct desync_params {
     uint64_t bit;
     int fail_count;
     int pri;
+    int calls;
     const char *str;
     long cache_ttl;
     const char *cache_file;

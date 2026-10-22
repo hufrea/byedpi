@@ -658,6 +658,7 @@ static int setup_conn(struct eval *client, const char *buffer, ssize_t n)
     save_hostname(client, buffer, n);
     client->mark = is_tls_chello(buffer, n);
     client->dp = dp;
+    dp->calls++;
     
     if (params.timeout 
             && set_timeout(client->pair->fd, params.timeout)) {

@@ -1340,7 +1340,7 @@ int parse_args(int argc, char **argv)
 void dump_all_cache(void)
 {
     for (struct desync_params *dp = params.dp; dp; dp = dp->next) {
-        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d\n", dp->id, dp->str, dp->fail_count, dp->pri);
+        LOG(LOG_S, "group: %d (%s), triggered: %d, pri: %d, calls: %d\n", dp->id, dp->str, dp->fail_count, dp->pri, dp->calls);
         if (dp->cache_file) {
             if (!strcmp(dp->cache_file, "-")) {
                 dump_cache(params.mempool, stdout, dp);
