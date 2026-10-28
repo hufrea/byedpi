@@ -367,12 +367,52 @@ int s5_set_addr(char *buffer, size_t n,
 }
 
 
+static int connect_target(
+        const char *buff, size_t n, char **hs, uint16_t *port)
+{
+    const char *end = buff + n, *host = buff + 8;
+    
+    if (n < 10 || memcmp(buff, "CONNECT ", 8)) {
+        return 0;
+    }
+    const char *t_end = memchr(host, ' ', end - host);
+    if (!t_end) {
+        return 0;
+    }
+    const char *colon = t_end;
+    while (--colon > host && *colon >= '0' && *colon <= '9');
+    
+    if (*colon != ':' || colon + 1 == t_end) {
+        return 0;
+    }
+    char *e;
+    long i = strtol(colon + 1, &e, 10);
+    if (i <= 0 || i > 0xffff || e != t_end) {
+        return 0;
+    }
+    const char *h_end = colon;
+    if (*host == '[') {
+        if (h_end - host < 2 || h_end[-1] != ']') {
+            return 0;
+        }
+        host++;
+        h_end--;
+    }
+    *hs = (char *)host;
+    *port = i;
+    return h_end - host;
+}
+
+
 static int http_get_addr(
         const char *buff, size_t n, union sockaddr_u *dst)
 {
     char *host = 0;
     uint16_t port = 0;
-    int host_len = parse_http(buff, n, &host, &port);
+    int host_len = connect_target(buff, n, &host, &port);
+    if (!host_len) {
+        host_len = parse_http(buff, n, &host, &port);
+    }
     
     if (host_len < 3 || host_len > 255) {
         return -1;
