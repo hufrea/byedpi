@@ -436,7 +436,7 @@ int on_timeout(struct poolhd *pool, struct eval *val) {
     if (++val->to_count >= params.tls_to_count_lim) {
         return on_torst(pool, val);
     }
-    set_timer(pool, val, params.tls_timeout);
+    set_timer(pool, val, params.tls_timeout, TV_TIMEOUT);
     return 0;
 }
 
@@ -520,7 +520,7 @@ static int try_set_tls_timer(struct poolhd *pool,
     if (params.tls_timeout) {
         remove_timer(pool, val);
         if (val->tls_rec_pos != val->tls_rec_size) {
-            set_timer(pool, val, params.tls_timeout);
+            set_timer(pool, val, params.tls_timeout, TV_TIMEOUT);
         }
     }
     return 0;
@@ -725,6 +725,10 @@ ssize_t tcp_send_hook(struct poolhd *pool,
         if (sn < 0 && get_e() == EAGAIN) {
             return 0;
         }
+    }
+    else if (params.tls_timeout 
+            && remote->pair->mark && !remote->recv_count) {
+        set_timer(pool, remote, params.tls_timeout, TV_TIMEOUT);
     }
     if (sn < 0) {
         return handle_err(pool, remote, get_e());

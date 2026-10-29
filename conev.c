@@ -246,7 +246,7 @@ static long time_ms(void)
 }
 
 
-void set_timer(struct poolhd *pool, struct eval *val, long ms)
+void set_timer(struct poolhd *pool, struct eval *val, long ms, short type)
 {
     if (val->tv_ms) {
         return;
@@ -258,6 +258,7 @@ void set_timer(struct poolhd *pool, struct eval *val, long ms)
         next = prev;
         prev = prev->tv_prev;
     }
+    val->tv_type = type;
     val->tv_next = next;
     val->tv_prev = prev;
     

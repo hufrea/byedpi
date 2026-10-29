@@ -689,7 +689,7 @@ int on_tunnel(struct poolhd *pool, struct eval *val, int etype)
     bool wait = false;
     struct eval *pair = val->pair;
     
-    if (etype == POLLTIMEOUT && !pair->buff && val->round_count) {
+    if (etype == POLLTIMEOUT && val->tv_type == TV_TIMEOUT) {
         LOG(LOG_S, "timeout (%u) (fd=%d, addr=%s)\n", 
             val->to_count, val->fd, straddr(val->addr).s);
         return on_timeout(pool, val);

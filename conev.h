@@ -54,6 +54,9 @@ typedef int (*evcb_t)(struct poolhd *, struct eval *, int);
 #define FLAG_CONN 4
 #define FLAG_HTTP 8
 
+#define TV_DELAY 1
+#define TV_TIMEOUT 2
+
 struct buffer {
     size_t size;
     unsigned int offset;
@@ -68,6 +71,7 @@ struct eval {
     unsigned long long mod_iter;
     evcb_t cb;
     
+    short tv_type;
     long tv_ms;
     struct eval *tv_next, *tv_prev;
     
@@ -137,7 +141,7 @@ struct eval *next_event(struct poolhd *pool, int *offs, int *type, int ms);
 
 int mod_etype(struct poolhd *pool, struct eval *val, int type);
 
-void set_timer(struct poolhd *pool, struct eval *val, long ms);
+void set_timer(struct poolhd *pool, struct eval *val, long ms, short type);
 
 void remove_timer(struct poolhd *pool, struct eval *val);
 
