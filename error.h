@@ -100,8 +100,13 @@ static struct err_str {
 strerr(int e)
 {
     struct err_str s = {{ 'e','m','p','t','y' }};
+    #ifdef _WIN32
+    if (strerror_s(s.s, sizeof(s.s), e))
+        uniperror("strerror_s");
+    #else
     if (strerror_r(e, s.s, sizeof(s.s)))
         uniperror("strerror_r");
+    #endif
     return s;
 }
 
