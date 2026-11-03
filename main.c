@@ -1377,10 +1377,11 @@ int init(void)
         return -1;
     }
     #endif
+    
+    #ifndef _WIN32
     struct rlimit r = { 0 };
     rlim_t mc = params.max_open * 3 + 10;
     
-    #ifndef _WIN32
     if (getrlimit(RLIMIT_NOFILE, &r) < 0) {
         uniperror("getrlimit");
     }
