@@ -648,7 +648,7 @@ static struct desync_params *add_group(struct desync_params *prev)
         prev->next = dp;
     }
     dp->id = params.dp_n;
-    dp->bit = 1 << dp->id;
+    dp->bit = 1ULL << dp->id;
     dp->str = "";
     
     params.dp_n++;
